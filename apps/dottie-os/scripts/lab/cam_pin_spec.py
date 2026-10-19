@@ -101,10 +101,13 @@ SIGNED_KEYS_V2 = (
 NEAR_DUP_TOKENIZER_VERSION_V1 = "v1"
 NEAR_DUP_TOKENIZER_VERSION_V2 = "v2"
 NEAR_DUP_TOKENIZER_V1_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v1.py"
-# Fail-closed v2 slot. Mill vendoring is held; do not pin a live v2 file here.
 NEAR_DUP_TOKENIZER_V2_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v2.py"
-NEAR_DUP_TOKENIZER_V2_SHA256_PLACEHOLDER = (
-    "NEAR_DUP_TOKENIZER_V2_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
+NEAR_DUP_TOKENIZER_V2_SHA256 = (
+    "a2349dc432d0ccc4e9af1843f8fc731452078a59ba07dee8d4bbe1a6388119a8"
+)
+NEAR_DUP_GOLDEN_V2_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v2.golden.json"
+NEAR_DUP_GOLDEN_V2_SHA256 = (
+    "cbec79ee2e88f573a2abef845cf2c6354d42bd34ca8e7290d74a33c2483b4576"
 )
 BINDING_KEYS_V2 = ("lease_owner", "pack_id", "run_id")
 PIN_V2_MAX_LIFETIME = timedelta(hours=24)
@@ -182,8 +185,8 @@ CODE_PINS = (
     "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py",
     "apps/dottie-os/scripts/lab/content_uuid.py",
-    "apps/dottie-os/scripts/lab/neardup_tokens-v1.py",
-    "apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json",
+    "apps/dottie-os/scripts/lab/neardup_tokens-v2.py",
+    "apps/dottie-os/scripts/lab/neardup_tokens-v2.golden.json",
     "apps/dottie-os/trust/cam_pin_ed25519.pub",
     "apps/dottie-os/trust/cam_pin_key_id",
     "apps/dottie-os/trust/reserved_content_uuids.jsonl",
@@ -196,7 +199,7 @@ CODE_PIN_MODULE_NAMES = {
     "helper_ft_kickoff": "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
     "cam_pin_spec": "apps/dottie-os/scripts/lab/cam_pin_spec.py",
     "content_uuid": "apps/dottie-os/scripts/lab/content_uuid.py",
-    "neardup_tokens_v1": "apps/dottie-os/scripts/lab/neardup_tokens-v1.py",
+    "neardup_tokens_v2": "apps/dottie-os/scripts/lab/neardup_tokens-v2.py",
 }
 ORIGIN_MAIN_REF = "origin/main"
 # Twisted Edwards Ed25519 (RFC 8032). Cofactor and canonical checks run in
@@ -643,24 +646,18 @@ def parse_v2_pin_payload(
     )
     tok_ver = payload.get("near_dup_tokenizer_version")
     if type(tok_ver) is not str or not tok_ver:
-        _refuse("cam-pin.near_dup_tokenizer_version", NEAR_DUP_TOKENIZER_VERSION_V1, "missing")
-    if tok_ver == NEAR_DUP_TOKENIZER_VERSION_V2:
+        _refuse("cam-pin.near_dup_tokenizer_version", NEAR_DUP_TOKENIZER_VERSION_V2, "missing")
+    if tok_ver != NEAR_DUP_TOKENIZER_VERSION_V2:
         _refuse(
             "cam-pin.near_dup_tokenizer_version",
-            NEAR_DUP_TOKENIZER_VERSION_V1,
-            "v2 placeholder",
-        )
-    if tok_ver != NEAR_DUP_TOKENIZER_VERSION_V1:
-        _refuse(
-            "cam-pin.near_dup_tokenizer_version",
-            NEAR_DUP_TOKENIZER_VERSION_V1,
+            NEAR_DUP_TOKENIZER_VERSION_V2,
             tok_ver,
         )
     tok_sha = require_sha256_hex(
         "cam-pin.near_dup_tokenizer_sha256",
         payload.get("near_dup_tokenizer_sha256"),
     )
-    pinned_tok = code_pins.get(NEAR_DUP_TOKENIZER_V1_REL)
+    pinned_tok = code_pins.get(NEAR_DUP_TOKENIZER_V2_REL)
     if pinned_tok != tok_sha:
         _refuse("cam-pin.near_dup_tokenizer_sha256", pinned_tok, tok_sha)
     record["near_dup_tokenizer_version"] = tok_ver

@@ -3027,8 +3027,13 @@ def load_reserved_near_dup_fingerprints(
     return found
 
 
-def _fingerprint_tokens_are_hmac(tokens: frozenset[str]) -> bool:
-    if not tokens:
+def _fingerprint_tokens_are_hmac(tokens: object) -> bool:
+    mill = content_uuid._NEAR_DUP_TOKENIZER_MODULE
+    if mill is not None and tokens is mill.NO_TEXT:
+        return False
+    if type(tokens) not in (set, frozenset):
+        return False
+    if len(tokens) == 0:
         return False
     return all(
         type(tok) is str and len(tok) == SHA256_LEN and all(ch in _HEX for ch in tok)
@@ -3041,6 +3046,13 @@ def _candidate_tokens_for_fingerprint(
     n_tokens: frozenset[str],
 ) -> frozenset[str]:
     """HMAC candidate shingles when N fingerprints are keyed HMAC digests."""
+    mill = content_uuid._NEAR_DUP_TOKENIZER_MODULE
+    if mill is not None and (cand_tokens is mill.NO_TEXT or n_tokens is mill.NO_TEXT):
+        _refuse(
+            "reserved_eval_partition.near_dup_no_text",
+            "tokenizable shingles",
+            "NO_TEXT",
+        )
     if not _fingerprint_tokens_are_hmac(n_tokens):
         return cand_tokens
     key = _HMAC_KEY_BYTES
@@ -3729,6 +3741,12 @@ def collect_reserved_partition(
     modulus = cfg["n"]
     residues: set[int] = cfg["residues"]
     reserved: set[str] = cfg["content_shas"]
+    try:
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+    except content_uuid.ContentUuidError as exc:
+        return [(exc.field, str(exc))]
+    mill_no_text = mill.NO_TEXT
+    mill_no_text_err = mill.NoTextError
     for row in _training_rows(recorded_paths):
         rid = _row_id(row)
         try:
@@ -3844,25 +3862,38 @@ def collect_reserved_partition(
                 )
             )
         try:
-            cand_tokens = content_uuid.near_dup_tokens(
-                {key: row[key] for key in content_uuid.CONTENT_UUID_FIELDS if key in row}
-            )
-        except content_uuid.ContentUuidError as exc:
-            hits.append((exc.field, f"{rid}:{exc}"))
-            if len(hits) >= 10:
-                return hits
-            continue
-        if content_uuid._is_no_text(cand_tokens):
+            toks = mill.row_tokens(row)
+        except mill_no_text_err:
             hits.append(
                 (
                     "reserved_eval_partition.near_dup_no_text",
-                    f"{rid}:NO_TEXT",
+                    f"{rid}:NO_TEXT: row has no tokenizable text",
                 )
             )
             if len(hits) >= 10:
                 return hits
             continue
-        if not isinstance(cand_tokens, frozenset):
+        except Exception as exc:
+            hits.append(
+                (
+                    "near_dup_tokens",
+                    f"{rid}:tokenizer refused:{type(exc).__name__}",
+                )
+            )
+            if len(hits) >= 10:
+                return hits
+            continue
+        if toks is mill_no_text:
+            hits.append(
+                (
+                    "reserved_eval_partition.near_dup_no_text",
+                    f"{rid}:NO_TEXT: row has no tokenizable text",
+                )
+            )
+            if len(hits) >= 10:
+                return hits
+            continue
+        if not isinstance(toks, frozenset):
             hits.append(
                 (
                     "near_dup_tokens",
@@ -3872,6 +3903,17 @@ def collect_reserved_partition(
             if len(hits) >= 10:
                 return hits
             continue
+        if len(toks) == 0:
+            hits.append(
+                (
+                    "reserved_eval_partition.near_dup_empty_tokens",
+                    f"{rid}:empty token set",
+                )
+            )
+            if len(hits) >= 10:
+                return hits
+            continue
+        cand_tokens = toks
         for reserved_sha in reserved:
             indexed = content_uuid.lookup_near_dup_fingerprint(reserved_sha)
             if indexed is None:
@@ -3885,6 +3927,14 @@ def collect_reserved_partition(
                     break
                 continue
             n_id, n_tokens = indexed
+            if n_tokens is mill_no_text:
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup_no_text",
+                        f"{rid}:NO_TEXT fingerprint for {n_id}",
+                    )
+                )
+                continue
             if n_tokens is None:
                 hits.append(
                     (

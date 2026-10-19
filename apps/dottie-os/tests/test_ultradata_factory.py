@@ -526,8 +526,8 @@ _TEST_TRUST_BLOBS = {
     "apps/dottie-os/trust/reserved_near_dup_fingerprints.jsonl": "test-fps-blob",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py": "test-spec-blob",
     "apps/dottie-os/scripts/lab/content_uuid.py": "test-uuid-blob",
-    "apps/dottie-os/scripts/lab/neardup_tokens-v1.py": "test-tok-blob",
-    "apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json": "test-tok-golden-blob",
+    "apps/dottie-os/scripts/lab/neardup_tokens-v2.py": "test-tok-blob",
+    "apps/dottie-os/scripts/lab/neardup_tokens-v2.golden.json": "test-tok-golden-blob",
     "HEAD": "test-head-sha",
 }
 _STAGED_PIN_STATE: dict[str, object] = {
@@ -2231,9 +2231,12 @@ def _stage_pinned_copy(root: Path, *, omit: str | None = None) -> dict:
     trust_dst.mkdir(parents=True)
     for src in lab_src.glob("*.py"):
         shutil.copy2(src, lab_dst / src.name)
-    mill_golden = lab_src / "neardup_tokens-v1.golden.json"
+    mill_golden = lab_src / "neardup_tokens-v2.golden.json"
     if mill_golden.is_file():
         shutil.copy2(mill_golden, lab_dst / mill_golden.name)
+    mill_golden_v1 = lab_src / "neardup_tokens-v1.golden.json"
+    if mill_golden_v1.is_file():
+        shutil.copy2(mill_golden_v1, lab_dst / mill_golden_v1.name)
     shutil.copy2(APP / "trust" / "cam_pin_ed25519.pub", trust_dst / "cam_pin_ed25519.pub")
     shutil.copy2(APP / "trust" / "cam_pin_key_id", trust_dst / "cam_pin_key_id")
     shutil.copy2(
@@ -2260,9 +2263,9 @@ def _stage_pinned_copy(root: Path, *, omit: str | None = None) -> dict:
     files["apps/dottie-os/trust/reserved_near_dup_fingerprints.jsonl"] = (
         kick_helper_ft.sha256_file(trust_dst / "reserved_near_dup_fingerprints.jsonl")
     )
-    mill_golden_dst = lab_dst / "neardup_tokens-v1.golden.json"
+    mill_golden_dst = lab_dst / "neardup_tokens-v2.golden.json"
     if mill_golden_dst.is_file():
-        files["apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json"] = (
+        files["apps/dottie-os/scripts/lab/neardup_tokens-v2.golden.json"] = (
             kick_helper_ft.sha256_file(mill_golden_dst)
         )
     if omit is not None:
@@ -5785,12 +5788,16 @@ class HelperFtLeakGateSyntheticTests(unittest.TestCase):
             self._pin(manifest)
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
-        # v1 fail-closed: list state.message is not tokenizable, so the row is
-        # refused before leak-gate. The leak never reaches training.
-        self.assertEqual(ctx.exception.field, "near_dup_tokens")
-        self.assertTrue(
-            any("no tokenizable state.message" in str(item) for item in ctx.exception.actual)
-        )
+        # v2 row_tokens extracts list-valued state.message, so the row is
+        # screened. Leak-gate then sees assistant content as a label leak.
+        self.assertEqual(ctx.exception.field, "state.leak")
+        listed = " ".join(str(item) for item in ctx.exception.actual)
+        self.assertIn("state.message", listed)
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        toks = mill.row_tokens(rows[0])
+        self.assertIsInstance(toks, frozenset)
+        self.assertGreater(len(toks), 0)
+        self.assertFalse(content_uuid._is_no_text(toks, mill))
 
     def test_non_user_message_role_uncorrelated_twin_accepted(self) -> None:
         actions = ["execute", "execute", "halt", "halt"]
@@ -6672,20 +6679,62 @@ class HelperFtNearDupTokenizerTests(unittest.TestCase):
         gold_rel = content_uuid._NEAR_DUP_GOLDEN_REL
         self.assertIn(tok_rel, cam_pin_spec.CODE_PINS)
         self.assertIn(gold_rel, cam_pin_spec.CODE_PINS)
+        self.assertNotIn(content_uuid._NEAR_DUP_TOKENIZER_V1_REL, cam_pin_spec.CODE_PINS)
+        self.assertNotIn(content_uuid._NEAR_DUP_GOLDEN_V1_REL, cam_pin_spec.CODE_PINS)
         self.assertEqual(live[tok_rel], content_uuid.NEAR_DUP_TOKENIZER_SHA256)
         self.assertEqual(live[gold_rel], content_uuid.NEAR_DUP_GOLDEN_SHA256)
         self.assertEqual(
             content_uuid.NEAR_DUP_TOKENIZER_SHA256,
-            "50d5015a051832608391208b7fc3f48259d6e94443213bb46143a06aa2a4f173",
+            "a2349dc432d0ccc4e9af1843f8fc731452078a59ba07dee8d4bbe1a6388119a8",
+        )
+        self.assertEqual(
+            content_uuid.NEAR_DUP_GOLDEN_SHA256,
+            "cbec79ee2e88f573a2abef845cf2c6354d42bd34ca8e7290d74a33c2483b4576",
+        )
+        self.assertEqual(content_uuid.NEAR_DUP_TOKENIZER_VERSION, "v2")
+        self.assertEqual(
+            cam_pin_spec.CODE_PIN_MODULE_NAMES["neardup_tokens_v2"], tok_rel
+        )
+        self.assertEqual(
+            cam_pin_spec.NEAR_DUP_TOKENIZER_V2_SHA256,
+            content_uuid.NEAR_DUP_TOKENIZER_SHA256,
+        )
+        self.assertEqual(
+            cam_pin_spec.NEAR_DUP_GOLDEN_V2_SHA256,
+            content_uuid.NEAR_DUP_GOLDEN_SHA256,
         )
         self.assertIs(kick_helper_ft.REQUIRED_PINS, cam_pin_spec.CODE_PINS)
 
+    def test_v1_files_remain_byte_identical_and_unpinned(self) -> None:
+        v1 = LAB / "neardup_tokens-v1.py"
+        gold = LAB / "neardup_tokens-v1.golden.json"
+        self.assertTrue(v1.is_file())
+        self.assertTrue(gold.is_file())
+        self.assertEqual(
+            hashlib.sha256(v1.read_bytes()).hexdigest(),
+            content_uuid.NEAR_DUP_TOKENIZER_V1_SHA256,
+        )
+        self.assertEqual(
+            hashlib.sha256(gold.read_bytes()).hexdigest(),
+            content_uuid.NEAR_DUP_GOLDEN_V1_SHA256,
+        )
+        self.assertEqual(
+            content_uuid.NEAR_DUP_TOKENIZER_V1_SHA256,
+            "50d5015a051832608391208b7fc3f48259d6e94443213bb46143a06aa2a4f173",
+        )
+        self.assertEqual(
+            content_uuid.NEAR_DUP_GOLDEN_V1_SHA256,
+            "69609b85cb779a57f071aabc4a94af300f106ea04617d956135d267454d4b7bc",
+        )
+
     def test_load_uses_vendored_mill_file(self) -> None:
         mill = content_uuid._load_mill_near_dup_tokenizer()
-        self.assertEqual(mill.VERSION, "neardup_tokens-v1")
+        self.assertEqual(mill.VERSION, "neardup_tokens-v2")
+        self.assertTrue(callable(mill.row_tokens))
         self.assertTrue(callable(mill.message_tokens))
         self.assertTrue(callable(mill.residue))
         self.assertEqual(content_uuid._NEAR_DUP_TOKENIZER_MODULE.VERSION, mill.VERSION)
+        self.assertIs(content_uuid.require_near_dup_tokenizer_version("v2"), "v2")
 
     def test_sha_mismatch_fails_closed(self) -> None:
         orig = content_uuid.NEAR_DUP_TOKENIZER_SHA256
@@ -6703,74 +6752,99 @@ class HelperFtNearDupTokenizerTests(unittest.TestCase):
         with patch.object(
             content_uuid,
             "_mill_tokenizer_path",
-            return_value=Path("/no/such/neardup_tokens-v1.py"),
+            return_value=Path("/no/such/neardup_tokens-v2.py"),
         ):
             with self.assertRaises(content_uuid.ContentUuidError) as ctx:
                 content_uuid._load_mill_near_dup_tokenizer()
         self.assertEqual(ctx.exception.field, "near_dup_tokenizer")
         self.assertIn("missing", str(ctx.exception).lower())
 
-    def test_v2_tokenizer_slot_is_fail_closed_placeholder(self) -> None:
+    def test_v2_tokenizer_is_live_and_v1_version_is_refused(self) -> None:
+        self.assertEqual(
+            content_uuid.require_near_dup_tokenizer_version("v2"),
+            "v2",
+        )
+        mill = content_uuid._load_mill_near_dup_tokenizer(version="v2")
+        self.assertEqual(mill.VERSION, "neardup_tokens-v2")
+        self.assertTrue((LAB / "neardup_tokens-v2.py").is_file())
+        self.assertTrue((LAB / "neardup_tokens-v2.golden.json").is_file())
         with self.assertRaises(content_uuid.ContentUuidError) as ctx:
-            content_uuid.require_near_dup_tokenizer_version("v2")
+            content_uuid.require_near_dup_tokenizer_version("v1")
         self.assertEqual(ctx.exception.field, "near_dup_tokenizer.version")
-        self.assertIn("placeholder", str(ctx.exception.actual).lower())
-        with self.assertRaises(content_uuid.ContentUuidError) as ctx2:
-            content_uuid._load_mill_near_dup_tokenizer(version="v2")
-        self.assertEqual(ctx2.exception.field, "near_dup_tokenizer.version")
-        self.assertFalse((LAB / "neardup_tokens-v2.py").is_file())
+        self.assertEqual(ctx.exception.expected, "v2")
+        self.assertEqual(ctx.exception.actual, "v1")
         self.assertEqual(
             content_uuid.NEAR_DUP_TOKENIZER_SHA256,
-            "50d5015a051832608391208b7fc3f48259d6e94443213bb46143a06aa2a4f173",
+            "a2349dc432d0ccc4e9af1843f8fc731452078a59ba07dee8d4bbe1a6388119a8",
         )
         self.assertEqual(
             content_uuid.NEAR_DUP_GOLDEN_SHA256,
-            "69609b85cb779a57f071aabc4a94af300f106ea04617d956135d267454d4b7bc",
+            "cbec79ee2e88f573a2abef845cf2c6354d42bd34ca8e7290d74a33c2483b4576",
         )
 
-    def test_no_tokenizable_message_is_refused(self) -> None:
+    def test_no_tokenizable_text_is_refused(self) -> None:
         with self.assertRaises(content_uuid.ContentUuidError) as ctx:
-            content_uuid.near_dup_tokens({"state": {"text": "hello"}})
+            content_uuid.near_dup_tokens(
+                {"id": "x", "labels": {"a": 1}, "questions": {"q": {"instructions": "Which?"}}}
+            )
         self.assertEqual(ctx.exception.field, "near_dup_tokens")
-        with self.assertRaises(content_uuid.ContentUuidError):
-            content_uuid.near_dup_tokens({"state": {"message": ["not", "str"]}})
-        with self.assertRaises(content_uuid.ContentUuidError):
-            content_uuid.near_dup_tokens({"prompt": "no state"})
+        self.assertEqual(ctx.exception.actual, "NO_TEXT")
+        with self.assertRaises(content_uuid.ContentUuidError) as blank:
+            content_uuid.near_dup_tokens({"state": {"message": ""}})
+        self.assertEqual(blank.exception.actual, "NO_TEXT")
+        text_only = content_uuid.near_dup_tokens({"state": {"text": "hello world xx"}})
+        self.assertIsInstance(text_only, frozenset)
+        self.assertGreater(len(text_only), 0)
+        listed = content_uuid.near_dup_tokens(
+            {"state": {"message": ["hello world xx"]}}
+        )
+        self.assertIsInstance(listed, frozenset)
+        self.assertGreater(len(listed), 0)
+        prompted = content_uuid.near_dup_tokens({"prompt": "hello world xx"})
+        self.assertIsInstance(prompted, frozenset)
+        self.assertGreater(len(prompted), 0)
 
     def test_no_text_sentinel_is_refused(self) -> None:
         mill = content_uuid._load_mill_near_dup_tokenizer()
+        orig_sentinel = mill.NO_TEXT
+        orig_row_tokens = mill.row_tokens
 
         class NoText:
             pass
 
         mill.NO_TEXT = NoText()
-        mill.message_tokens = lambda _message: mill.NO_TEXT
-        with patch.object(
-            content_uuid, "_load_mill_near_dup_tokenizer", return_value=mill
-        ):
-            with self.assertRaises(content_uuid.ContentUuidError) as ctx:
-                content_uuid.near_dup_tokens({"state": {"message": "hello world"}})
-        self.assertEqual(ctx.exception.actual, "NO_TEXT")
+        mill.row_tokens = lambda _row: mill.NO_TEXT
+        try:
+            with patch.object(
+                content_uuid, "_load_mill_near_dup_tokenizer", return_value=mill
+            ):
+                with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+                    content_uuid.near_dup_tokens({"state": {"message": "hello world"}})
+            self.assertEqual(ctx.exception.actual, "NO_TEXT")
+        finally:
+            mill.NO_TEXT = orig_sentinel
+            mill.row_tokens = orig_row_tokens
 
-    def test_mill_cli_verify_golden_file(self) -> None:
-        mill = LAB / "neardup_tokens-v1.py"
-        golden = LAB / "neardup_tokens-v1.golden.json"
+    def test_mill_cli_verify_golden_file_isolated(self) -> None:
+        mill = LAB / "neardup_tokens-v2.py"
+        golden = LAB / "neardup_tokens-v2.golden.json"
         proc = subprocess.run(
-            [sys.executable, str(mill), "--verify", str(golden)],
+            [sys.executable, "-I", "-S", str(mill), "--verify", str(golden)],
             capture_output=True,
             text=True,
             check=False,
+            cwd="/",
         )
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertEqual(proc.stdout.strip(), "OK")
 
     def test_every_golden_vector_matches_mill_and_residue_helper(self) -> None:
-        golden_path = LAB / "neardup_tokens-v1.golden.json"
+        golden_path = LAB / "neardup_tokens-v2.golden.json"
         golden = json.loads(golden_path.read_text(encoding="utf-8"))
         mill = content_uuid._load_mill_near_dup_tokenizer()
-        self.assertEqual(golden["version"], "neardup_tokens-v1")
+        self.assertEqual(golden["version"], "neardup_tokens-v2")
         self.assertEqual(len(golden["residue_vectors"]), 10)
-        self.assertEqual(len(golden["jaccard_vectors"]), 6)
+        self.assertGreaterEqual(len(golden["jaccard_vectors"]), 6)
         raw_uuid_n = 0
         for vec in golden["residue_vectors"]:
             key = vec["key"]
@@ -6793,21 +6867,59 @@ class HelperFtNearDupTokenizerTests(unittest.TestCase):
             self.assertEqual(mill.normalize(vec["text"]), vec["normalized"])
         for vec in golden["token_vectors"]:
             tokens = mill.message_tokens(vec["message"])
-            self.assertEqual(len(tokens), vec["n_tokens"])
-            self.assertEqual(mill.token_digest(tokens), vec["token_set_sha256"])
+            expect = vec["expect"]
+            if expect == "NO_TEXT":
+                self.assertIs(tokens, mill.NO_TEXT)
+                with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+                    content_uuid.near_dup_tokens({"state": {"message": vec["message"]}})
+                self.assertEqual(ctx.exception.actual, "NO_TEXT")
+                continue
+            self.assertEqual(len(tokens), expect["n_tokens"])
+            self.assertEqual(mill.token_digest(tokens), expect["token_set_sha256"])
             via_gate = content_uuid.near_dup_tokens({"state": {"message": vec["message"]}})
             self.assertEqual(via_gate, tokens)
         for vec in golden["jaccard_vectors"]:
+            expect = vec["expect"]
+            if expect == "NO_TEXT":
+                with self.assertRaises(mill.NoTextError):
+                    mill.jaccard(
+                        mill.message_tokens(vec["a"]), mill.message_tokens(vec["b"])
+                    )
+                continue
             score = mill.jaccard(
                 mill.message_tokens(vec["a"]), mill.message_tokens(vec["b"])
             )
-            self.assertEqual(round(score, 6), vec["jaccard"])
-            self.assertEqual(mill.near_dup(vec["a"], vec["b"]), vec["near_dup"])
+            self.assertEqual(round(score, 6), expect["jaccard"])
+            self.assertEqual(mill.near_dup(vec["a"], vec["b"]), expect["near_dup"])
             gate_score = mill.jaccard(
                 content_uuid.near_dup_tokens({"state": {"message": vec["a"]}}),
                 content_uuid.near_dup_tokens({"state": {"message": vec["b"]}}),
             )
-            self.assertEqual(round(gate_score, 6), vec["jaccard"])
+            self.assertEqual(round(gate_score, 6), expect["jaccard"])
+        for vec in golden.get("row_vectors", []):
+            toks = mill.row_tokens(vec["row"])
+            expect = vec["expect"]
+            if expect == "NO_TEXT":
+                self.assertIs(toks, mill.NO_TEXT)
+                with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+                    content_uuid.near_dup_tokens(vec["row"])
+                self.assertEqual(ctx.exception.actual, "NO_TEXT")
+                continue
+            via_gate = content_uuid.near_dup_tokens(vec["row"])
+            self.assertEqual(via_gate, toks)
+            self.assertEqual(len(toks), expect["n_tokens"])
+            self.assertEqual(mill.token_digest(toks), expect["token_set_sha256"])
+        for vec in golden.get("row_jaccard_vectors", []):
+            expect = vec["expect"]
+            if expect == "NO_TEXT":
+                with self.assertRaises(mill.NoTextError):
+                    mill.jaccard(mill.row_tokens(vec["a"]), mill.row_tokens(vec["b"]))
+                continue
+            score = mill.jaccard(mill.row_tokens(vec["a"]), mill.row_tokens(vec["b"]))
+            self.assertEqual(round(score, 6), expect["jaccard"])
+            left = content_uuid.near_dup_tokens(vec["a"])
+            right = content_uuid.near_dup_tokens(vec["b"])
+            self.assertEqual(round(mill.jaccard(left, right), 6), expect["jaccard"])
 
 
 class HelperFtReservedPartitionTests(unittest.TestCase):
@@ -8081,8 +8193,8 @@ class HelperFtCodePinsTests(unittest.TestCase):
             "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
             "apps/dottie-os/scripts/lab/cam_pin_spec.py",
             "apps/dottie-os/scripts/lab/content_uuid.py",
-            "apps/dottie-os/scripts/lab/neardup_tokens-v1.py",
-            "apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json",
+            "apps/dottie-os/scripts/lab/neardup_tokens-v2.py",
+            "apps/dottie-os/scripts/lab/neardup_tokens-v2.golden.json",
             "apps/dottie-os/trust/cam_pin_ed25519.pub",
             "apps/dottie-os/trust/cam_pin_key_id",
             "apps/dottie-os/trust/reserved_content_uuids.jsonl",
@@ -8301,7 +8413,7 @@ class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
                         "id": "n1",
                         "hmac_sha256": hmacs,
                         "key_id": key_id,
-                        "tokenizer_version": "v1",
+                        "tokenizer_version": "v2",
                     }
                 )
                 + "\n"
@@ -8313,7 +8425,7 @@ class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
                         "id": "n1",
                         "hmac_sha256": [],
                         "key_id": key_id,
-                        "tokenizer_version": "v1",
+                        "tokenizer_version": "v2",
                     }
                 )
                 + "\n"
@@ -8374,7 +8486,10 @@ class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
                 {}, {"train": str(p)}, {nsha}
             )
         self.assertTrue(hits)
-        self.assertTrue(any("near_dup_tokens" in field for field, _msg in hits), hits)
+        self.assertTrue(
+            any("near_dup" in field for field, _msg in hits),
+            hits,
+        )
 
     def test_b7_unclosed_prompt_and_closed_latex(self) -> None:
         base = _math_uuidless(rid="math-a")
