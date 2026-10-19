@@ -103,7 +103,12 @@ PINS_JSON_MAX_BYTES = 64 * 1024
 _GATE_OK = object()
 _UNSET = object()
 RESERVED_EVAL_PARTITION: dict[str, object] = {"n": 10, "residues": [0, 5]}
-UUIDLESS_SOURCE_ALLOWLIST = frozenset({"openbmb/UltraData-Math"})
+# Exact (source.hf, source.config) pairs. An optional third component is
+# source.revision: when present, the row's source.revision must match it
+# exactly. v3 rows carry no revision, so the current entry is a 2-tuple.
+UUIDLESS_SOURCE_ALLOWLIST: frozenset[tuple[str, ...]] = frozenset(
+    {("openbmb/UltraData-Math", "UltraData-Math-L1")}
+)
 RESERVED_CONTENT_UUIDS_ENV = "HELPER_FT_RESERVED_CONTENT_UUIDS"
 RESERVED_CONTENT_UUIDS_SHA256_ENV = "HELPER_FT_RESERVED_CONTENT_UUIDS_SHA256"
 TRAINER_PATH_FILES: dict[str, str] = {
@@ -1628,14 +1633,50 @@ def _reserved_partition_cfg(
     return {"n": modulus, "residues": residues, "content_shas": content_shas}
 
 
-def _source_hf(row: Mapping[str, Any]) -> str | None:
+def _source_str_field(row: Mapping[str, Any], key: str) -> str | None:
     source = row.get("source")
-    if not isinstance(source, Mapping):
+    if not isinstance(source, Mapping) or key not in source:
         return None
-    value = source.get("hf")
-    if type(value) is str and value:
-        return value
-    return None
+    value = source.get(key)
+    if type(value) is not str:
+        return None
+    return value
+
+
+def _uuidless_source_allowed(
+    row: Mapping[str, Any],
+    allowlist: frozenset[tuple[str, ...]] | None = None,
+) -> bool:
+    """True when ``source.hf`` + ``source.config`` exactly match an allowlist entry.
+
+    ``source.hf`` alone is not enough. Entries are ``(hf, config)`` or
+    ``(hf, config, revision)``. A revision component requires an exact match
+    on ``source.revision``; 2-tuple entries do not pin revision.
+    """
+    entries = UUIDLESS_SOURCE_ALLOWLIST if allowlist is None else allowlist
+    hf = _source_str_field(row, "hf")
+    config = _source_str_field(row, "config")
+    if hf is None or config is None:
+        return False
+    revision = _source_str_field(row, "revision")
+    for entry in entries:
+        if not isinstance(entry, tuple):
+            continue
+        if len(entry) == 2:
+            entry_hf, entry_config = entry
+            if hf == entry_hf and config == entry_config:
+                return True
+            continue
+        if len(entry) == 3:
+            entry_hf, entry_config, entry_revision = entry
+            if (
+                hf == entry_hf
+                and config == entry_config
+                and revision == entry_revision
+            ):
+                return True
+            continue
+    return False
 
 
 class ContentUuidRowError(Exception):
@@ -1687,9 +1728,11 @@ def collect_reserved_partition(
     MANIFEST shas.
 
     Uuid-less rows are ``reserved_eval_partition.uuid_missing`` unless
-    ``source.hf`` is in ``UUIDLESS_SOURCE_ALLOWLIST``. Allowlisted uuid-less
-    rows skip the modulo check, still require a verified ``source.content_uuid``,
-    and still run the content-uuid membership check.
+    ``(source.hf, source.config)`` exactly matches ``UUIDLESS_SOURCE_ALLOWLIST``
+    (and ``source.revision`` when that entry pins one). ``source.hf`` alone
+    is not enough. Allowlisted uuid-less rows skip the modulo check, still
+    require a verified ``source.content_uuid``, and still run the content-uuid
+    membership check.
     """
     cfg = _reserved_partition_cfg(manifest, pinned_content_shas)
     hits: list[tuple[str, str]] = []
@@ -1713,7 +1756,7 @@ def collect_reserved_partition(
                 return hits
             continue
         if uuid_text is None:
-            if _source_hf(row) not in UUIDLESS_SOURCE_ALLOWLIST:
+            if not _uuidless_source_allowed(row):
                 hits.append(
                     (
                         "reserved_eval_partition.uuid_missing",
