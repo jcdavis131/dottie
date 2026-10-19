@@ -668,8 +668,31 @@ def _clear_forge_entrypoint_pins() -> None:
     os.environ.pop(kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV, None)
 
 
+def _install_run_private_root(owner: unittest.TestCase) -> None:
+    owner._forge_run_private_root_prev = os.environ.get(
+        kick_helper_ft.FORGE_RUN_PRIVATE_ROOT_ENV
+    )
+    root = Path(tempfile.mkdtemp(prefix="forge-run-private-", dir="/dev/shm"))
+    os.chmod(root, 0o700)
+    owner._forge_run_private_root = root
+    os.environ[kick_helper_ft.FORGE_RUN_PRIVATE_ROOT_ENV] = str(root)
+
+
+def _clear_run_private_root(owner: unittest.TestCase) -> None:
+    prev = getattr(owner, "_forge_run_private_root_prev", None)
+    if prev is None:
+        os.environ.pop(kick_helper_ft.FORGE_RUN_PRIVATE_ROOT_ENV, None)
+    else:
+        os.environ[kick_helper_ft.FORGE_RUN_PRIVATE_ROOT_ENV] = prev
+    root = getattr(owner, "_forge_run_private_root", None)
+    if root is not None:
+        shutil.rmtree(root, ignore_errors=True)
+        owner._forge_run_private_root = None
+
+
 def _start_hq_http_mock(owner: unittest.TestCase) -> None:
     _install_forge_entrypoint_pins(owner)
+    _install_run_private_root(owner)
     owner.hq_pins = {}
     owner.hq_error = None
     owner.hq_http_status = None
@@ -767,6 +790,7 @@ def _stop_hq_http_mock(owner: unittest.TestCase) -> None:
     os.environ.pop("SWARM_HQ_URL", None)
     os.environ.pop("SWARM_HQ_AGENT_TOKEN", None)
     _clear_forge_entrypoint_pins()
+    _clear_run_private_root(owner)
 
 
 def _stage_run_private(dest: Path) -> Path:
@@ -3444,6 +3468,43 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(rec["private_copy_shas"]["sha256_train"], seen["train"])
         self.assertEqual(evidence["computed_shas"]["sha256_train"], original_train_sha)
         self.assertNotEqual(rewritten_train_sha, seen["train"])
+
+    def test_k3_rewrite_after_prexec_hash_reaches_child(self) -> None:
+        """K3: rewrite of the staged copy after the pre-exec hash must not train."""
+        for size_change in (False, True):
+            with self.subTest(size_change=size_change):
+                reached = {"child": False}
+
+                def kickoff(body: dict, *, _size_change: bool = size_change) -> dict:
+                    train = Path(body["run_private_dir"]) / kick_helper_ft.TRAIN_FILE
+                    os.chmod(train, 0o600)
+                    if _size_change:
+                        train.write_bytes(train.read_bytes() + b"#")
+                    else:
+                        original = train.read_bytes()
+                        _flip_one_ascii_byte(train)
+                        self.assertEqual(len(train.read_bytes()), len(original))
+                    os.chmod(train, 0o400)
+                    return {"ok": True, "checkpoint_id": "ckpt-k3", "exit_code": 0}
+
+                def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+                    del pack_dir, evidence, log_path
+                    reached["child"] = True
+                    return {"ok": True, "exit_code": 0}
+
+                with tempfile.TemporaryDirectory() as tmp:
+                    dest = Path(tmp) / "inbox-pack"
+                    dest.mkdir()
+                    manifest = _write_helper_pack(dest)
+                    self._pin(manifest)
+                    with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                        kick_helper_ft.kick(
+                            dest, kickoff=kickoff, start_training=start
+                        )
+                self.assertFalse(reached["child"])
+                self.assertEqual(ctx.exception.field, "sha256_train")
+                self.assertEqual(ctx.exception.expected, manifest["sha256_train"])
+                self.assertNotEqual(ctx.exception.actual, manifest["sha256_train"])
 
     def test_evidence_swapper_cannot_post_match_on_refused_exit(self) -> None:
         stop = threading.Event()

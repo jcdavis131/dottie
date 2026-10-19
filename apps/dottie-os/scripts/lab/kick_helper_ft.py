@@ -13,8 +13,11 @@ This process hashes and counts the run-private copies itself and compares
 those to the signed pin and MANIFEST. ``--cam-pin``, a pin env var, and a
 local pin file are refused before hashing or kickoff. After the gate
 passes, this script POSTs ``/train/kickoff``; ``inbox: latest`` is never
-sent. Copies are 0400 in a 0700 directory. The trainer is passed only those
-run-dir copy paths (no source-pack fallback). The same process on the
+sent. Copies are 0400 in a 0700 directory under a container-private tmpfs
+(``FORGE_RUN_PRIVATE_ROOT``, default ``/run/forge-runner/private``). The
+trainer opens each staged file once with ``O_NOFOLLOW``, hashes that fd,
+compares in constant time to the signed pin, and trains from those bytes
+(no source-pack fallback, no path reopen). The same process on the
 training host waits for the trainer to exit, then re-hashes those recorded
 paths. Completion ``result`` and ``sha256_evidence`` come from the 0400
 evidence file this process wrote, never from scraped stdout. Nonzero trainer
@@ -28,8 +31,11 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ctypes
+import ctypes.util
 import errno
 import hashlib
+import hmac
 import json
 import math
 import os
@@ -74,6 +80,9 @@ GIT_SHA_LEN = 40
 _HEX = frozenset("0123456789abcdef")
 FORGE_ENTRYPOINT_PINS_ENV = "FORGE_ENTRYPOINT_PINS"
 FORGE_PINS_SOURCE_COMMIT_ENV = "FORGE_PINS_SOURCE_COMMIT"
+FORGE_RUN_PRIVATE_ROOT_ENV = "FORGE_RUN_PRIVATE_ROOT"
+DEFAULT_FORGE_RUN_PRIVATE_ROOT = "/run/forge-runner/private"
+TMPFS_MAGIC = 0x01021994
 ENTRYPOINT_PIN_BASENAMES = ("kick_helper_ft.py", "cam_pin_spec.py", "content_uuid.py")
 PINS_JSON_NAME = "PINS.json"
 PINNED_COPY_DEPTH = 4
@@ -254,6 +263,25 @@ _FORBIDDEN_PIN_FILES = (
 
 StartTraining = Callable[[Path, dict[str, Any], Path], Any]
 KickoffFn = Callable[[dict[str, Any]], Any]
+
+
+class _LinuxStatfs(ctypes.Structure):
+    """glibc ``struct statfs`` on Linux; ``f_type`` is the only field we use."""
+
+    _fields_ = [
+        ("f_type", ctypes.c_long),
+        ("f_bsize", ctypes.c_long),
+        ("f_blocks", ctypes.c_ulong),
+        ("f_bfree", ctypes.c_ulong),
+        ("f_bavail", ctypes.c_ulong),
+        ("f_files", ctypes.c_ulong),
+        ("f_ffree", ctypes.c_ulong),
+        ("f_fsid", ctypes.c_int * 2),
+        ("f_namelen", ctypes.c_long),
+        ("f_frsize", ctypes.c_long),
+        ("f_flags", ctypes.c_long),
+        ("f_spare", ctypes.c_long * 4),
+    ]
 
 
 class KickRefused(Exception):
@@ -591,6 +619,220 @@ def _open_flags_write() -> int:
     if hasattr(os, "O_CLOEXEC"):
         flags |= os.O_CLOEXEC
     return flags
+
+
+def _unescape_mount_field(value: str) -> str:
+    return (
+        value.replace("\\040", " ")
+        .replace("\\011", "\t")
+        .replace("\\012", "\n")
+        .replace("\\134", "\\")
+    )
+
+
+def _parse_mountinfo() -> list[dict[str, Any]]:
+    try:
+        raw = Path("/proc/self/mountinfo").read_text(encoding="utf-8")
+    except OSError as exc:
+        _refuse("run_private_root", "readable /proc/self/mountinfo", f"OSError:{exc.errno}")
+    mounts: list[dict[str, Any]] = []
+    for line in raw.splitlines():
+        if " - " not in line:
+            continue
+        left, right = line.split(" - ", 1)
+        left_parts = left.split()
+        right_parts = right.split()
+        if len(left_parts) < 5 or not right_parts:
+            continue
+        maj_min = left_parts[2].split(":")
+        if len(maj_min) != 2:
+            continue
+        try:
+            dev = os.makedev(int(maj_min[0]), int(maj_min[1]))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        mounts.append(
+            {
+                "dev": dev,
+                "root": _unescape_mount_field(left_parts[3]),
+                "mount_point": _unescape_mount_field(left_parts[4]),
+                "fstype": right_parts[0],
+            }
+        )
+    if not mounts:
+        _refuse("run_private_root", "mountinfo entries", "empty")
+    return mounts
+
+
+def _covering_mount(path: Path, mounts: list[dict[str, Any]]) -> dict[str, Any]:
+    text = os.path.realpath(path)
+    best: dict[str, Any] | None = None
+    best_len = -1
+    for mount in mounts:
+        mp = mount["mount_point"]
+        if text == mp or text.startswith(mp.rstrip("/") + "/") or mp == "/":
+            if len(mp) > best_len:
+                best = mount
+                best_len = len(mp)
+    if best is None:
+        _refuse("run_private_root", "mounted path", text)
+    return best
+
+
+def _bind_mount_devs(mounts: list[dict[str, Any]]) -> set[int]:
+    """st_dev of subtree binds (mountinfo root != '/'). Same as server PINNED_ROOT."""
+    return {int(mount["dev"]) for mount in mounts if mount["root"] != "/"}
+
+
+def _statfs_f_type(path: Path) -> int:
+    libname = ctypes.util.find_library("c") or "libc.so.6"
+    libc = ctypes.CDLL(libname, use_errno=True)
+    libc.statfs.argtypes = [ctypes.c_char_p, ctypes.POINTER(_LinuxStatfs)]
+    libc.statfs.restype = ctypes.c_int
+    buf = _LinuxStatfs()
+    rc = libc.statfs(os.fsencode(path), ctypes.byref(buf))
+    if rc != 0:
+        err = ctypes.get_errno()
+        _refuse("run_private_root", "tmpfs statfs", f"OSError:{err}")
+    return int(buf.f_type)
+
+
+def _run_private_root_path() -> Path:
+    raw = os.environ.get(FORGE_RUN_PRIVATE_ROOT_ENV, DEFAULT_FORGE_RUN_PRIVATE_ROOT)
+    if type(raw) is not str or not raw or raw != raw.strip() or not raw.startswith("/"):
+        _refuse("run_private_root", "absolute path", raw)
+    return Path(raw)
+
+
+def _require_run_private_root() -> Path:
+    """tmpfs, euid-owned, 0700, not a bind-mount st_dev. Refuse before staging."""
+    if os.name != "posix":
+        _refuse("run_private_root", "posix tmpfs", os.name)
+    root = _run_private_root_path()
+    try:
+        info = os.lstat(root)
+    except FileNotFoundError:
+        _refuse("run_private_root", DEFAULT_FORGE_RUN_PRIVATE_ROOT, "missing")
+    except OSError as exc:
+        _refuse("run_private_root", "readable directory", f"OSError:{exc.errno}")
+    if stat.S_ISLNK(info.st_mode):
+        _refuse("run_private_root", "real directory", "symlink")
+    if not stat.S_ISDIR(info.st_mode):
+        _refuse("run_private_root", "directory", "not a directory")
+    if info.st_uid != os.geteuid():
+        _refuse("run_private_root", f"uid {os.geteuid()}", info.st_uid)
+    if stat.S_IMODE(info.st_mode) != 0o700:
+        _refuse("run_private_root", "0700", oct(stat.S_IMODE(info.st_mode)))
+    mounts = _parse_mountinfo()
+    covering = _covering_mount(root, mounts)
+    if covering["fstype"] != "tmpfs":
+        _refuse("run_private_root", "tmpfs", covering["fstype"])
+    if covering["root"] != "/":
+        _refuse("run_private_root", "not bind-mount", covering["root"])
+    f_type = _statfs_f_type(root)
+    if f_type != TMPFS_MAGIC:
+        _refuse("run_private_root", hex(TMPFS_MAGIC), hex(f_type))
+    bind_devs = _bind_mount_devs(mounts)
+    if info.st_dev in bind_devs:
+        _refuse("run_private_root", "not bind-mount st_dev", info.st_dev)
+    if covering["dev"] in bind_devs:
+        _refuse("run_private_root", "not bind-mount st_dev", covering["dev"])
+    return root
+
+
+def _require_run_private_dir(run_private: Path) -> Path:
+    root = _require_run_private_root()
+    path = Path(run_private)
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        _refuse("run_private_dir", "present", "missing")
+    except OSError as exc:
+        _refuse("run_private_dir", "readable directory", f"OSError:{exc.errno}")
+    if stat.S_ISLNK(info.st_mode):
+        _refuse("run_private_dir", "real directory", "symlink")
+    if not stat.S_ISDIR(info.st_mode):
+        _refuse("run_private_dir", "directory", "not a directory")
+    if info.st_uid != os.geteuid():
+        _refuse("run_private_dir", f"uid {os.geteuid()}", info.st_uid)
+    if stat.S_IMODE(info.st_mode) != 0o700:
+        _refuse("run_private_dir", "0700", oct(stat.S_IMODE(info.st_mode)))
+    try:
+        root_info = os.lstat(root)
+    except OSError as exc:
+        _refuse("run_private_root", "readable directory", f"OSError:{exc.errno}")
+    if info.st_dev != root_info.st_dev:
+        _refuse("run_private_dir", root_info.st_dev, info.st_dev)
+    if not _contained_in(root, path) or os.path.realpath(path) == os.path.realpath(root):
+        _refuse("run_private_dir", f"under {root}", os.path.realpath(path))
+    return path
+
+
+def _make_run_private_dir() -> Path:
+    root = _require_run_private_root()
+    try:
+        path = Path(tempfile.mkdtemp(prefix="inputs-", dir=str(root)))
+    except OSError as exc:
+        _refuse("run_private_dir", "exclusive tmp under run_private_root", f"OSError:{exc.errno}")
+    try:
+        os.chmod(path, 0o700)
+    except OSError as exc:
+        _refuse("run_private_dir", "0700", f"OSError:{exc.errno}")
+    return _require_run_private_dir(path)
+
+
+def _read_fd_bytes(fd: int) -> bytes:
+    chunks: list[bytes] = []
+    while True:
+        block = os.read(fd, CHUNK)
+        if not block:
+            break
+        chunks.append(block)
+    return b"".join(chunks)
+
+
+def _open_and_verify_trainer_inputs(evidence: Mapping[str, Any]) -> dict[str, bytes]:
+    """O_NOFOLLOW open, fstat, hash that fd, constant-time compare to signed pin.
+
+    Returns the bytes read from those fds. The trainer must use these bytes
+    (or the same held fd) and never reopen the path.
+    """
+    pin = evidence.get("pin")
+    if not isinstance(pin, Mapping):
+        _refuse("pin", "present", "missing")
+    paths = evidence.get("paths")
+    if not isinstance(paths, Mapping):
+        _refuse("paths", "present", "missing")
+    verified: dict[str, bytes] = {}
+    for sha_field, path_key in PATH_KEY_BY_SHA.items():
+        expected = pin.get(sha_field)
+        if type(expected) is not str or len(expected) != SHA256_LEN:
+            _refuse(sha_field, "64-char lowercase hex", expected)
+        named = paths.get(path_key)
+        if type(named) is not str or not named:
+            _refuse(f"paths.{path_key}", "present", "missing")
+        try:
+            fd = os.open(named, _open_flags_read())
+        except OSError as exc:
+            if getattr(exc, "errno", None) in (errno.ELOOP, getattr(errno, "EPERM", None)):
+                _refuse(sha_field, "regular file", "symlink")
+            _refuse(sha_field, "readable regular file", f"OSError:{exc.errno}")
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
+                _refuse(sha_field, "regular file", "non-regular")
+            buf = _read_fd_bytes(fd)
+            actual = hashlib.sha256(buf).hexdigest()
+            if not hmac.compare_digest(actual, expected):
+                _refuse(sha_field, expected, actual)
+            verified[path_key] = buf
+        except KickRefused:
+            raise
+        except OSError as exc:
+            _refuse(sha_field, "readable regular file", f"OSError:{exc.errno}")
+        finally:
+            os.close(fd)
+    return verified
 
 
 def sha256_file(path: Path, chunk: int = CHUNK) -> str:
@@ -2524,13 +2766,7 @@ def verify_and_stage(
     pack_root = _resolve_pack_dir(Path(pack_dir))
     refuse_implicit_inbox_pack(pack_root)
     _refuse_local_pin_files(pack_root)
-    run_private = Path(run_private)
-    run_private.mkdir(parents=True, exist_ok=True)
-    try:
-        os.chmod(run_private, 0o700)
-    except OSError:
-        if os.name != "nt":
-            raise
+    run_private = _require_run_private_dir(Path(run_private))
 
     manifest_dest = run_private / MANIFEST_FILE
     _copy_and_hash(_regular_file_in_pack(pack_root, MANIFEST_FILE), manifest_dest, MANIFEST_FILE)
@@ -2878,6 +3114,10 @@ def _authorized_start_training(
 ) -> dict[str, Any]:
     if _gate is not _GATE_OK:
         _refuse("start_training", "via kick() after integrity gate", "direct call")
+    inputs = _open_and_verify_trainer_inputs(evidence)
+    train_buf = inputs["train"]
+    pack_buf = inputs["pack"]
+    holdout_buf = inputs["holdout"]
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     line = (
@@ -2888,7 +3128,14 @@ def _authorized_start_training(
     )
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(line)
-    return {"training_started": True, "auto_promote": False, "pack_dir": str(pack_dir)}
+    return {
+        "training_started": True,
+        "auto_promote": False,
+        "pack_dir": str(pack_dir),
+        "train_bytes": len(train_buf),
+        "pack_bytes": len(pack_buf),
+        "holdout_bytes": len(holdout_buf),
+    }
 
 
 def post_kickoff(body: dict[str, Any], url: str = DEFAULT_KICKOFF_URL) -> dict[str, Any]:
@@ -3067,12 +3314,7 @@ def kick(
         log_path = run_dir / DEFAULT_LOG_NAME
     run_dir.mkdir(parents=True, exist_ok=True)
     evidence_path = run_dir / f"pack_integrity_evidence_{run_id}.json"
-    run_private = Path(tempfile.mkdtemp(prefix="inputs-", dir=str(run_dir)))
-    try:
-        os.chmod(run_private, 0o700)
-    except OSError:
-        if os.name != "nt":
-            raise
+    run_private = _make_run_private_dir()
     pinned = load_pinned_copy_mode()
     if pinned is not None:
         git_sha = None
@@ -3207,6 +3449,7 @@ def kick(
             if start_training is None:
                 started = _authorized_start_training(run_private, evidence, log_path, _gate=_GATE_OK)
             else:
+                _open_and_verify_trainer_inputs(evidence)
                 started = start_training(run_private, evidence, log_path)
         trainer_stdout = captured.getvalue()
         if trainer_stdout:
