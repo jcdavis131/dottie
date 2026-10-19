@@ -8,9 +8,11 @@ record as created with Cam's stamp token (``recordedBy=cam``,
 ``--cam-pin`` paste path: agents share the host and can fake those. Redis is
 never read. If HQ is unreachable, refuse.
 
-The pin must be present, match ``MANIFEST.json``, and match the computed hashes
-of the run-private copies. ``--cam-pin``, a pin env var, and a local pin file
-are refused before hashing or kickoff. Rewriting the pack and the MANIFEST
+The pin must be present with ``stampVerified`` and ``pack_matches`` both true,
+match ``MANIFEST.json``, match the computed hashes of the run-private copies,
+and match the three row counts against the MANIFEST and the counted copies.
+``pack_matches`` is necessary, never sufficient. ``--cam-pin``, a pin env var,
+and a local pin file are refused before hashing or kickoff. Rewriting the pack and the MANIFEST
 together still fails. After the gate passes, this script POSTs
 ``/train/kickoff`` with the same pin; ``inbox: latest`` is never sent.
 
@@ -53,6 +55,10 @@ HQ_PIN_REQUIRED_KEYS = (
     "sha256_pack",
     "sha256_train",
     "sha256_holdout",
+    "rows_total",
+    "rows_train",
+    "rows_holdout",
+    "pack_matches",
     "recordedBy",
     "recordedAt",
     "kid",
@@ -63,11 +69,11 @@ SHA256_LEN = 64
 _HEX = frozenset("0123456789abcdef")
 _GATE_OK = object()
 
-# (manifest sha field, on-disk file, required row-count field)
-ARTIFACTS: tuple[tuple[str, str, str], ...] = (
-    ("sha256_pack", PACK_FILE, "rows"),
-    ("sha256_train", TRAIN_FILE, "train_rows"),
-    ("sha256_holdout", HOLDOUT_FILE, "holdout_rows"),
+# (manifest sha field, on-disk file, MANIFEST row field, pin row field)
+ARTIFACTS: tuple[tuple[str, str, str, str], ...] = (
+    ("sha256_pack", PACK_FILE, "rows", "rows_total"),
+    ("sha256_train", TRAIN_FILE, "train_rows", "rows_train"),
+    ("sha256_holdout", HOLDOUT_FILE, "holdout_rows", "rows_holdout"),
 )
 
 _FORBIDDEN_SKIP_ENV = (
@@ -360,6 +366,8 @@ def _require_cam_pin(record: object, pack_id: str) -> dict[str, Any]:
         _refuse("cam-pin.recordedBy", CAM_RECORDED_BY, recorded)
     if record.get("stampVerified") is not True:
         _refuse("cam-pin.stampVerified", True, record.get("stampVerified"))
+    if record.get("pack_matches") is not True:
+        _refuse("cam-pin.pack_matches", True, record.get("pack_matches"))
     pin_pack = record.get("pack_id")
     if not isinstance(pin_pack, str) or not pin_pack.strip():
         _refuse("cam-pin.pack_id", "present", "missing")
@@ -369,10 +377,12 @@ def _require_cam_pin(record: object, pack_id: str) -> dict[str, Any]:
         "pack_id": pack_id,
         "recordedBy": CAM_RECORDED_BY,
         "stampVerified": True,
+        "pack_matches": True,
         "source": PIN_SOURCE,
     }
-    for sha_field, _filename, _rows in ARTIFACTS:
+    for sha_field, _filename, _manifest_rows, pin_rows in ARTIFACTS:
         pin[sha_field] = _require_sha256_hex(f"cam-pin.{sha_field}", record.get(sha_field))
+        pin[pin_rows] = _require_int(f"cam-pin.{pin_rows}", record.get(pin_rows))
     return pin
 
 
@@ -408,8 +418,14 @@ def _parse_hq_pin_payload(payload: object) -> dict[str, Any]:
         _refuse("cam-pin.stampVerified", payload.get("stampVerified"), payload.get("verified"))
     if type(stamp) is not bool:
         _refuse("cam-pin.stampVerified", "bool", type(stamp).__name__)
+    matches = payload.get("pack_matches")
+    if type(matches) is not bool:
+        _refuse("cam-pin.pack_matches", "bool", type(matches).__name__)
     record = {key: payload[key] for key in HQ_PIN_REQUIRED_KEYS}
     record["stampVerified"] = stamp
+    record["pack_matches"] = matches
+    for row_key in ("rows_total", "rows_train", "rows_holdout"):
+        record[row_key] = _require_int(f"cam-pin.{row_key}", payload.get(row_key))
     return record
 
 
@@ -541,7 +557,7 @@ def verify_and_stage(
     manifest_shas: dict[str, str] = {}
     row_counts: dict[str, dict[str, int]] = {}
 
-    for sha_field, filename, rows_field in ARTIFACTS:
+    for sha_field, filename, rows_field, pin_rows_field in ARTIFACTS:
         src = _regular_file_in_pack(pack_root, filename)
         dest = run_private / filename
         computed = _copy_and_hash(src, dest, sha_field)
@@ -549,6 +565,11 @@ def verify_and_stage(
             _refuse(rows_field, "present", "missing")
         expected_rows = _require_int(rows_field, manifest[rows_field])
         actual_rows = count_rows(dest)
+        pin_rows = pin[pin_rows_field]
+        if pin_rows != expected_rows:
+            _refuse(pin_rows_field, pin_rows, expected_rows)
+        if pin_rows != actual_rows:
+            _refuse(pin_rows_field, pin_rows, actual_rows)
         if actual_rows != expected_rows:
             _refuse(rows_field, expected_rows, actual_rows)
         manifest_value = manifest.get(sha_field)
@@ -668,7 +689,7 @@ def post_kickoff(body: dict[str, Any], url: str = DEFAULT_KICKOFF_URL) -> dict[s
 
 def _recheck_copies(run_private: Path, evidence: dict[str, Any]) -> None:
     post: dict[str, str] = {}
-    for sha_field, filename, _rows in ARTIFACTS:
+    for sha_field, filename, _rows, _pin_rows in ARTIFACTS:
         actual = sha256_file(run_private / filename)
         post[sha_field] = actual
         expected = evidence["computed_shas"][sha_field]

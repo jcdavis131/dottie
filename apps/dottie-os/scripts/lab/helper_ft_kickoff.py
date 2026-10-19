@@ -2,9 +2,12 @@
 """Forge-runner HELPER FT ``POST /train/kickoff`` handler (:8765).
 
 Re-fetches the Cam-stamped pack-pin from Swarm HQ over HTTPS, then re-hashes
-run-private pack/train/holdout and compares those digests with the request shas
-and that HQ pin. A pin carried only in the request body is not provenance.
-An evidence blob that exists or says ``ok: true`` is not enough.
+and re-counts run-private pack/train/holdout. ``stampVerified`` and
+``pack_matches`` must both be true, but ``pack_matches`` is never sufficient:
+the pin's pack_id, three shas, and three row counts are compared with this
+handler's own hashes and counts of the copies plus the MANIFEST. A pin
+carried only in the request body is not provenance. An evidence blob that
+exists or says ``ok: true`` is not enough.
 
 ``inbox: latest`` and every other HELPER FT start route are refused. Stdlib
 only. Does not promote, does not touch serve, :8770, or champion files.
@@ -39,15 +42,20 @@ HQ_PIN_REQUIRED_KEYS = (
     "sha256_pack",
     "sha256_train",
     "sha256_holdout",
+    "rows_total",
+    "rows_train",
+    "rows_holdout",
+    "pack_matches",
     "recordedBy",
     "recordedAt",
     "kid",
 )
 HQ_PIN_ALLOWED_KEYS = frozenset((*HQ_PIN_REQUIRED_KEYS, "stampVerified", "verified"))
-SHA_FIELDS = (
-    ("sha256_pack", "pack"),
-    ("sha256_train", "train"),
-    ("sha256_holdout", "holdout"),
+# (sha field, paths key, MANIFEST row field, pin row field)
+ARTIFACTS = (
+    ("sha256_pack", "pack", "rows", "rows_total"),
+    ("sha256_train", "train", "train_rows", "rows_train"),
+    ("sha256_holdout", "holdout", "holdout_rows", "rows_holdout"),
 )
 # Every HELPER FT start path other than POST /train/kickoff.
 OTHER_HELPER_FT_START_PATHS = frozenset(
@@ -106,6 +114,45 @@ def _require_sha(field: str, value: object) -> str | dict[str, Any]:
     return lowered
 
 
+def _require_int(field: str, value: object) -> int | dict[str, Any]:
+    if type(value) is not int:
+        label = "bool" if isinstance(value, bool) else type(value).__name__
+        return _bad(field, "int", label)
+    return value
+
+
+def _count_rows(path: Path) -> int | dict[str, Any]:
+    try:
+        with path.open(encoding="utf-8") as handle:
+            return sum(1 for line in handle if line.strip())
+    except UnicodeDecodeError:
+        return _bad(path.name, "utf-8 text", "invalid encoding")
+    except OSError as exc:
+        return _bad(path.name, "readable text file", f"OSError:{exc.errno}")
+
+
+def _read_kickoff_manifest(paths: dict[str, Any]) -> dict[str, Any]:
+    named = paths.get("manifest")
+    if not isinstance(named, str) or not named:
+        pack = paths.get("pack")
+        if isinstance(pack, str) and pack:
+            named = str(Path(pack).parent / "MANIFEST.json")
+        else:
+            return _bad("paths.manifest", "present", "missing")
+    path = Path(named)
+    if not path.is_file():
+        return _bad("MANIFEST.json", "present", "missing")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except UnicodeDecodeError:
+        return _bad("MANIFEST.json", "utf-8 text", "invalid encoding")
+    except (OSError, ValueError) as exc:
+        return _bad("MANIFEST.json", "readable JSON", type(exc).__name__)
+    if not isinstance(payload, dict):
+        return _bad("MANIFEST.json", "object", type(payload).__name__)
+    return payload
+
+
 def _parse_checked_at(value: object) -> datetime | dict[str, Any]:
     if not isinstance(value, str) or not value.strip():
         return _bad("checked_at", "present", "missing")
@@ -152,8 +199,17 @@ def _parse_hq_pin_payload(payload: object) -> dict[str, Any]:
         return _bad("cam-pin.stampVerified", payload.get("stampVerified"), payload.get("verified"))
     if type(stamp) is not bool:
         return _bad("cam-pin.stampVerified", "bool", type(stamp).__name__)
+    matches = payload.get("pack_matches")
+    if type(matches) is not bool:
+        return _bad("cam-pin.pack_matches", "bool", type(matches).__name__)
     record = {key: payload[key] for key in HQ_PIN_REQUIRED_KEYS}
     record["stampVerified"] = stamp
+    record["pack_matches"] = matches
+    for row_key in ("rows_total", "rows_train", "rows_holdout"):
+        typed = _require_int(f"cam-pin.{row_key}", payload.get(row_key))
+        if isinstance(typed, dict):
+            return typed
+        record[row_key] = typed
     return record
 
 
@@ -234,6 +290,8 @@ def require_hq_cam_pin(pack_id: str) -> dict[str, Any]:
         return _bad("cam-pin.recordedBy", CAM_RECORDED_BY, record.get("recordedBy"))
     if record.get("stampVerified") is not True:
         return _bad("cam-pin.stampVerified", True, record.get("stampVerified"))
+    if record.get("pack_matches") is not True:
+        return _bad("cam-pin.pack_matches", True, record.get("pack_matches"))
     pin_pack = record.get("pack_id")
     if not isinstance(pin_pack, str) or not pin_pack.strip():
         return _bad("cam-pin.pack_id", "present", "missing")
@@ -243,13 +301,18 @@ def require_hq_cam_pin(pack_id: str) -> dict[str, Any]:
         "pack_id": pack_id,
         "recordedBy": CAM_RECORDED_BY,
         "stampVerified": True,
+        "pack_matches": True,
         "source": PIN_SOURCE,
     }
-    for sha_field, _path_key in SHA_FIELDS:
+    for sha_field, _path_key, _manifest_rows, pin_rows_field in ARTIFACTS:
         required = _require_sha(f"cam-pin.{sha_field}", record.get(sha_field))
         if isinstance(required, dict):
             return required
         pin[sha_field] = required
+        rows = _require_int(f"cam-pin.{pin_rows_field}", record.get(pin_rows_field))
+        if isinstance(rows, dict):
+            return rows
+        pin[pin_rows_field] = rows
     return {"ok": True, "pin": pin}
 
 
@@ -261,7 +324,8 @@ def handle_train_kickoff(
     """Refuse HELPER FT kickoff unless HQ pin matches re-hashed files.
 
     Re-fetches the Cam pin from Swarm HQ. A body-only pin is refused.
-    ``inbox: latest`` is never accepted. Evidence ``ok: true`` is not trust.
+    ``pack_matches`` is necessary, never sufficient. ``inbox: latest`` is
+    never accepted. Evidence ``ok: true`` is not trust.
     """
     if not isinstance(body, dict):
         return _bad("body", "object", type(body).__name__)
@@ -317,6 +381,8 @@ def handle_train_kickoff(
         return _bad("pin.recordedBy", CAM_RECORDED_BY, pin.get("recordedBy"))
     if pin.get("stampVerified") is not True:
         return _bad("pin.stampVerified", True, pin.get("stampVerified"))
+    if pin.get("pack_matches") is not True:
+        return _bad("pin.pack_matches", True, pin.get("pack_matches"))
     if pin.get("pack_id") != pack_id:
         return _bad("pin.pack_id", pack_id, pin.get("pack_id"))
     hq = require_hq_cam_pin(pack_id)
@@ -326,11 +392,14 @@ def handle_train_kickoff(
     paths = body.get("paths")
     if not isinstance(paths, dict) or not paths:
         return _bad("paths", "present", "missing")
+    manifest = _read_kickoff_manifest(paths)
+    if manifest.get("ok") is False and "field" in manifest:
+        return manifest
     ev_anchor = evidence.get("pin") if isinstance(evidence.get("pin"), dict) else evidence.get("expected_shas")
     if not isinstance(ev_anchor, dict) or not ev_anchor:
         return _bad("evidence.pin", "present", "missing")
     computed = evidence.get("computed_shas") if isinstance(evidence.get("computed_shas"), dict) else {}
-    for sha_field, path_key in SHA_FIELDS:
+    for sha_field, path_key, manifest_rows_field, pin_rows_field in ARTIFACTS:
         req = _require_sha(sha_field, body.get(sha_field))
         if isinstance(req, dict):
             return req
@@ -347,21 +416,38 @@ def handle_train_kickoff(
             return _bad(sha_field, hq_sha, req)
         if ev_expected != hq_sha:
             return _bad(sha_field, hq_sha, ev_expected)
-        anchor = hq_sha
+        pin_rows = hq_pin[pin_rows_field]
+        body_rows = _require_int(f"pin.{pin_rows_field}", pin.get(pin_rows_field))
+        if isinstance(body_rows, dict):
+            return body_rows
+        if body_rows != pin_rows:
+            return _bad(pin_rows_field, pin_rows, body_rows)
+        if manifest_rows_field not in manifest:
+            return _bad(manifest_rows_field, "present", "missing")
+        expected_rows = _require_int(manifest_rows_field, manifest[manifest_rows_field])
+        if isinstance(expected_rows, dict):
+            return expected_rows
+        if pin_rows != expected_rows:
+            return _bad(pin_rows_field, pin_rows, expected_rows)
         named = paths.get(path_key)
         if not isinstance(named, str) or not named:
             return _bad(f"paths.{path_key}", "present", "missing")
         path = Path(named)
         if not path.is_file():
             return _bad(path_key, "present", "missing")
+        counted = _count_rows(path)
+        if isinstance(counted, dict):
+            return counted
+        if pin_rows != counted:
+            return _bad(pin_rows_field, pin_rows, counted)
         try:
             actual = _sha256_file(path)
         except OSError as exc:
             return _bad(path_key, "readable regular file", f"OSError:{exc.errno}")
         if actual != req:
             return _bad(sha_field, req, actual)
-        if actual != anchor:
-            return _bad(sha_field, anchor, actual)
+        if actual != hq_sha:
+            return _bad(sha_field, hq_sha, actual)
         ev_computed = computed.get(sha_field)
         if ev_computed is not None and actual != ev_computed:
             return _bad(sha_field, ev_computed, actual)

@@ -351,6 +351,10 @@ SWARM_HQ_PIN_CONTRACT_REQUIRED = (
     "sha256_pack",
     "sha256_train",
     "sha256_holdout",
+    "rows_total",
+    "rows_train",
+    "rows_holdout",
+    "pack_matches",
     "recordedBy",
     "recordedAt",
     "kid",
@@ -362,6 +366,10 @@ SWARM_HQ_PIN_FIXTURE = {
     "sha256_pack": "11" * 32,
     "sha256_train": "22" * 32,
     "sha256_holdout": "33" * 32,
+    "rows_total": 2,
+    "rows_train": 1,
+    "rows_holdout": 1,
+    "pack_matches": True,
     "recordedBy": "cam",
     "recordedAt": "2026-10-19T00:00:00Z",
     "kid": "cam-stamp-kid-1",
@@ -375,6 +383,10 @@ def _cam_pin(manifest: dict, **overrides: object) -> dict:
         "sha256_pack": manifest["sha256_pack"],
         "sha256_train": manifest["sha256_train"],
         "sha256_holdout": manifest["sha256_holdout"],
+        "rows_total": manifest["rows"],
+        "rows_train": manifest["train_rows"],
+        "rows_holdout": manifest["holdout_rows"],
+        "pack_matches": True,
         "recordedBy": "cam",
         "recordedAt": "2026-10-19T00:00:00Z",
         "kid": "cam-stamp-kid-1",
@@ -601,6 +613,10 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(kickoff_body["pin"]["pack_id"], "curated_pack_v2-test")
         self.assertEqual(kickoff_body["pin"]["recordedBy"], "cam")
         self.assertTrue(kickoff_body["pin"]["stampVerified"])
+        self.assertTrue(kickoff_body["pin"]["pack_matches"])
+        self.assertEqual(kickoff_body["pin"]["rows_total"], 2)
+        self.assertEqual(kickoff_body["pin"]["rows_train"], 1)
+        self.assertEqual(kickoff_body["pin"]["rows_holdout"], 1)
         self.assertTrue(kickoff_body["evidence"]["ok"])
         self.assertEqual(rc, 0)
         self.assertEqual(evidence["expected_shas"]["sha256_pack"], manifest["sha256_pack"])
@@ -851,6 +867,104 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(ctx.exception.field, "sha256_train")
         self.assertEqual(ctx.exception.expected, "0" * 64)
 
+    def test_pin_pack_matches_false_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            pin = self._pin(manifest, pack_matches=False)
+            self.assertTrue(pin["stampVerified"])
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+            rc = kick_helper_ft.main(_cli_args(dest))
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(rc, 1)
+        self.assertEqual(ctx.exception.field, "cam-pin.pack_matches")
+        self.assertEqual(ctx.exception.expected, True)
+        self.assertIs(ctx.exception.actual, False)
+
+    def test_pin_one_row_count_off_refuses(self) -> None:
+        cases = (
+            ("rows_total", 99),
+            ("rows_train", 0),
+            ("rows_holdout", 7),
+        )
+        for field, wrong in cases:
+            with self.subTest(field=field):
+                self.kickoff_calls.clear()
+                with tempfile.TemporaryDirectory() as tmp:
+                    dest = Path(tmp) / "inbox-pack"
+                    dest.mkdir()
+                    manifest = _write_helper_pack(dest)
+                    pin = self._pin(manifest, **{field: wrong})
+                    self.assertTrue(pin["stampVerified"])
+                    self.assertTrue(pin["pack_matches"])
+                    self.assertEqual(pin["sha256_pack"], manifest["sha256_pack"])
+                    with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                        kick_helper_ft.kick(dest)
+                    rc = kick_helper_ft.main(_cli_args(dest))
+                self.assertEqual(self.kickoff_calls, [])
+                self.assertEqual(rc, 1)
+                self.assertEqual(ctx.exception.field, field)
+                self.assertEqual(ctx.exception.expected, wrong)
+                self.assertNotEqual(ctx.exception.actual, wrong)
+
+    def test_pin_missing_row_field_refuses(self) -> None:
+        for field in ("rows_total", "rows_train", "rows_holdout"):
+            with self.subTest(field=field):
+                self.kickoff_calls.clear()
+                with tempfile.TemporaryDirectory() as tmp:
+                    dest = Path(tmp) / "inbox-pack"
+                    dest.mkdir()
+                    manifest = _write_helper_pack(dest)
+                    pin = self._pin(manifest)
+                    del pin[field]
+                    with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                        kick_helper_ft.kick(dest)
+                    rc = kick_helper_ft.main(_cli_args(dest))
+                self.assertEqual(self.kickoff_calls, [])
+                self.assertEqual(rc, 1)
+                self.assertEqual(ctx.exception.field, f"cam-pin.{field}")
+                self.assertEqual(ctx.exception.expected, "present")
+                self.assertEqual(ctx.exception.actual, "missing")
+
+    def test_pack_matches_true_is_not_enough_when_disk_sha_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            pin = self._pin(manifest)
+            self.assertTrue(pin["stampVerified"])
+            self.assertTrue(pin["pack_matches"])
+            _flip_one_ascii_byte(dest / "curated_pack_v2_train.jsonl")
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+            rc = kick_helper_ft.main(_cli_args(dest))
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(rc, 1)
+        self.assertEqual(ctx.exception.field, "sha256_train")
+        self.assertEqual(ctx.exception.expected, pin["sha256_train"])
+        self.assertNotEqual(ctx.exception.actual, pin["sha256_train"])
+
+    def test_pack_matches_true_is_not_enough_when_disk_row_count_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            pin = self._pin(manifest)
+            self.assertTrue(pin["stampVerified"])
+            self.assertTrue(pin["pack_matches"])
+            train = dest / "curated_pack_v2_train.jsonl"
+            train.write_bytes(train.read_bytes() + b'{"id":"extra-row"}\n')
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+            rc = kick_helper_ft.main(_cli_args(dest))
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(rc, 1)
+        self.assertEqual(ctx.exception.field, "rows_train")
+        self.assertEqual(ctx.exception.expected, 1)
+        self.assertEqual(ctx.exception.actual, 2)
+
     def test_pin_api_unreachable_refuses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -1085,9 +1199,9 @@ class HelperFtIntegrityTests(unittest.TestCase):
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
-        self.assertEqual(ctx.exception.field, "rows")
-        self.assertEqual(ctx.exception.expected, 99)
-        self.assertEqual(ctx.exception.actual, 2)
+        self.assertEqual(ctx.exception.field, "rows_total")
+        self.assertEqual(ctx.exception.expected, 2)
+        self.assertEqual(ctx.exception.actual, 99)
 
     def test_row_count_rejects_bool_and_str(self) -> None:
         for bad in (True, "2", 2.0):
@@ -1397,6 +1511,7 @@ def _fresh_kickoff_body(dest: Path, manifest: dict, *, run_id: str = "helper-ft-
             "pack": str(dest / "curated_pack_v2.jsonl"),
             "train": str(dest / "curated_pack_v2_train.jsonl"),
             "holdout": str(dest / "curated_pack_v2_holdout.jsonl"),
+            "manifest": str(dest / "MANIFEST.json"),
         },
         "evidence": {
             "ok": True,
@@ -1608,6 +1723,109 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
         self.assertEqual(hash_calls, [])
         self.assertTrue(self.hq_requests)
 
+    def test_http_pack_matches_false_refuses_before_trainer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            pin = self._pin(manifest, pack_matches=False)
+            self.assertTrue(pin["stampVerified"])
+            body = _fresh_kickoff_body(dest, manifest)
+            response = self.client.post("/train/kickoff", json=body)
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["field"], "cam-pin.pack_matches")
+        self.assertEqual(payload["expected"], True)
+        self.assertIs(payload["actual"], False)
+        self.assertEqual(self.launches, [])
+
+    def test_http_one_row_count_off_refuses_before_trainer(self) -> None:
+        cases = (
+            ("rows_total", 99),
+            ("rows_train", 0),
+            ("rows_holdout", 7),
+        )
+        for field, wrong in cases:
+            with self.subTest(field=field):
+                self.launches.clear()
+                with tempfile.TemporaryDirectory() as tmp:
+                    dest = Path(tmp) / "inbox-pack"
+                    dest.mkdir()
+                    manifest = _write_helper_pack(dest)
+                    pin = self._pin(manifest, **{field: wrong})
+                    self.assertTrue(pin["stampVerified"])
+                    self.assertTrue(pin["pack_matches"])
+                    body = _fresh_kickoff_body(dest, manifest)
+                    body["pin"][field] = wrong
+                    body["evidence"]["pin"][field] = wrong
+                    response = self.client.post("/train/kickoff", json=body)
+                payload = response.json()
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(payload["ok"])
+                self.assertEqual(payload["field"], field)
+                self.assertEqual(payload["expected"], wrong)
+                self.assertNotEqual(payload["actual"], wrong)
+                self.assertEqual(self.launches, [])
+
+    def test_http_missing_row_field_refuses_before_trainer(self) -> None:
+        for field in ("rows_total", "rows_train", "rows_holdout"):
+            with self.subTest(field=field):
+                self.launches.clear()
+                with tempfile.TemporaryDirectory() as tmp:
+                    dest = Path(tmp) / "inbox-pack"
+                    dest.mkdir()
+                    manifest = _write_helper_pack(dest)
+                    pin = self._pin(manifest)
+                    del pin[field]
+                    body = _fresh_kickoff_body(dest, manifest)
+                    response = self.client.post("/train/kickoff", json=body)
+                payload = response.json()
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(payload["ok"])
+                self.assertEqual(payload["field"], f"cam-pin.{field}")
+                self.assertEqual(payload["expected"], "present")
+                self.assertEqual(payload["actual"], "missing")
+                self.assertEqual(self.launches, [])
+
+    def test_http_pack_matches_true_is_not_enough_when_disk_sha_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            pin = self._pin(manifest)
+            self.assertTrue(pin["stampVerified"])
+            self.assertTrue(pin["pack_matches"])
+            body = _fresh_kickoff_body(dest, manifest)
+            _flip_one_ascii_byte(dest / "curated_pack_v2.jsonl")
+            response = self.client.post("/train/kickoff", json=body)
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["field"], "sha256_pack")
+        self.assertNotEqual(payload["expected"], payload["actual"])
+        self.assertEqual(self.launches, [])
+
+    def test_http_pack_matches_true_is_not_enough_when_disk_row_count_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            pin = self._pin(manifest)
+            self.assertTrue(pin["stampVerified"])
+            self.assertTrue(pin["pack_matches"])
+            body = _fresh_kickoff_body(dest, manifest)
+            train = dest / "curated_pack_v2_train.jsonl"
+            train.write_bytes(train.read_bytes() + b'{"id":"extra-row"}\n')
+            response = self.client.post("/train/kickoff", json=body)
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["field"], "rows_train")
+        self.assertEqual(payload["expected"], 1)
+        self.assertEqual(payload["actual"], 2)
+        self.assertEqual(self.launches, [])
+
 
 class SwarmHqPinContractTests(unittest.TestCase):
     """Freeze GET /api/packs/<pack_id>/pin for CLI and :8765 fetch_cam_pin."""
@@ -1658,6 +1876,10 @@ class SwarmHqPinContractTests(unittest.TestCase):
                 pin = result["pin"]
                 self.assertEqual(pin["pack_id"], fixture["pack_id"])
                 self.assertEqual(pin["sha256_pack"], fixture["sha256_pack"])
+                self.assertEqual(pin["rows_total"], 2)
+                self.assertEqual(pin["rows_train"], 1)
+                self.assertEqual(pin["rows_holdout"], 1)
+                self.assertIs(pin["pack_matches"], True)
                 self.assertEqual(pin["recordedAt"], fixture["recordedAt"])
                 self.assertEqual(pin["kid"], fixture["kid"])
                 self.assertTrue(pin["stampVerified"])
