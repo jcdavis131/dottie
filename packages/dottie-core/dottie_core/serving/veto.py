@@ -1111,6 +1111,161 @@ def _inner_command_word(inner: str) -> str:
     return _command_word(stages[0])
 
 
+def _is_cmd_subst(word: str) -> bool:
+    if not word:
+        return False
+    if word.startswith("$(") and word.endswith(")"):
+        return True
+    if word.startswith("`") and word.endswith("`"):
+        return True
+    return False
+
+
+def _cmd_subst_body(word: str) -> str:
+    if word.startswith("$(") and word.endswith(")"):
+        return word[2:-1]
+    if word.startswith("`") and word.endswith("`"):
+        return word[1:-1]
+    return ""
+
+
+_PRINTF_SPEC = frozenset("sbcdiouxXeEfFgGaA")
+_ECHO_FLAG_LETTERS = frozenset("neE")
+
+
+def _printf_best_effort(fmt: str, args: list[str]) -> str:
+    """Interpolate a printf format with its args. Best effort; fail soft."""
+    fmt = fmt.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
+    if "%" not in fmt:
+        extra = " ".join(args)
+        return (fmt + (" " + extra if extra else "")).strip()
+    out: list[str] = []
+    i = 0
+    ai = 0
+    n = len(fmt)
+    while i < n:
+        ch = fmt[i]
+        if ch == "%" and i + 1 < n:
+            if fmt[i + 1] == "%":
+                out.append("%")
+                i += 2
+                continue
+            j = i + 1
+            while j < n and fmt[j] in "#-+ 0'":
+                j += 1
+            if j < n and fmt[j] == "*":
+                j += 1
+                if ai < len(args):
+                    ai += 1
+            while j < n and fmt[j].isdigit():
+                j += 1
+            if j < n and fmt[j] == ".":
+                j += 1
+                if j < n and fmt[j] == "*":
+                    j += 1
+                    if ai < len(args):
+                        ai += 1
+                while j < n and fmt[j].isdigit():
+                    j += 1
+            if j < n:
+                spec = fmt[j]
+                j += 1
+                if spec in _PRINTF_SPEC and ai < len(args):
+                    out.append(args[ai])
+                    ai += 1
+                i = j
+                continue
+        out.append(ch)
+        i += 1
+    emitted = "".join(out).strip()
+    if ai < len(args):
+        emitted = (emitted + " " + " ".join(args[ai:])).strip()
+    return emitted
+
+
+def _echo_printf_payload(text: str) -> str | None:
+    """If ``text`` is echo/printf, return the emitted arguments as a command.
+
+    Leading echo flags (``-n``/``-e``/``-E``) are skipped. printf interpolates
+    the format string plus args best-effort. None means 'not echo/printf or
+    nothing emitted'.
+    """
+    if not text or not text.strip():
+        return None
+    tokens = _tokenize(text)
+    statements = _split_statements(tokens)
+    if not statements:
+        return None
+    stages = _pipeline_stages(statements[0])
+    if not stages:
+        return None
+    words = _strip_wrappers(_words(stages[0]))
+    if not words:
+        return None
+    head = _basename(words[0]).lower()
+    if head == "echo":
+        args: list[str] = []
+        for tok in words[1:]:
+            if tok == "--":
+                continue
+            if tok.startswith("-") and len(tok) > 1 and set(tok[1:]) <= _ECHO_FLAG_LETTERS:
+                continue
+            args.append(tok)
+        return " ".join(args) if args else None
+    if head == "printf":
+        rest = [tok for tok in words[1:] if tok != "--"]
+        if not rest:
+            return None
+        return _printf_best_effort(rest[0], rest[1:]) or None
+    return None
+
+
+def _scan_cmd_substs(
+    stage: list[tuple[str, str]],
+    stripped_words: list[str],
+    env: dict[str, str],
+    depth: int,
+    memo: dict[str, str | None],
+    subst_as_cmd: bool,
+) -> str | None:
+    """Scan ``$()`` / backtick bodies. Echo/printf payloads are vetoed as commands."""
+    raw0 = stripped_words[0] if stripped_words else ""
+    cmd_word_subst = _is_cmd_subst(raw0)
+    raw0_body = _cmd_subst_body(raw0) if cmd_word_subst else ""
+    resolved_cmd_word = False
+    for snippet in _inner_snippets(stage):
+        payload = _echo_printf_payload(snippet)
+        if payload is not None and (subst_as_cmd or cmd_word_subst):
+            joined = payload
+            if cmd_word_subst and snippet == raw0_body and len(stripped_words) > 1:
+                joined = (payload + " " + " ".join(stripped_words[1:])).strip()
+            hit = _scan_text(joined, env, depth + 1, memo)
+            if hit:
+                return hit
+            if cmd_word_subst and snippet == raw0_body:
+                resolved_cmd_word = True
+        hit = _scan_text(snippet, env, depth + 1, memo)
+        if hit:
+            return hit
+        snip_head = _inner_command_word(snippet)
+        if snip_head in _FETCHERS and (cmd_word_subst or subst_as_cmd):
+            return PIPE_DOWNLOAD_TO_SHELL
+        if cmd_word_subst and snippet == raw0_body and payload is not None:
+            resolved_cmd_word = True
+    if cmd_word_subst and not resolved_cmd_word:
+        payload = _echo_printf_payload(raw0_body)
+        if payload is not None:
+            joined = payload
+            if len(stripped_words) > 1:
+                joined = (payload + " " + " ".join(stripped_words[1:])).strip()
+            hit = _scan_text(joined, env, depth + 1, memo)
+            if hit:
+                return hit
+            return None
+        return VETO_ERROR
+    return None
+
+
 def _pipe_download_stages(stages: list[list[tuple[str, str]]]) -> bool:
     if not stages:
         return False
@@ -1377,6 +1532,8 @@ def _scan_text(
     env: dict[str, str] | None = None,
     depth: int = 0,
     memo: dict[str, str | None] | None = None,
+    *,
+    subst_as_cmd: bool = False,
 ) -> str | None:
     _tick(len(command) if command else 1)
     command = _cap(command)
@@ -1386,13 +1543,14 @@ def _scan_text(
         return VETO_ERROR
     if memo is None:
         memo = {}
-    cached = memo.get(command, _MISSING)
+    memo_key = "%d:%s" % (1 if subst_as_cmd else 0, command)
+    cached = memo.get(memo_key, _MISSING)
     if cached is not _MISSING:
         return cached  # type: ignore[return-value]
-    memo[command] = None
+    memo[memo_key] = None
 
     def finish(rule: str | None) -> str | None:
-        memo[command] = rule
+        memo[memo_key] = rule
         return rule
 
     folded = unicodedata.normalize("NFKC", command)
@@ -1444,31 +1602,35 @@ def _scan_text(
             stripped_words = _strip_wrappers(list(words))
             raw0 = stripped_words[0] if stripped_words else ""
             if head == "eval" and len(stripped_words) > 1:
-                inner = _scan_text(" ".join(stripped_words[1:]), env, depth + 1, memo)
+                inner = _scan_text(
+                    " ".join(stripped_words[1:]), env, depth + 1, memo, subst_as_cmd=True
+                )
                 if inner:
                     return finish(inner)
             if _is_shell_name(head) or head in _CODE_INTERPS or head in {"su", "script", "parallel"}:
                 script = _script_arg(words)
                 if script:
-                    inner = _scan_text(script, env, depth + 1, memo)
+                    inner = _scan_text(
+                        script, env, depth + 1, memo, subst_as_cmd=_is_shell_name(head)
+                    )
                     if inner:
                         return finish(inner)
                     low = script.lower()
                     if head in _CODE_INTERPS and ("rmtree" in low or ("os.system" in low and "rm" in low)):
                         return finish(RM_RF)
-            if raw0.startswith("$") or raw0.startswith("`"):
+            if raw0.startswith("$") and not _is_cmd_subst(raw0):
                 if _resolves_to_rm(raw0, env) and _is_rm_rf_words(["rm"] + list(stripped_words[1:])):
                     return finish(RM_RF)
-            for snippet in _inner_snippets(stage):
-                inner = _scan_text(snippet, env, depth + 1, memo)
-                if inner:
-                    return finish(inner)
-                if raw0.startswith("$(") or raw0.startswith("`") or head == "eval":
-                    snip_tokens = _tokenize(snippet)
-                    snip_stages = _pipeline_stages(snip_tokens) if snip_tokens else []
-                    snip_head = _command_word(snip_stages[0]) if snip_stages else ""
-                    if snip_head in _FETCHERS:
-                        return finish(PIPE_DOWNLOAD_TO_SHELL)
+            subst_hit = _scan_cmd_substs(
+                stage,
+                stripped_words,
+                env,
+                depth,
+                memo,
+                subst_as_cmd or head == "eval",
+            )
+            if subst_hit:
+                return finish(subst_hit)
             rest = stripped_words
             if rest and rest[0].lower() == "xargs":
                 tail = _strip_wrappers(rest[1:])
@@ -1828,6 +1990,10 @@ EXTRA_HALT_CASES: tuple[tuple[str, str], ...] = (
     ("nice :(){ :|:& };:", FORK_BOMB),
     ("sudo perl -e 'fork while 1'", FORK_BOMB),
     ("rm -rf ./build", RM_RF),
+    ('eval "$(echo \'rm -rf /\')"', RM_RF),
+    ('sh -c "$(echo \'rm -rf /\')"', RM_RF),
+    ("bash -c \"$(printf '%s' 'rm -rf /')\"", RM_RF),
+    ("$(echo 'rm -rf /')", RM_RF),
 )
 
 NEGATIVE_CASES: tuple[str, ...] = (
