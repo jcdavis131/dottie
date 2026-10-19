@@ -2921,32 +2921,29 @@ def _unhandled_subset(subset: str) -> NoReturn:
 
 
 def _row_subset(row: Mapping[str, Any]) -> str | tuple[str, str]:
-    """Closed Math/Agent/Code allowlist. Missing, unknown, or case-variant → refuse."""
-    raw = row.get("subset") if isinstance(row, Mapping) and "subset" in row else None
-    hf = _source_str_field(row, "hf")
-    if raw is not None:
-        if type(raw) is not str:
-            return ("row.subset", f"not str ({type(raw).__name__})")
-        if raw in PACK_SUBSETS:
-            mapped = _HF_TO_SUBSET.get(hf) if hf is not None else None
-            if mapped is not None and mapped != raw:
-                return ("row.subset", f"{raw} does not match source.hf")
-            return raw
-        folded = raw.casefold()
-        for name in PACK_SUBSETS:
-            if name.casefold() == folded:
-                return ("row.subset", f"case-variant {raw!r}")
-        return ("row.subset", f"unknown {raw!r}")
-    if hf is None or hf == "":
+    """Closed Math/Agent/Code allowlist. Missing, unknown, or case-variant → refuse.
+
+    The ``subset`` field itself must be present and exact. hf is never a
+    substitute for a missing subset.
+    """
+    if not isinstance(row, Mapping) or "subset" not in row:
         return ("row.subset", "missing")
-    mapped = _HF_TO_SUBSET.get(hf)
-    if mapped is not None:
-        return mapped
-    folded_hf = hf.casefold()
-    for known in _HF_TO_SUBSET:
-        if known.casefold() == folded_hf:
-            return ("row.subset", f"case-variant {hf!r}")
-    return ("row.subset", f"unknown {hf!r}")
+    raw = row.get("subset")
+    if type(raw) is not str:
+        return ("row.subset", f"not str ({type(raw).__name__})")
+    if not raw:
+        return ("row.subset", "missing")
+    if raw in PACK_SUBSETS:
+        hf = _source_str_field(row, "hf")
+        mapped = _HF_TO_SUBSET.get(hf) if hf is not None else None
+        if mapped is not None and mapped != raw:
+            return ("row.subset", f"{raw} does not match source.hf")
+        return raw
+    folded = raw.casefold()
+    for name in PACK_SUBSETS:
+        if name.casefold() == folded:
+            return ("row.subset", f"case-variant {raw!r}")
+    return ("row.subset", f"unknown {raw!r}")
 
 
 def _nonempty_str(value: object) -> bool:

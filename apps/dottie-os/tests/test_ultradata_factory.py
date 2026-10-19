@@ -7550,10 +7550,11 @@ class HelperFtGroupKeyTests(unittest.TestCase):
     def test_missing_subset_refused(self) -> None:
         bad = _row(rid="miss-subset", action="execute")
         bad.pop("subset", None)
-        bad["source"].pop("hf", None)
+        self.assertIn("hf", bad["source"])
         ok = _row(rid="miss-ok", action="halt")
         exc = self._refuse_rows([bad, ok], pack_id="gk-missing-subset")
         self.assertEqual(exc.field, "row.subset")
+        self.assertTrue(any("missing" in str(item) for item in exc.actual))
 
     def test_case_variant_subset_refused(self) -> None:
         bad = _row(rid="case-subset", action="execute")
