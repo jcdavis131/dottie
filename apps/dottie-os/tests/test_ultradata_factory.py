@@ -4101,11 +4101,28 @@ PACK_GUARD_STEP_KEYS = frozenset({"name", "run"})
 # No name, timeout-minutes, if, continue-on-error, defaults, env, container,
 # or services. Keep this set identical to main; do not grow it to silence a test.
 PACK_GUARD_JOB_KEYS = frozenset({"runs-on", "steps"})
-PACK_GUARD_INDEX_MUTATION_RE = re.compile(
-    r"git\s+rm|update-index|\bsparse\b", re.IGNORECASE
+# S6: ci.yml top-level keys and the trigger block on main (a3872eab).
+PACK_GUARD_WORKFLOW_KEYS = frozenset({"name", "on", "jobs"})
+PACK_GUARD_ON_BLOCK = (
+    "on:\n"
+    "  push:\n"
+    "    branches: [main]\n"
+    "  pull_request:\n"
+    "    branches: [main]\n"
+)
+# Half of 2561 tracked files when the floor was set, rounded down.
+PACK_GUARD_LS_FILES_FLOOR = 1280
+PACK_GUARD_EARLIER_BAN_RE = re.compile(
+    r"GITHUB_ENV|GITHUB_PATH|read-tree|\breset\b|update-index|sparse"
+    r"|excludesFile|info/exclude|update-ref|--orphan|\bstash\b"
+    r"|\bgit\b(?:[\t ]+\S+)*[\t ]+rm\b",
+    re.IGNORECASE,
 )
 PACK_GUARD_GIT_ENV_KEYS = frozenset(
     {"GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE"}
+)
+CRITIC_91_MUTATIONS_SHA256 = (
+    "0cbbaa78bc4de52a32ccf64a9e5ecb622a670fde381a018c4d185a6c71e355ad"
 )
 LEAKGATE_TRACKED_NAMES = frozenset(
     {
@@ -4126,8 +4143,8 @@ RFC4122_UUID_RE = re.compile(
 HEX_ID_10_RE = re.compile(
     r"(?i)(?<![0-9a-f])(?=[0-9a-f]{10,})[0-9a-f]*[a-f][0-9a-f]*(?![0-9a-f])"
 )
-# Real UltraData row ids (S5): anywhere in source.json raw text.
-AGENT_ID_RE = re.compile(r"(Code|General)_Agent_\d{6}")
+# Real UltraData row ids (S5/S9): anywhere in source.json raw text.
+AGENT_ID_RE = re.compile(r"(Code|General)_Agent_\d{6}", re.IGNORECASE)
 
 
 def _assert_source_json_is_synthetic(raw: str) -> None:
@@ -4483,11 +4500,17 @@ class SourceJsonSyntheticRawTextTests(unittest.TestCase):
             payload["note"] = str(payload.get("note") or "") + " General_Agent_112990"
             return dump(payload)
 
+        def lower_agent() -> str:
+            payload = json.loads(json.dumps(mill))
+            payload["rows"][0]["state"]["message"] += " code_agent_039442"
+            return dump(payload)
+
         placements = (
             ("Code_Agent_039442 inside a message", in_message),
             ("openbmb/x:General_Agent_112972 in trajectory_id", in_trajectory_id),
             ("openbmb/SFT-Agent-2609 without ultradata", openbmb_without_ultradata),
             ("General_Agent_112990 in any field", in_any_field),
+            ("code_agent_039442 lowercase (S9)", lower_agent),
         )
 
         def _noop_setup(cls: type) -> None:
@@ -4688,6 +4711,57 @@ def _workflow_top_level_keys(text: str) -> list[str]:
     return keys
 
 
+def _workflow_on_block(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    start: int | None = None
+    for idx, line in enumerate(lines):
+        if line[:1] in " \t#" or ":" not in line:
+            continue
+        if line.split(":", 1)[0].strip() == "on":
+            start = idx
+            break
+    if start is None:
+        raise AssertionError("ci.yml has no top-level on:")
+    end = len(lines)
+    for idx in range(start + 1, len(lines)):
+        line = lines[idx]
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line[0] not in " \t":
+            end = idx
+            break
+    return "".join(lines[start:end]).rstrip("\n") + "\n"
+
+
+def _assert_pack_guard_names_unique(repo_root: Path | None = None) -> None:
+    root = REPO_ROOT if repo_root is None else repo_root
+    wf_dir = root / ".github" / "workflows"
+    job_re = re.compile(rf"^  {re.escape(PACK_GUARD_JOB)}:\s*$", re.MULTILINE)
+    step_re = re.compile(
+        rf"^\s+- name:\s*{re.escape(PACK_GUARD_STEP_NAME)}\s*$",
+        re.MULTILINE,
+    )
+    job_hits: list[str] = []
+    step_hits: list[str] = []
+    paths = sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml"))
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        rel = str(path.relative_to(root))
+        job_hits.extend([rel] * len(job_re.findall(text)))
+        step_hits.extend([rel] * len(step_re.findall(text)))
+    expected = [str(Path(".github") / "workflows" / "ci.yml")]
+    if job_hits != expected:
+        raise AssertionError(
+            f"{PACK_GUARD_JOB!r} job name must appear only in ci.yml, "
+            f"found {job_hits}"
+        )
+    if step_hits != expected:
+        raise AssertionError(
+            f"{PACK_GUARD_STEP_NAME!r} step must appear only in ci.yml, "
+            f"found {step_hits}"
+        )
+
+
 def _job_keys_from_text(text: str) -> set[str]:
     lines = text.splitlines()
     start = _job_line_index(lines, PACK_GUARD_JOB)
@@ -4751,13 +4825,19 @@ def _step_env_keys(step: dict[str, object]) -> set[str]:
 
 
 def _assert_pack_guard_context(text: str) -> dict[str, object]:
-    """S4: step/job/workflow allowlists and no earlier index mutation."""
+    """S4/S6/S7/S8: allowlists, earlier-step bans, unique job/step names."""
     top_keys = _workflow_top_level_keys(text)
-    if "defaults" in top_keys:
+    if set(top_keys) != PACK_GUARD_WORKFLOW_KEYS:
         raise AssertionError(
-            "workflow must not set top-level defaults "
-            "(shell/working-directory would apply to the pack-guard step)"
+            f"workflow keys {top_keys} != {sorted(PACK_GUARD_WORKFLOW_KEYS)}"
         )
+    on_block = _workflow_on_block(text)
+    if on_block != PACK_GUARD_ON_BLOCK:
+        raise AssertionError(
+            "workflow on: must equal main's trigger block; "
+            f"got {on_block!r}"
+        )
+    _assert_pack_guard_names_unique()
     job_keys = _job_keys_from_text(text)
     if job_keys != PACK_GUARD_JOB_KEYS:
         raise AssertionError(
@@ -4782,20 +4862,26 @@ def _assert_pack_guard_context(text: str) -> dict[str, object]:
             f"pack-guard step keys {sorted(guard)} != "
             f"{sorted(PACK_GUARD_STEP_KEYS)}"
         )
-    for step in steps[:guard_at]:
+    for step, block in zip(steps[:guard_at], blocks[:guard_at], strict=True):
         run = step.get("run")
         run_text = run if isinstance(run, str) else ""
-        hit = PACK_GUARD_INDEX_MUTATION_RE.search(run_text)
+        blob = "\n".join(block)
+        hit = PACK_GUARD_EARLIER_BAN_RE.search(f"{run_text}\n{blob}")
         if hit is not None:
             raise AssertionError(
-                f"earlier step {step.get('name')!r} run mutates the index: "
-                f"{hit.group(0)!r}"
+                f"earlier step {step.get('name')!r} is banned: {hit.group(0)!r}"
             )
         bad_env = _step_env_keys(step) & PACK_GUARD_GIT_ENV_KEYS
         if bad_env:
             raise AssertionError(
                 f"earlier step {step.get('name')!r} sets "
                 f"{sorted(bad_env)} in env"
+            )
+        uses = str(step.get("uses") or "")
+        if uses.startswith("actions/checkout") and "with" in step:
+            raise AssertionError(
+                "actions/checkout must not set with: "
+                "(ref/path/sparse-checkout would change the tree the guard sees)"
             )
     return guard
 
@@ -4866,6 +4952,36 @@ def _commit_pack_guard_paths(
     )
 
 
+def _seed_pack_guard_floor(repo: Path) -> None:
+    """Plant ci.yml plus filler so a temp repo meets PACK_GUARD_LS_FILES_FLOOR."""
+    ci = repo / ".github" / "workflows" / "ci.yml"
+    ci.parent.mkdir(parents=True, exist_ok=True)
+    if not ci.exists():
+        ci.write_text("name: CI\n", encoding="utf-8")
+    floor_dir = repo / "_pack_guard_floor"
+    floor_dir.mkdir(exist_ok=True)
+    need = PACK_GUARD_LS_FILES_FLOOR - 1
+    for idx in range(need):
+        (floor_dir / f"{idx:04d}").write_text(".\n", encoding="utf-8")
+
+
+def _commit_pack_guard_tree(repo: Path, env: dict[str, str], message: str) -> None:
+    subprocess.run(
+        ["git", "add", "-f", "-A"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+
+
 def _run_pack_guard_script(
     repo: Path, run_script: str, env: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
@@ -4912,7 +5028,13 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         self.assertNotIn("env", step)
         self.assertIsInstance(step.get("run"), str)
         self.assertEqual(_job_keys_from_text(text), PACK_GUARD_JOB_KEYS)
-        self.assertNotIn("defaults", _workflow_top_level_keys(text))
+        self.assertEqual(
+            set(_workflow_top_level_keys(text)), PACK_GUARD_WORKFLOW_KEYS
+        )
+        self.assertEqual(_workflow_on_block(text), PACK_GUARD_ON_BLOCK)
+        self.assertIn(f"PACK_GUARD_LS_FILES_FLOOR={PACK_GUARD_LS_FILES_FLOOR}", str(step.get("run")))
+        self.assertIn("/usr/bin/git", str(step.get("run")))
+        self.assertIn("grep -zEi", str(step.get("run")))
         stdlib_step = _pack_guard_step_from_text(text)
         self.assertEqual(set(stdlib_step), PACK_GUARD_STEP_KEYS)
         self.assertEqual(stdlib_step.get("name"), step.get("name"))
@@ -4931,13 +5053,25 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             self.assertIsInstance(job, dict)
             self.assertEqual(set(job), PACK_GUARD_JOB_KEYS)
 
+    def test_critic_91_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_mutations.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            CRITIC_91_MUTATIONS_SHA256,
+            "0cbbaa78bc4de52a32ccf64a9e5ecb622a670fde381a018c4d185a6c71e355ad",
+        )
+        self.assertIn(
+            CRITIC_91_MUTATIONS_SHA256, path.read_text(encoding="utf-8")
+        )
+
     def test_ci_pack_guard_run_block_trips_on_tracked_packs(self) -> None:
         run = self._run_block()
         with tempfile.TemporaryDirectory() as tmp:
             clean = Path(tmp) / "clean"
             env = _init_pack_guard_repo(clean)
+            _seed_pack_guard_floor(clean)
             (clean / "README").write_text("ok\n", encoding="utf-8")
-            _commit_pack_guard_paths(clean, env, ["README"], "clean")
+            _commit_pack_guard_tree(clean, env, "clean")
             clean_proc = _run_pack_guard_script(clean, run, env)
             self.assertEqual(
                 clean_proc.returncode,
@@ -4947,12 +5081,11 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
 
             root = Path(tmp) / "root"
             env = _init_pack_guard_repo(root)
+            _seed_pack_guard_floor(root)
             (root / PACK_GUARD_ROOT_PACK).write_text(
                 '{"eval_only": true}\n', encoding="utf-8"
             )
-            _commit_pack_guard_paths(
-                root, env, [PACK_GUARD_ROOT_PACK], "root pack jsonl"
-            )
+            _commit_pack_guard_tree(root, env, "root pack jsonl")
             root_proc = _run_pack_guard_script(root, run, env)
             self.assertNotEqual(
                 root_proc.returncode,
@@ -4962,12 +5095,11 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
 
             nested = Path(tmp) / "fixtures"
             env = _init_pack_guard_repo(nested)
+            _seed_pack_guard_floor(nested)
             pack = nested / PACK_GUARD_FIXTURES_PACK
             pack.parent.mkdir(parents=True, exist_ok=True)
             pack.write_text('{"eval_only": true}\n', encoding="utf-8")
-            _commit_pack_guard_paths(
-                nested, env, [PACK_GUARD_FIXTURES_PACK], "fixtures pack jsonl"
-            )
+            _commit_pack_guard_tree(nested, env, "fixtures pack jsonl")
             nested_proc = _run_pack_guard_script(nested, run, env)
             self.assertNotEqual(
                 nested_proc.returncode,
@@ -5008,8 +5140,11 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
             env = _init_pack_guard_repo(repo)
-            (repo / "README").write_text("ok\n", encoding="utf-8")
-            _commit_pack_guard_paths(repo, env, ["README"], "clean")
+            _seed_pack_guard_floor(repo)
+            (repo / PACK_GUARD_ROOT_PACK).write_text(
+                '{"eval_only": true}\n', encoding="utf-8"
+            )
+            _commit_pack_guard_tree(repo, env, "root pack")
             env = dict(env)
             env["GIT_INDEX_FILE"] = "/dev/null"
             proc = _run_pack_guard_script(repo, run, env)
@@ -5017,22 +5152,22 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             proc.returncode,
             0,
             msg=(
-                "guard must not fail open when GIT_INDEX_FILE=/dev/null; "
+                "guard must still see a pack when GIT_INDEX_FILE=/dev/null; "
                 f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
             ),
         )
+        self.assertIn(PACK_GUARD_ROOT_PACK, proc.stdout)
 
     def test_pack_guard_from_subdirectory_catches_root_pack(self) -> None:
         run = self._run_block()
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
             env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
             (repo / PACK_GUARD_ROOT_PACK).write_text(
                 '{"eval_only": true}\n', encoding="utf-8"
             )
-            _commit_pack_guard_paths(
-                repo, env, [PACK_GUARD_ROOT_PACK], "root pack jsonl"
-            )
+            _commit_pack_guard_tree(repo, env, "root pack jsonl")
             sub = repo / "apps" / "nested"
             sub.mkdir(parents=True)
             proc = _run_pack_guard_script(sub, run, env)
