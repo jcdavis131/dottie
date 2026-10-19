@@ -168,7 +168,17 @@ ULTRADATA_MATH_L1_SHAPE: dict[str, object] = {
     "schema": "dottie-os-decision-schema-1.0.0",
     "tier": "L2",
     "top_keys": frozenset(
-        {"schema", "id", "tier", "source", "state", "questions", "labels", "consent"}
+        {
+            "schema",
+            "id",
+            "tier",
+            "source",
+            "state",
+            "questions",
+            "labels",
+            "consent",
+            "subset",
+        }
     ),
     "source_keys": frozenset(
         {"hf", "config", "split", "row", "record_id", "content_uuid"}
@@ -235,6 +245,13 @@ ULTRADATA_MATH_L1_SHAPE: dict[str, object] = {
 }
 UUIDLESS_SOURCE_ALLOWLIST: dict[tuple[str, ...], dict[str, object]] = {
     ("openbmb/UltraData-Math", "UltraData-Math-L1"): ULTRADATA_MATH_L1_SHAPE,
+}
+# Closed pack-subset allowlist. Case-variant / unknown / missing → refused.
+PACK_SUBSETS = frozenset({"Math", "Agent", "Code"})
+_HF_TO_SUBSET = {
+    "openbmb/UltraData-Math": "Math",
+    "openbmb/UltraData-SFT-Agent-2609": "Agent",
+    "openbmb/UltraData-Code": "Code",
 }
 RESERVED_CONTENT_UUIDS_REL = PINNED_COPY_RESERVED_REL
 RESERVED_CONTENT_UUIDS_NAME = "reserved_content_uuids.jsonl"
@@ -1920,6 +1937,26 @@ def _split_soundness(run_private: Path, computed_shas: Mapping[str, str]) -> Non
         _refuse("split", "holdout disjoint from train", f"trajectory_id leak {sample}")
     if Counter(pack_h) != Counter(train_h) + Counter(hold_h):
         _refuse("split", "pack == train ∪ holdout", "row-set mismatch")
+    train_rows = _load_jsonl_rows(str(run_private / TRAIN_FILE))
+    hold_rows = _load_jsonl_rows(str(run_private / HOLDOUT_FILE))
+    train_keys: dict[str, set[str]] = {"record_id": set(), "trajectory_id": set()}
+    hold_keys: dict[str, set[str]] = {"record_id": set(), "trajectory_id": set()}
+    for row in train_rows:
+        item = _group_key_split_value(row)
+        if item is not None:
+            train_keys[item[0]].add(item[1])
+    for row in hold_rows:
+        item = _group_key_split_value(row)
+        if item is not None:
+            hold_keys[item[0]].add(item[1])
+    leaked_rid = train_keys["record_id"] & hold_keys["record_id"]
+    if leaked_rid:
+        sample = ",".join(sorted(leaked_rid)[:3])
+        _refuse("split", "holdout disjoint from train", f"record_id leak {sample}")
+    leaked_tid = train_keys["trajectory_id"] & hold_keys["trajectory_id"]
+    if leaked_tid:
+        sample = ",".join(sorted(leaked_tid)[:3])
+        _refuse("split", "holdout disjoint from train", f"trajectory_id leak {sample}")
 
 
 def trainer_input_paths(run_private: Path) -> dict[str, str]:
@@ -2879,11 +2916,100 @@ def _uuidless_source_allowed(
     return _uuidless_allowlist_spec(row, allowlist) is not None
 
 
-def _forbidden_key_name(key: object, forbidden: frozenset[str]) -> bool:
+def _unhandled_subset(subset: str) -> NoReturn:
+    raise AssertionError(f"unhandled pack subset {subset!r}")
+
+
+def _row_subset(row: Mapping[str, Any]) -> str | tuple[str, str]:
+    """Closed Math/Agent/Code allowlist. Missing, unknown, or case-variant → refuse."""
+    raw = row.get("subset") if isinstance(row, Mapping) and "subset" in row else None
+    hf = _source_str_field(row, "hf")
+    if raw is not None:
+        if type(raw) is not str:
+            return ("row.subset", f"not str ({type(raw).__name__})")
+        if raw in PACK_SUBSETS:
+            mapped = _HF_TO_SUBSET.get(hf) if hf is not None else None
+            if mapped is not None and mapped != raw:
+                return ("row.subset", f"{raw} does not match source.hf")
+            return raw
+        folded = raw.casefold()
+        for name in PACK_SUBSETS:
+            if name.casefold() == folded:
+                return ("row.subset", f"case-variant {raw!r}")
+        return ("row.subset", f"unknown {raw!r}")
+    if hf is None or hf == "":
+        return ("row.subset", "missing")
+    mapped = _HF_TO_SUBSET.get(hf)
+    if mapped is not None:
+        return mapped
+    folded_hf = hf.casefold()
+    for known in _HF_TO_SUBSET:
+        if known.casefold() == folded_hf:
+            return ("row.subset", f"case-variant {hf!r}")
+    return ("row.subset", f"unknown {hf!r}")
+
+
+def _group_key_mismatch(row: Mapping[str, Any]) -> tuple[str, str] | None:
+    """Exactly one group key per row, chosen by subset. No 'only when present'."""
+    resolved = _row_subset(row)
+    if isinstance(resolved, tuple):
+        return resolved
+    subset = resolved
+    source = row.get("source") if isinstance(row.get("source"), Mapping) else {}
+    record_id = source.get("record_id") if isinstance(source, Mapping) else None
+    if record_id is None:
+        record_id = row.get("record_id")
+    trajectory_id = row.get("trajectory_id")
+    trajectoryid = row.get("trajectoryid")
+    has_tid = type(trajectory_id) is str and bool(trajectory_id)
+    has_tid_alias = type(trajectoryid) is str and bool(trajectoryid)
+    has_rid = type(record_id) is str and bool(record_id)
+    if subset == "Math":
+        if has_tid or has_tid_alias:
+            return ("row.group_key", "Math row must not have trajectory_id")
+        if not has_rid:
+            return ("row.group_key", "Math row requires non-empty source.record_id")
+        return None
+    if subset == "Agent" or subset == "Code":
+        if has_rid:
+            return ("row.group_key", f"{subset} row must not have record_id")
+        if has_tid_alias and not has_tid:
+            return ("row.group_key", f"{subset} row requires trajectory_id, not trajectoryid")
+        if not has_tid:
+            return ("row.group_key", f"{subset} row requires non-empty trajectory_id")
+        return None
+    _unhandled_subset(subset)
+
+
+def _group_key_split_value(row: Mapping[str, Any]) -> tuple[str, str] | None:
+    resolved = _row_subset(row)
+    if not isinstance(resolved, str):
+        return None
+    if resolved == "Math":
+        source = row.get("source")
+        if isinstance(source, Mapping):
+            record_id = source.get("record_id")
+            if type(record_id) is str and record_id:
+                return ("record_id", record_id)
+        return None
+    if resolved == "Agent" or resolved == "Code":
+        trajectory_id = row.get("trajectory_id")
+        if type(trajectory_id) is str and trajectory_id:
+            return ("trajectory_id", trajectory_id)
+        return None
+    _unhandled_subset(resolved)
+
+
+def _forbidden_key_name(
+    key: object,
+    forbidden: frozenset[str],
+    *,
+    ban_trajectory: bool = True,
+) -> bool:
     stem = normalize_leak_key(_fold_confusables(str(key)))
     if stem in forbidden:
         return True
-    if "trajectory" in stem:
+    if ban_trajectory and "trajectory" in stem:
         return True
     if "toolcall" in stem or "tooluse" in stem or "functioncall" in stem:
         return True
@@ -3060,10 +3186,13 @@ def _uuidless_shape_mismatch(
     if extra_source:
         return f"extra source key {extra_source[0]!r}"
     source_obj = row.get("source")
-    if isinstance(source_obj, Mapping) and "record_id" in source_obj:
-        record_id = source_obj.get("record_id")
-        if type(record_id) is not str or not record_id:
-            return "source.record_id not non-empty str"
+    if not isinstance(source_obj, Mapping):
+        return "source not object"
+    if "record_id" not in source_obj:
+        return "source.record_id missing"
+    record_id = source_obj.get("record_id")
+    if type(record_id) is not str or not record_id:
+        return "source.record_id not non-empty str"
     state_keys = _mapping_keys(row.get("state"))
     if state_keys is None:
         return "state not object"
@@ -3223,7 +3352,7 @@ def _execution_pattern_mismatch(row: Mapping[str, Any]) -> str | None:
         cur = stack.pop()
         if isinstance(cur, Mapping):
             for key, child in cur.items():
-                if _forbidden_key_name(key, forbidden):
+                if _forbidden_key_name(key, forbidden, ban_trajectory=False):
                     return f"forbidden key {key!r}"
                 if type(key) is str and _shape_prompt_hit(key):
                     return "forbidden string marker"
@@ -3452,6 +3581,26 @@ def collect_reserved_partition(
     return hits
 
 
+def collect_group_key_violations(
+    recorded_paths: Mapping[str, str],
+) -> list[tuple[str, str]]:
+    """Refuse unknown/missing/case-variant subset and wrong group keys."""
+    rows = _load_jsonl_rows(recorded_paths.get("train"))
+    rows.extend(_load_jsonl_rows(recorded_paths.get("holdout")))
+    if not rows:
+        rows = _unique_pack_rows(recorded_paths)
+    hits: list[tuple[str, str]] = []
+    for row in rows:
+        mismatch = _group_key_mismatch(row)
+        if mismatch is None:
+            continue
+        rid = _row_id(row)
+        hits.append((mismatch[0], f"{rid}:{mismatch[1]}"))
+        if len(hits) >= 10:
+            return hits
+    return hits
+
+
 def enforce_pack_gates(
     manifest: Mapping[str, Any],
     recorded_paths: Mapping[str, str],
@@ -3482,6 +3631,14 @@ def enforce_pack_gates(
         if reserved:
             field = reserved[0][0]
             _refuse(field, "outside reserved slice", [msg for _field, msg in reserved[:10]])
+        group_hits = collect_group_key_violations(recorded_paths)
+        if group_hits:
+            field = group_hits[0][0]
+            _refuse(
+                field,
+                "one group key per subset",
+                [msg for _field, msg in group_hits[:10]],
+            )
     leaks = collect_state_leaks(recorded_paths, pack_dir=pack_dir)
     if leaks:
         _refuse("state.leak", "absent", leaks[:10])

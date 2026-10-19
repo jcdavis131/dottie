@@ -212,6 +212,7 @@ def _math_uuidless(
         },
     )
     row["schema"] = LEGACY_SCHEMA
+    row["subset"] = "Math"
     return row
 
 
@@ -227,6 +228,8 @@ def _v3_math_row(
 
 def _nagent_claiming_math(*, rid: str, action: str = "execute") -> dict:
     row = _row(rid=rid, action=action)
+    row.pop("trajectory_id", None)
+    row.pop("subset", None)
     row["source"].pop("uuid", None)
     row["source"]["hf"] = ULTRADATA_MATH_HF
     row["source"]["config"] = ULTRADATA_MATH_CONFIG
@@ -256,6 +259,14 @@ def _row(*, rid: str, action: str, pair_id: str | None = None, source: str = "op
     )
     if pair_id:
         row["pair_id"] = pair_id
+    row["subset"] = "Agent"
+    row["trajectory_id"] = rid
+    return row
+
+
+def _code_row(*, rid: str, action: str = "execute") -> dict:
+    row = _row(rid=rid, action=action, source="openbmb/UltraData-Code")
+    row["subset"] = "Code"
     return row
 
 
@@ -6644,6 +6655,75 @@ class HelperFtContentUuidTests(unittest.TestCase):
         self.assertEqual(ctx.exception.field, "content_uuid.duplicate_json_key")
 
 
+class HelperFtNearDupTokenizerTests(unittest.TestCase):
+    """Vendored Mill tokenizer is a fail-closed placeholder; tests inject a stand-in."""
+
+    def test_placeholder_file_has_no_tokenize_logic(self) -> None:
+        src = (LAB / "near_dup_tokenizer.py").read_text(encoding="utf-8")
+        self.assertIn("NEAR_DUP_TOKENIZER_PLACEHOLDER = True", src)
+        self.assertIn("NEAR_DUP_TOKENIZER_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE", src)
+        self.assertNotIn("unicodedata", src)
+        self.assertNotIn("NFKC", src)
+        self.assertNotIn(".casefold(", src)
+
+    def test_pin_matches_code_pins_live_hash(self) -> None:
+        live = cam_pin_spec.live_code_pins()
+        rel = content_uuid._NEAR_DUP_TOKENIZER_REL
+        self.assertIn(rel, cam_pin_spec.CODE_PINS)
+        self.assertEqual(live[rel], content_uuid.NEAR_DUP_TOKENIZER_SHA256)
+        self.assertIs(kick_helper_ft.REQUIRED_PINS, cam_pin_spec.CODE_PINS)
+
+    def test_load_refuses_placeholder(self) -> None:
+        saved = content_uuid._TEST_NEAR_DUP_TOKENIZER
+        content_uuid.install_test_near_dup_tokenizer(None)
+        try:
+            with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+                content_uuid._load_mill_near_dup_tokenizer()
+            self.assertEqual(ctx.exception.field, "near_dup_tokenizer")
+            self.assertEqual(ctx.exception.actual, "placeholder")
+        finally:
+            content_uuid.install_test_near_dup_tokenizer(saved)
+
+    def test_sha_mismatch_fails_closed(self) -> None:
+        saved = content_uuid._TEST_NEAR_DUP_TOKENIZER
+        orig = content_uuid.NEAR_DUP_TOKENIZER_SHA256
+        content_uuid.install_test_near_dup_tokenizer(None)
+        content_uuid.NEAR_DUP_TOKENIZER_SHA256 = "ab" * 32
+        try:
+            with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+                content_uuid._load_mill_near_dup_tokenizer()
+            self.assertEqual(ctx.exception.field, "near_dup_tokenizer")
+            self.assertEqual(ctx.exception.expected, "ab" * 32)
+            self.assertEqual(ctx.exception.actual, orig)
+        finally:
+            content_uuid.NEAR_DUP_TOKENIZER_SHA256 = orig
+            content_uuid.install_test_near_dup_tokenizer(saved)
+
+    def test_missing_file_fails_closed(self) -> None:
+        saved = content_uuid._TEST_NEAR_DUP_TOKENIZER
+        content_uuid.install_test_near_dup_tokenizer(None)
+        try:
+            with patch.object(
+                content_uuid,
+                "_mill_tokenizer_path",
+                return_value=Path("/no/such/near_dup_tokenizer.py"),
+            ):
+                with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+                    content_uuid._load_mill_near_dup_tokenizer()
+            self.assertEqual(ctx.exception.field, "near_dup_tokenizer")
+            self.assertIn("missing", str(ctx.exception).lower())
+        finally:
+            content_uuid.install_test_near_dup_tokenizer(saved)
+
+    def test_standin_is_test_harness_only(self) -> None:
+        self.assertTrue(content_uuid._NEAR_DUP_TOKENIZER_MODULE.NEAR_DUP_TOKENIZER_PLACEHOLDER)
+        self.assertIsNotNone(content_uuid._TEST_NEAR_DUP_TOKENIZER)
+        tokens = content_uuid.near_dup_tokens({"state": {"message": "Hello World"}})
+        self.assertEqual(tokens, frozenset({"hello", "world"}))
+        with self.assertRaises(RuntimeError):
+            content_uuid._NEAR_DUP_TOKENIZER_MODULE.tokenize_row({"state": {"message": "x"}})
+
+
 class HelperFtReservedPartitionTests(unittest.TestCase):
     """Reserved eval partition: uuid mod N==k and content-sha denylist."""
 
@@ -7335,6 +7415,150 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
                 row, kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
             )
         )
+
+
+def _math_outside_n(*, rid: str, record_id: str, message: str | None = None) -> dict:
+    for idx in range(200):
+        row = _math_uuidless(
+            rid=f"{rid}-{idx}",
+            record_id=record_id,
+            message=message or f"Let n labeled {rid}-{idx} be even.",
+        )
+        digest = content_uuid.content_uuid(row)
+        if not content_uuid.in_reserved_eval_partition(digest):
+            row["source"]["content_uuid"] = digest
+            return row
+    raise AssertionError(f"no math row outside N for {rid}")
+
+
+class HelperFtGroupKeyTests(unittest.TestCase):
+    """Per-subset group keys: Math record_id, Agent/Code trajectory_id."""
+
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+        _start_hq_http_mock(self)
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            return {"ok": True, "checkpoint_id": "ckpt-gk", "exit_code": 0}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+
+    def tearDown(self) -> None:
+        kick_helper_ft.post_kickoff = self._orig_post
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
+
+    def _kick_rows(self, rows: list[dict], *, pack_id: str) -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id=pack_id)
+            self._pin(manifest)
+            return kick_helper_ft.kick(dest)
+
+    def _refuse_rows(self, rows: list[dict], *, pack_id: str) -> kick_helper_ft.KickRefused:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id=pack_id)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        return ctx.exception
+
+    def test_math_requires_record_id_and_bans_trajectory_id(self) -> None:
+        missing = _math_uuidless(rid="math-miss-rid")
+        missing["source"].pop("record_id", None)
+        miss_hit = kick_helper_ft._group_key_mismatch(missing)
+        self.assertIsNotNone(miss_hit)
+        self.assertEqual(miss_hit[0], "row.group_key")
+        both = _math_uuidless(rid="math-both")
+        both["trajectory_id"] = "traj-math"
+        both_hit = kick_helper_ft._group_key_mismatch(both)
+        self.assertIsNotNone(both_hit)
+        self.assertEqual(both_hit[0], "row.group_key")
+
+    def test_agent_missing_trajectory_id_refused(self) -> None:
+        bad = _row(rid="agent-miss-tid", action="execute")
+        bad.pop("trajectory_id", None)
+        ok = _row(rid="agent-ok", action="halt")
+        exc = self._refuse_rows([bad, ok], pack_id="gk-agent-miss-tid")
+        self.assertEqual(exc.field, "row.group_key")
+
+    def test_agent_record_id_refused(self) -> None:
+        bad = _row(rid="agent-has-rid", action="execute")
+        bad["source"]["record_id"] = "rec-agent"
+        ok = _row(rid="agent-ok2", action="halt")
+        exc = self._refuse_rows([bad, ok], pack_id="gk-agent-rid")
+        self.assertEqual(exc.field, "row.group_key")
+
+    def test_code_missing_trajectory_id_refused(self) -> None:
+        bad = _code_row(rid="code-miss-tid")
+        bad.pop("trajectory_id", None)
+        ok = _code_row(rid="code-ok", action="halt")
+        exc = self._refuse_rows([bad, ok], pack_id="gk-code-miss-tid")
+        self.assertEqual(exc.field, "row.group_key")
+
+    def test_code_record_id_refused(self) -> None:
+        bad = _code_row(rid="code-has-rid")
+        bad["source"]["record_id"] = "rec-code"
+        ok = _code_row(rid="code-ok2", action="halt")
+        exc = self._refuse_rows([bad, ok], pack_id="gk-code-rid")
+        self.assertEqual(exc.field, "row.group_key")
+
+    def test_unknown_subset_refused(self) -> None:
+        bad = _row(rid="unk-subset", action="execute")
+        bad["subset"] = "Physics"
+        ok = _row(rid="unk-ok", action="halt")
+        exc = self._refuse_rows([bad, ok], pack_id="gk-unknown-subset")
+        self.assertEqual(exc.field, "row.subset")
+
+    def test_missing_subset_refused(self) -> None:
+        bad = _row(rid="miss-subset", action="execute")
+        bad.pop("subset", None)
+        bad["source"].pop("hf", None)
+        ok = _row(rid="miss-ok", action="halt")
+        exc = self._refuse_rows([bad, ok], pack_id="gk-missing-subset")
+        self.assertEqual(exc.field, "row.subset")
+
+    def test_case_variant_subset_refused(self) -> None:
+        bad = _row(rid="case-subset", action="execute")
+        bad["subset"] = "agent"
+        ok = _row(rid="case-ok", action="halt")
+        exc = self._refuse_rows([bad, ok], pack_id="gk-case-subset")
+        self.assertEqual(exc.field, "row.subset")
+
+    def test_cross_split_record_id_leak_refused(self) -> None:
+        train = _math_outside_n(rid="math-leak-t", record_id="rec-shared")
+        hold = _math_outside_n(
+            rid="math-leak-h",
+            record_id="rec-shared",
+            message="A different math prompt for leak holdout.",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_split_pack(dest, [train], [hold], pack_id="gk-rid-leak")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "split")
+        self.assertIn("record_id leak", str(ctx.exception.actual))
+
+    def test_mixed_pack_math_agent_code_passes(self) -> None:
+        math_row = _math_outside_n(rid="mix-math", record_id="rec-mix-math")
+        agent_row = _row(rid="mix-agent", action="execute")
+        code_row = _code_row(rid="mix-code", action="halt")
+        evidence = self._kick_rows(
+            [math_row, agent_row, code_row], pack_id="gk-mixed-ok"
+        )
+        self.assertEqual(evidence["result"], "MATCH")
 
 
 class HelperFtK1PinV2Tests(unittest.TestCase):
