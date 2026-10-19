@@ -896,7 +896,9 @@ def _iter_jsonl_objects(path: Path, field: str):
                 if not line.strip():
                     continue
                 try:
-                    obj = json.loads(line)
+                    obj = content_uuid.strict_json_loads(line)
+                except content_uuid.ContentUuidError as exc:
+                    _refuse(exc.field, exc.expected, f"{field}: {exc}")
                 except ValueError:
                     _refuse(field, "jsonl row", "invalid JSON")
                 if isinstance(obj, dict):
@@ -1529,6 +1531,8 @@ def _training_rows(recorded_paths: Mapping[str, str]) -> list[dict[str, Any]]:
 def _content_uuid_collision_field(message: str) -> str:
     if message.startswith("label conflict:"):
         return "content_uuid.label_conflict"
+    if message.startswith("cross-split leak:"):
+        return "content_uuid.cross_split_leak"
     if message.startswith("cross-split duplicate:"):
         return "content_uuid.cross_split_duplicate"
     if message.startswith("duplicate:"):
