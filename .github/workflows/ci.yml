@@ -19,11 +19,11 @@ jobs:
       # would make it pass in CI by checking nothing, which is the vacuous-green shape this
       # repo keeps finding and this very suite exists to prevent. Give it real history
       # instead. Cost is small and was measured before choosing: 926 commits, 39 MB .git.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
           enable-cache: true
       - name: Setup Python
@@ -581,9 +581,9 @@ jobs:
   dottie-factory-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.11'
       # WAS: `python -c "import sys; sys.path.insert(0, 'apps/ava-factory'); print('factory
@@ -606,6 +606,137 @@ jobs:
           if git ls-files | grep -E "dottie_live_status|dottie_telemetry|STATUS.json|results.tsv" ; then echo "Telemetry still tracked!"; exit 1; fi
           echo "Telemetry clean ✓"
 
+  # Required-check name for branch protection: pack-guard
+  # Own job, no needs: PR test code cannot write GITHUB_ENV/GITHUB_PATH/BASH_ENV
+  # into this job. Only pinned checkout (persist-credentials: false) then the guard.
+  pack-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Refuse tracked pack artifacts
+        run: |
+          PACK_GUARD_LS_FILES_FLOOR=1280
+          git_scrub() {
+            /usr/bin/env -i \
+              PATH=/usr/bin:/bin \
+              HOME=/nonexistent \
+              LC_ALL=C \
+              GIT_CONFIG_NOSYSTEM=1 \
+              GIT_CONFIG_GLOBAL=/dev/null \
+              GIT_NO_REPLACE_OBJECTS=1 \
+              /usr/bin/git --no-replace-objects \
+                -c core.fsmonitor=false \
+                -c core.untrackedCache=false \
+                -c core.hooksPath=/dev/null \
+                -c core.quotePath=false \
+                "$@"
+          }
+          grep_pack() {
+            /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+              /usr/bin/grep -zEi 'curated_pack_|ultradata_harvest_' "$1"
+          }
+          show_pack_hits() {
+            /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+              /usr/bin/python3 -I -c "import sys,re; pat=re.compile(br'curated_pack_|ultradata_harvest_',re.I); [sys.stdout.write(p.decode('utf-8','backslashreplace')+chr(10)) for p in open(sys.argv[1],'rb').read().split(bytes([0])) if p and pat.search(p)]" "$1"
+          }
+          toplevel=$(git_scrub rev-parse --show-toplevel) || {
+            \builtin echo "FAIL: git rev-parse --show-toplevel failed"
+            \builtin exit 1
+          }
+          \builtin cd "$toplevel" || {
+            \builtin echo "FAIL: cannot cd to git toplevel"
+            \builtin exit 1
+          }
+          if \builtin [ -z "${GITHUB_SHA:-}" ]; then
+            \builtin echo "FAIL: GITHUB_SHA is unset"
+            \builtin exit 1
+          fi
+          if ! \builtin printf '%s' "$GITHUB_SHA" | /usr/bin/grep -qxE '[0-9a-fA-F]{40}'; then
+            \builtin echo "FAIL: GITHUB_SHA is not 40 hex"
+            \builtin exit 1
+          fi
+          sha_type=$(git_scrub cat-file -t "$GITHUB_SHA") || {
+            \builtin echo "FAIL: git cat-file -t GITHUB_SHA failed"
+            \builtin exit 1
+          }
+          if \builtin [ "$sha_type" != "commit" ]; then
+            \builtin echo "FAIL: GITHUB_SHA type is ${sha_type}, not commit"
+            \builtin exit 1
+          fi
+          head_sha=$(git_scrub rev-parse HEAD) || {
+            \builtin echo "FAIL: git rev-parse HEAD failed"
+            \builtin exit 1
+          }
+          if \builtin [ "$head_sha" != "$GITHUB_SHA" ]; then
+            \builtin echo "FAIL: HEAD ${head_sha} != GITHUB_SHA ${GITHUB_SHA}"
+            \builtin exit 1
+          fi
+          index_list=$(/usr/bin/mktemp)
+          tree_list=$(/usr/bin/mktemp)
+          cleanup() { /usr/bin/rm -f "$index_list" "$tree_list"; }
+          \builtin trap cleanup EXIT
+          git_scrub ls-files -z >"$index_list" || {
+            \builtin echo "FAIL: git ls-files failed"
+            \builtin exit 1
+          }
+          n=$(/usr/bin/tr -cd '\0' <"$index_list" | /usr/bin/wc -c | /usr/bin/tr -d ' ')
+          if ! /usr/bin/grep -zFqx '.github/workflows/ci.yml' "$index_list"; then
+            \builtin echo "FAIL: ls-files missing .github/workflows/ci.yml (hollow index?)"
+            \builtin exit 1
+          fi
+          if \builtin [ "$n" -lt "$PACK_GUARD_LS_FILES_FLOOR" ]; then
+            \builtin echo "FAIL: ls-files count ${n} < floor ${PACK_GUARD_LS_FILES_FLOOR} (hollow index?)"
+            \builtin exit 1
+          fi
+          \builtin set +e
+          grep_pack "$index_list" >/dev/null
+          rc=$?
+          \builtin set -e
+          if \builtin [ "$rc" -eq 0 ]; then
+            show_pack_hits "$index_list"
+            \builtin echo "Pack / harvest artifacts must not be tracked"
+            \builtin exit 1
+          fi
+          if \builtin [ "$rc" -ne 1 ]; then
+            \builtin echo "FAIL: grep ls-files rc=${rc}"
+            \builtin exit 1
+          fi
+          git_scrub ls-tree -r -z --full-tree --name-only "$GITHUB_SHA" >"$tree_list" || {
+            \builtin echo "FAIL: git ls-tree GITHUB_SHA failed"
+            \builtin exit 1
+          }
+          n_tree=$(/usr/bin/tr -cd '\0' <"$tree_list" | /usr/bin/wc -c | /usr/bin/tr -d ' ')
+          if ! /usr/bin/grep -zFqx '.github/workflows/ci.yml' "$tree_list"; then
+            \builtin echo "FAIL: ls-tree missing .github/workflows/ci.yml (hollow tree?)"
+            \builtin exit 1
+          fi
+          if \builtin [ "$n_tree" -lt "$PACK_GUARD_LS_FILES_FLOOR" ]; then
+            \builtin echo "FAIL: ls-tree count ${n_tree} < floor ${PACK_GUARD_LS_FILES_FLOOR}"
+            \builtin exit 1
+          fi
+          \builtin set +e
+          grep_pack "$tree_list" >/dev/null
+          rc=$?
+          \builtin set -e
+          if \builtin [ "$rc" -eq 0 ]; then
+            show_pack_hits "$tree_list"
+            \builtin echo "Pack / harvest artifacts must not be tracked (GITHUB_SHA tree)"
+            \builtin exit 1
+          fi
+          if \builtin [ "$rc" -ne 1 ]; then
+            \builtin echo "FAIL: grep ls-tree rc=${rc}"
+            \builtin exit 1
+          fi
+          /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            /usr/bin/python3 -I -c "import sys,unicodedata,re; C=str.maketrans({'\u0430':'a','\u0435':'e','\u043e':'o','\u0440':'p','\u0441':'c','\u0445':'x','\u0443':'y','\u0456':'i','\u0458':'j','\u0455':'s','\u0501':'d','\u0410':'a','\u0415':'e','\u041e':'o','\u0420':'p','\u0421':'c','\u0425':'x','\u0423':'y','\u0406':'i'}); P=re.compile(r'curated_pack_|ultradata_harvest_',re.I); fold=lambda s: ''.join(ch for ch in unicodedata.normalize('NFKC',s).translate(C) if unicodedata.category(ch)!='Cf').casefold(); [(sys.exit('FAIL: non-ascii path') if any(b>127 for b in p) else sys.exit('FAIL: lookalike pack path') if P.search(fold(p.decode('utf-8','surrogateescape'))) else None) for f in sys.argv[1:] for p in open(f,'rb').read().split(bytes([0])) if p]" "$index_list" "$tree_list" || {
+            \builtin echo "FAIL: lookalike/non-ascii pack path check"
+            \builtin exit 1
+          }
+          \builtin echo "No pack artifacts tracked"
+        shell: "/usr/bin/bash --noprofile --norc -p -euo pipefail {0}"
+
   # SMOKE ONLY. apps/dottie-os is the git mirror of the nugatron UltraData factory
   # + harvest/hop scripts. Live harvest needs Hugging Face `datasets` and is host-only.
   # These tests are stdlib: classification heuristics, holdout pairing, a tiny fixture
@@ -618,9 +749,9 @@ jobs:
   dottie-os-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.11"
       - name: Install cryptography (Ed25519 pack-pin verify)
@@ -642,80 +773,6 @@ jobs:
           fi
       - name: Tests must not write apps/dottie-os/trust/
         run: git diff --exit-code apps/dottie-os/trust/
-      - name: Refuse tracked pack artifacts
-        run: |
-          set -euo pipefail
-          # Floor N=1280 is half of 2561 tracked files when this was set
-          # (rounded down). A hollow index cannot pass as "no packs".
-          PACK_GUARD_LS_FILES_FLOOR=1280
-          git_scrub() {
-            /usr/bin/env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE \
-              -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY \
-              -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_CONFIG_PARAMETERS \
-              -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_SYSTEM -u BASH_ENV -u ENV \
-              PATH=/usr/bin:/bin \
-              /usr/bin/git "$@"
-          }
-          toplevel=$(git_scrub rev-parse --show-toplevel) || {
-            echo "FAIL: git rev-parse --show-toplevel failed"
-            exit 1
-          }
-          cd "$toplevel" || {
-            echo "FAIL: cannot cd to git toplevel"
-            exit 1
-          }
-          if [ -z "${GITHUB_SHA:-}" ]; then
-            echo "FAIL: GITHUB_SHA is unset"
-            exit 1
-          fi
-          if ! printf '%s' "$GITHUB_SHA" | grep -qxE '[0-9a-fA-F]{40}'; then
-            echo "FAIL: GITHUB_SHA is not 40 hex"
-            exit 1
-          fi
-          if ! git_scrub cat-file -e "$GITHUB_SHA^{commit}"; then
-            echo "FAIL: GITHUB_SHA is not a commit in this repo"
-            exit 1
-          fi
-          index_list=$(mktemp)
-          tree_list=$(mktemp)
-          cleanup() { rm -f "$index_list" "$tree_list"; }
-          trap cleanup EXIT
-          git_scrub -c core.quotePath=false ls-files -z >"$index_list" || {
-            echo "FAIL: git ls-files failed"
-            exit 1
-          }
-          n=$(tr -cd '\0' <"$index_list" | wc -c | tr -d ' ')
-          if ! grep -zFqx '.github/workflows/ci.yml' "$index_list"; then
-            echo "FAIL: ls-files missing .github/workflows/ci.yml (hollow index?)"
-            exit 1
-          fi
-          if [ "$n" -lt "$PACK_GUARD_LS_FILES_FLOOR" ]; then
-            echo "FAIL: ls-files count ${n} < floor ${PACK_GUARD_LS_FILES_FLOOR} (hollow index?)"
-            exit 1
-          fi
-          pack_re='curated_pack_.*\.(jsonl|json)$|ultradata_harvest_'
-          if grep -zEi "$pack_re" "$index_list"; then
-            echo "Pack / harvest artifacts must not be tracked"
-            exit 1
-          fi
-          git_scrub -c core.quotePath=false ls-tree -r -z --full-tree --name-only "$GITHUB_SHA" >"$tree_list" || {
-            echo "FAIL: git ls-tree GITHUB_SHA failed"
-            exit 1
-          }
-          n_tree=$(tr -cd '\0' <"$tree_list" | wc -c | tr -d ' ')
-          if ! grep -zFqx '.github/workflows/ci.yml' "$tree_list"; then
-            echo "FAIL: ls-tree missing .github/workflows/ci.yml (hollow tree?)"
-            exit 1
-          fi
-          if [ "$n_tree" -lt "$PACK_GUARD_LS_FILES_FLOOR" ]; then
-            echo "FAIL: ls-tree count ${n_tree} < floor ${PACK_GUARD_LS_FILES_FLOOR}"
-            exit 1
-          fi
-          if grep -zEi "$pack_re" "$tree_list"; then
-            echo "Pack / harvest artifacts must not be tracked (GITHUB_SHA tree)"
-            exit 1
-          fi
-          echo "No pack artifacts tracked"
 
   # apps/atlas-outcomes: the outcome-real place-decision pack (stdlib only).
   # Lint is a HARD gate (the app started at 0 findings). The tests run on a
@@ -725,9 +782,9 @@ jobs:
   atlas-outcomes:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.11"
       - name: Ruff lint — apps/atlas-outcomes (HARD gate, at 0)
@@ -756,7 +813,7 @@ jobs:
     # committed hub_registry.json still matches its source cards (never stale).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Twin contract suite (pure parsers)
         run: node apps/bluehenre/public/js/twin.contract.test.mjs
       - name: Hub registry exporter parser regression
@@ -844,10 +901,10 @@ jobs:
       # assertion says it best -- "git history unavailable, this guard must not skip
       # silently" -- so a shallow clone fails it loudly rather than passing quietly.
       # Eight tests depend on it.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
           enable-cache: true
       # Same state-pollution gate the lint-and-test job runs around scout-cli, now around
