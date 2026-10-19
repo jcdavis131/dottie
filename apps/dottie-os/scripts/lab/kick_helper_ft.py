@@ -101,6 +101,11 @@ ENTRYPOINT_PIN_RELS = (
 )
 PINS_JSON_MAX_BYTES = 64 * 1024
 _GATE_OK = object()
+_UNSET = object()
+RESERVED_EVAL_PARTITION: dict[str, object] = {"n": 10, "residues": [0, 5]}
+UUIDLESS_SOURCE_ALLOWLIST = frozenset({"openbmb/UltraData-Math"})
+RESERVED_CONTENT_UUIDS_ENV = "HELPER_FT_RESERVED_CONTENT_UUIDS"
+RESERVED_CONTENT_UUIDS_SHA256_ENV = "HELPER_FT_RESERVED_CONTENT_UUIDS_SHA256"
 TRAINER_PATH_FILES: dict[str, str] = {
     "pack": PACK_FILE,
     "train": TRAIN_FILE,
@@ -1556,75 +1561,192 @@ def collect_forged_content_uuids(recorded_paths: Mapping[str, str]) -> list[str]
     return hits
 
 
-def _reserved_partition_cfg(manifest: Mapping[str, Any]) -> Mapping[str, Any] | None:
-    cfg = manifest.get("reserved_eval_partition")
-    if cfg is None:
-        return None
-    if not isinstance(cfg, Mapping):
-        _refuse("reserved_eval_partition", "object with n and k", type(cfg).__name__)
-    if "n" not in cfg or "k" not in cfg:
-        _refuse("reserved_eval_partition", "n and k (no default)", sorted(cfg))
-    modulus = cfg["n"]
-    residue = cfg["k"]
-    if type(modulus) is not int or isinstance(modulus, bool) or modulus < 2:
-        _refuse("reserved_eval_partition.n", "int >= 2", modulus)
-    if type(residue) is not int or isinstance(residue, bool) or residue < 0 or residue >= modulus:
-        _refuse("reserved_eval_partition.k", f"int in [0, {modulus})", residue)
-    raw_shas = cfg.get("content_shas", cfg.get("reserved_content_shas", []))
+def _resolve_optional(value: object, env_name: str) -> object:
+    if value is _UNSET:
+        return os.environ.get(env_name)
+    return value
+
+
+def load_reserved_content_uuids(path: object, expected_sha256: object) -> set[str]:
+    """Load the pinned reserved content-uuid list. Missing file or sha mismatch refuses."""
+    if path is None or path is _UNSET or (type(path) is str and not path):
+        _refuse("reserved_content_uuids", "path", "missing")
+    pin = _require_sha256_hex("reserved_content_uuids.sha256", expected_sha256)
+    buf = _read_file_buffer(Path(str(path)), "reserved_content_uuids")
+    actual = hashlib.sha256(buf).hexdigest()
+    if actual != pin:
+        _refuse("reserved_content_uuids.sha256", pin, actual)
+    try:
+        text = buf.decode("utf-8")
+    except UnicodeDecodeError:
+        _refuse("reserved_content_uuids", "utf-8 text", "invalid encoding")
+    shas: set[str] = set()
+    for idx, line in enumerate(text.splitlines()):
+        if not line.strip():
+            continue
+        shas.add(_require_sha256_hex(f"reserved_content_uuids[{idx}]", line.strip()))
+    return shas
+
+
+def _reserved_partition_cfg(
+    manifest: Mapping[str, Any],
+    pinned_content_shas: set[str],
+) -> dict[str, Any]:
+    """Gate-owned partition. MANIFEST may add residues/shas, never remove or override n."""
+    modulus = RESERVED_EVAL_PARTITION["n"]
+    residues = set(RESERVED_EVAL_PARTITION["residues"])
+    content_shas = set(pinned_content_shas)
+    extra = manifest.get("reserved_eval_partition")
+    if extra is None:
+        return {"n": modulus, "residues": residues, "content_shas": content_shas}
+    if not isinstance(extra, Mapping):
+        _refuse("reserved_eval_partition", "object", type(extra).__name__)
+    raw_residues = extra.get("residues")
+    if raw_residues is None:
+        raw_residues = []
+    if not isinstance(raw_residues, list):
+        _refuse("reserved_eval_partition.residues", "list of int", type(raw_residues).__name__)
+    for idx, value in enumerate(raw_residues):
+        if type(value) is not int or isinstance(value, bool) or value < 0 or value >= modulus:
+            _refuse(
+                f"reserved_eval_partition.residues[{idx}]",
+                f"int in [0, {modulus})",
+                value,
+            )
+        residues.add(value)
+    raw_shas = extra.get("content_shas", extra.get("reserved_content_shas", []))
     if raw_shas is None:
         raw_shas = []
     if not isinstance(raw_shas, list):
         _refuse("reserved_eval_partition.content_shas", "list of sha256 hex", type(raw_shas).__name__)
-    shas: set[str] = set()
     for idx, value in enumerate(raw_shas):
-        shas.add(_require_sha256_hex(f"reserved_eval_partition.content_shas[{idx}]", value))
-    return {"n": modulus, "k": residue, "content_shas": shas}
+        content_shas.add(_require_sha256_hex(f"reserved_eval_partition.content_shas[{idx}]", value))
+    return {"n": modulus, "residues": residues, "content_shas": content_shas}
+
+
+def _source_hf(row: Mapping[str, Any]) -> str | None:
+    source = row.get("source")
+    if not isinstance(source, Mapping):
+        return None
+    value = source.get("hf")
+    if type(value) is str and value:
+        return value
+    return None
+
+
+class ContentUuidRowError(Exception):
+    def __init__(self, field: str, expected: object, actual: object, message: str) -> None:
+        self.field = field
+        self.expected = expected
+        self.actual = actual
+        super().__init__(message)
+
+
+def _raw_source_uuid(row: Mapping[str, Any]) -> str | None:
+    """Raw ``source.uuid`` with no strip. None if absent. Whitespace is malformed."""
+    source = row.get("source")
+    if not isinstance(source, Mapping) or "uuid" not in source:
+        return None
+    value = source.get("uuid")
+    if value is None:
+        return None
+    if type(value) is not str:
+        raise ContentUuidRowError(
+            "reserved_eval_partition.uuid_malformed",
+            "string source.uuid",
+            type(value).__name__,
+            f"{_row_id(row)}:source.uuid is {type(value).__name__}",
+        )
+    if value != value.strip():
+        raise ContentUuidRowError(
+            "reserved_eval_partition.uuid_malformed",
+            "source.uuid without surrounding whitespace",
+            repr(value),
+            f"{_row_id(row)}:source.uuid has surrounding whitespace",
+        )
+    if not value:
+        return None
+    return value
 
 
 def collect_reserved_partition(
     manifest: Mapping[str, Any],
     recorded_paths: Mapping[str, str],
-) -> list[str]:
-    """Refuse training rows in the reserved eval partition (conditions 1 and 2).
+    pinned_content_shas: set[str],
+) -> list[tuple[str, str]]:
+    """Refuse training rows in Mill's reserved eval partition N.
 
-    Condition 1: ``int(sha256(uuid_text), 16) % n == k`` with ``n`` and ``k``
-    from ``MANIFEST.reserved_eval_partition``. There is no default that passes.
-    Condition 2: the row's content uuid (same helper Mill uses) is in
-    ``content_shas``. A row satisfies the uuid rule with ``source.uuid``
-    (always a dataset id) or a verified ``source.content_uuid``. Missing
-    both refuses. ``source.uuid`` is never treated as a content uuid, even
-    when it is 64 hex.
+    N is ``int(sha256(source.uuid.encode()).hexdigest(), 16) % 10 in {0, 5}``
+    over the raw UltraData trajectory uuid. The modulus and residues live in
+    ``RESERVED_EVAL_PARTITION``; a pack MANIFEST cannot remove them. Content
+    membership uses the pinned reserved-content-uuid list plus any extra
+    MANIFEST shas.
+
+    Uuid-less rows are ``reserved_eval_partition.uuid_missing`` unless
+    ``source.hf`` is in ``UUIDLESS_SOURCE_ALLOWLIST``. Allowlisted uuid-less
+    rows skip the modulo check, still require a verified ``source.content_uuid``,
+    and still run the content-uuid membership check.
     """
-    cfg = _reserved_partition_cfg(manifest)
-    if cfg is None:
-        return []
-    hits: list[str] = []
+    cfg = _reserved_partition_cfg(manifest, pinned_content_shas)
+    hits: list[tuple[str, str]] = []
     modulus = cfg["n"]
-    residue = cfg["k"]
-    reserved = cfg["content_shas"]
+    residues: set[int] = cfg["residues"]
+    reserved: set[str] = cfg["content_shas"]
     for row in _training_rows(recorded_paths):
         rid = _row_id(row)
         try:
             verified = content_uuid.verify_content_uuid(row)
         except content_uuid.ContentUuidError as exc:
-            hits.append(str(exc))
+            hits.append(("content_uuid", str(exc)))
             if len(hits) >= 10:
                 return hits
             continue
-        uuid_text = content_uuid.source_uuid_text(row)
-        if uuid_text is None and verified is None:
-            hits.append(f"{rid}:missing source.uuid")
+        try:
+            uuid_text = _raw_source_uuid(row)
+        except ContentUuidRowError as exc:
+            hits.append((exc.field, str(exc)))
             if len(hits) >= 10:
                 return hits
             continue
         if uuid_text is None:
-            uuid_text = verified
-        digest = hashlib.sha256(uuid_text.encode("utf-8")).hexdigest()
-        if int(digest, 16) % modulus == residue:
-            hits.append(f"{rid}:uuid_mod=={residue}")
+            if _source_hf(row) not in UUIDLESS_SOURCE_ALLOWLIST:
+                hits.append(
+                    (
+                        "reserved_eval_partition.uuid_missing",
+                        f"{rid}:missing source.uuid",
+                    )
+                )
+                if len(hits) >= 10:
+                    return hits
+                continue
+            if verified is None:
+                hits.append(
+                    (
+                        "reserved_eval_partition.content_uuid",
+                        f"{rid}:missing source.content_uuid",
+                    )
+                )
+                if len(hits) >= 10:
+                    return hits
+                continue
+        else:
+            digest = hashlib.sha256(uuid_text.encode()).hexdigest()
+            residue = int(digest, 16) % modulus
+            if residue in residues:
+                hits.append(
+                    (
+                        "reserved_eval_partition.uuid_mod",
+                        f"{rid}:uuid_mod=={residue}",
+                    )
+                )
         content_sha = content_uuid.content_uuid(row)
         if content_sha in reserved:
-            hits.append(f"{rid}:reserved content sha {content_sha}")
+            hits.append(
+                (
+                    "reserved_eval_partition.content_uuid",
+                    f"{rid}:reserved content sha {content_sha}",
+                )
+            )
         if len(hits) >= 10:
             return hits
     return hits
@@ -1636,6 +1758,8 @@ def enforce_pack_gates(
     *,
     smoke: bool = False,
     pack_dir: Path | str | None = None,
+    reserved_content_uuids: object = _UNSET,
+    reserved_content_uuids_sha256: object = _UNSET,
 ) -> None:
     hits = collect_not_for_train(manifest, recorded_paths)
     if hits and not smoke:
@@ -1650,9 +1774,15 @@ def enforce_pack_gates(
     forged = collect_forged_content_uuids(recorded_paths)
     if forged:
         _refuse("content_uuid", "recomputed digest", forged[:10])
-    reserved = collect_reserved_partition(manifest, recorded_paths)
-    if reserved:
-        _refuse("reserved_eval_partition", "outside reserved slice", reserved[:10])
+    pinned_shas = load_reserved_content_uuids(
+        _resolve_optional(reserved_content_uuids, RESERVED_CONTENT_UUIDS_ENV),
+        _resolve_optional(reserved_content_uuids_sha256, RESERVED_CONTENT_UUIDS_SHA256_ENV),
+    )
+    if not (smoke and manifest.get("not_for_train") is True):
+        reserved = collect_reserved_partition(manifest, recorded_paths, pinned_shas)
+        if reserved:
+            field = reserved[0][0]
+            _refuse(field, "outside reserved slice", [msg for _field, msg in reserved[:10]])
     leaks = collect_state_leaks(recorded_paths, pack_dir=pack_dir)
     if leaks:
         _refuse("state.leak", "absent", leaks[:10])
@@ -2144,6 +2274,8 @@ def verify_and_stage(
     *,
     run_private: Path,
     smoke: bool = False,
+    reserved_content_uuids: object = _UNSET,
+    reserved_content_uuids_sha256: object = _UNSET,
 ) -> dict[str, Any]:
     """Copy-hash pack/train/holdout and check them against the Cam HQ pin.
 
@@ -2209,7 +2341,12 @@ def verify_and_stage(
     trainer_paths = trainer_input_paths(run_private)
     _split_soundness(run_private, computed_shas)
     enforce_pack_gates(
-        manifest, trainer_paths, smoke=smoke, pack_dir=pack_root
+        manifest,
+        trainer_paths,
+        smoke=smoke,
+        pack_dir=pack_root,
+        reserved_content_uuids=reserved_content_uuids,
+        reserved_content_uuids_sha256=reserved_content_uuids_sha256,
     )
 
     return {
@@ -2668,6 +2805,8 @@ def kick(
     kickoff: KickoffFn | None = None,
     kickoff_url: str = DEFAULT_KICKOFF_URL,
     smoke: bool = False,
+    reserved_content_uuids: object = _UNSET,
+    reserved_content_uuids_sha256: object = _UNSET,
 ) -> dict[str, Any]:
     """Fetch the Cam HQ pin, stage private copies, POST kickoff, re-check shas.
 
@@ -2741,7 +2880,13 @@ def kick(
         write_evidence(evidence, evidence_path)
 
     try:
-        staged = verify_and_stage(pack_dir, run_private=run_private, smoke=smoke)
+        staged = verify_and_stage(
+            pack_dir,
+            run_private=run_private,
+            smoke=smoke,
+            reserved_content_uuids=reserved_content_uuids,
+            reserved_content_uuids_sha256=reserved_content_uuids_sha256,
+        )
         evidence.update(staged)
         evidence["run_id"] = run_id
         evidence["checkpoint_id"] = None
@@ -2953,6 +3098,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="explicit smoke mode: never post HQ events, unscorable, delete copies/inbox",
     )
+    parser.add_argument(
+        "--reserved-content-uuids",
+        type=Path,
+        default=None,
+        help="pinned reserved content-uuid list (one 64-hex digest per line)",
+    )
+    parser.add_argument(
+        "--reserved-content-uuids-sha256",
+        default=None,
+        help="sha256 of the reserved content-uuid list file",
+    )
     return parser
 
 
@@ -2967,6 +3123,14 @@ def main(argv: list[str] | None = None) -> int:
             log_path=args.log,
             kickoff_url=args.kickoff_url,
             smoke=bool(args.smoke),
+            reserved_content_uuids=(
+                args.reserved_content_uuids if args.reserved_content_uuids is not None else _UNSET
+            ),
+            reserved_content_uuids_sha256=(
+                args.reserved_content_uuids_sha256
+                if args.reserved_content_uuids_sha256 is not None
+                else _UNSET
+            ),
         )
     except KickRefused as exc:
         print(str(exc), file=sys.stderr, flush=True)
