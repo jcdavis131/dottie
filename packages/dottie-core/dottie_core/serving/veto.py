@@ -650,6 +650,114 @@ def _read_word(src: str, i: int) -> tuple[str, int]:
     return "".join(chunks), i
 
 
+_WRAPPER_SKIP_POS = frozenset({"timeout", "chroot", "flock"})
+_GENERIC_FLAG_ARGS = frozenset({"-n", "-u", "-g", "-C", "--user", "-c", "-qc"})
+
+
+def _is_nice_adj(tok: str) -> bool:
+    if not tok.startswith("-") or len(tok) < 2:
+        return False
+    body = tok[1:]
+    if body[:1] in "+-":
+        body = body[1:]
+    return body.isdigit()
+
+
+def _skip_wrapper_opts(base: str, tokens: list[str], i: int) -> int:
+    """Advance past options of ``base``. ``i`` is just after the wrapper name."""
+    n = len(tokens)
+    if base == "nice":
+        while i < n:
+            tok = tokens[i]
+            if tok == "--":
+                return i + 1
+            if tok.startswith("--adjustment="):
+                i += 1
+                continue
+            if tok in {"-n", "--adjustment"} and i + 1 < n and not tokens[i + 1].startswith("-"):
+                i += 2
+                continue
+            if _is_nice_adj(tok) or (tok.startswith("-") and len(tok) > 1):
+                i += 1
+                continue
+            break
+        return i
+    if base == "ionice":
+        while i < n:
+            tok = tokens[i]
+            if tok == "--":
+                return i + 1
+            if tok.startswith("--class=") or tok.startswith("--classdata=") or tok.startswith("--pid="):
+                i += 1
+                continue
+            if tok in {"-c", "-n", "-p", "--class", "--classdata", "--pid"} and i + 1 < n and not tokens[i + 1].startswith("-"):
+                i += 2
+                continue
+            if tok.startswith("-") and len(tok) > 1:
+                i += 1
+                continue
+            break
+        return i
+    if base == "watch":
+        while i < n:
+            tok = tokens[i]
+            if tok == "--":
+                return i + 1
+            if tok.startswith("--interval=") or tok.startswith("--equexit="):
+                i += 1
+                continue
+            if tok in {"-n", "--interval", "-q", "--equexit"} and i + 1 < n and not tokens[i + 1].startswith("-"):
+                i += 2
+                continue
+            if tok.startswith("-") and len(tok) > 1:
+                i += 1
+                continue
+            break
+        return i
+    if base == "taskset":
+        saw_pid = False
+        consumed_mask = False
+        while i < n:
+            tok = tokens[i]
+            if tok == "--":
+                return i + 1
+            if tok in {"-p", "--pid"}:
+                saw_pid = True
+                i += 1
+                continue
+            if tok in {"-c", "--cpu-list"} and i + 1 < n and not tokens[i + 1].startswith("-"):
+                i += 2
+                consumed_mask = True
+                continue
+            if tok in {"-a", "--all-tasks", "-c", "--cpu-list"}:
+                i += 1
+                continue
+            if tok.startswith("-") and len(tok) > 1:
+                i += 1
+                continue
+            break
+        if not consumed_mask and i < n and not tokens[i].startswith("-"):
+            i += 1
+            if saw_pid and i < n and not tokens[i].startswith("-"):
+                i += 1
+        return i
+    while i < n:
+        tok = tokens[i]
+        if tok.startswith("-") and len(tok) > 1:
+            if tok in _GENERIC_FLAG_ARGS and i + 1 < n and not tokens[i + 1].startswith("-"):
+                i += 2
+                continue
+            i += 1
+            continue
+        if "=" in tok and _IDENT_RE.match(tok.split("=", 1)[0]):
+            i += 1
+            continue
+        break
+    if i < n and base in _WRAPPER_SKIP_POS and not tokens[i].startswith("-"):
+        i += 1
+    return i
+
+
 def _strip_wrappers(tokens: list[str]) -> list[str]:
     i = 0
     n = len(tokens)
@@ -663,21 +771,7 @@ def _strip_wrappers(tokens: list[str]) -> list[str]:
         base = _basename(tokens[i]).lower()
         if base in _WRAPPERS:
             i += 1
-            while i < n:
-                tok = tokens[i]
-                if tok.startswith("-") and len(tok) > 1:
-                    # sudo -u user, nice -n 10: skip flag and its arg when needed
-                    if tok in {"-n", "-u", "-g", "-C", "--user", "-c", "-qc"} and i + 1 < n and not tokens[i + 1].startswith("-"):
-                        i += 2
-                        continue
-                    i += 1
-                    continue
-                if "=" in tok and _IDENT_RE.match(tok.split("=", 1)[0]):
-                    i += 1
-                    continue
-                break
-            if i < n and base in {"timeout", "nice", "ionice", "watch", "taskset", "chroot", "flock"} and not tokens[i].startswith("-"):
-                i += 1
+            i = _skip_wrapper_opts(base, tokens, i)
             continue
         tokens = tokens[i:]
         if tokens:
@@ -1376,14 +1470,18 @@ def _fork_bomb_tokens(tokens: list[tuple[str, str]], compact: str) -> bool:
         "while" in blob or "for(;" in blob or "for(;;" in blob or "loop{" in blob
     ):
         return True
-    # while true|:|1; do … & done — not `while read … & done`
+    # while true|:|1; do … & done — not `while read … & done` unless the
+    # producer is unbounded (yes | while read … & done) or the body is a
+    # backgrounded fork loop with an infinite left-hand side.
     state = "start"
     cond: list[str] = []
+    saw_bg = False
     for kind, value in tokens:
         low = value.lower() if kind == "word" else value
         if low == "while":
             state = "while"
             cond = []
+            saw_bg = False
             continue
         if state == "while":
             if low == "do":
@@ -1395,9 +1493,42 @@ def _fork_bomb_tokens(tokens: list[tuple[str, str]], compact: str) -> bool:
             continue
         if state == "do-inf" and kind == "op" and value == "&":
             return True
+        if state == "do-b" and kind == "op" and value == "&":
+            saw_bg = True
         if low == "done":
+            if saw_bg and _unbounded_while_producer(tokens):
+                return True
             state = "start"
+            saw_bg = False
     _ = compact_ops
+    return False
+
+
+def _unbounded_while_producer(tokens: list[tuple[str, str]]) -> bool:
+    """True when a pipe into ``while`` comes from yes / /dev/zero / /dev/urandom."""
+    flat = [(k, v.lower() if k == "word" else v) for k, v in tokens]
+    for i, (_kind, value) in enumerate(flat):
+        if value != "while":
+            continue
+        j = i - 1
+        while j >= 0 and flat[j][0] == "nl":
+            j -= 1
+        if j < 0 or flat[j] != ("op", "|"):
+            return False
+        prod: list[str] = []
+        k = j - 1
+        while k >= 0 and not (flat[k][0] == "op" and flat[k][1] in {";", "&&", "||", "|", "&", "(", ")"}):
+            if flat[k][0] == "word":
+                prod.append(flat[k][1])
+            k -= 1
+        prod.reverse()
+        stripped = _strip_wrappers(prod)
+        if stripped and _basename(stripped[0]).lower() == "yes":
+            return True
+        blob = " ".join(stripped)
+        if "/dev/zero" in blob or "/dev/urandom" in blob:
+            return True
+        return False
     return False
 
 
@@ -1468,16 +1599,58 @@ def _control_url_in_word(word: str) -> bool:
     return False
 
 
+def _searcher_pre_cmd(words: list[str]) -> str | None:
+    """Preprocessor command from ``rg --pre CMD`` / ``--pre=CMD``. None if absent."""
+    stripped = _strip_wrappers(list(words))
+    for i, tok in enumerate(stripped):
+        if tok == "--pre" and i + 1 < len(stripped):
+            return stripped[i + 1]
+        if tok.startswith("--pre=") and len(tok) > 6:
+            return tok.split("=", 1)[1]
+    return None
+
+
 def _is_searcher_words(words: list[str]) -> bool:
     stripped = _strip_wrappers(list(words))
     if not stripped:
         return False
     head = stripped[0].lower()
     if head in _SEARCHERS:
+        if _searcher_pre_cmd(stripped):
+            return False
         return True
     if head == "git" and len(stripped) > 1 and stripped[1].lower() in {"grep", "log", "show", "blame"}:
         return True
     return False
+
+
+def _is_searcher_command(text: str) -> bool:
+    tokens = _tokenize(text)
+    statements = _split_statements(tokens)
+    if not statements:
+        return False
+    return _is_searcher_words(_words(statements[0]))
+
+
+def _xargs_halt(tail: list[str]) -> str | None:
+    """Halt class for the command xargs would run. ``xargs rm`` matches rm_rf."""
+    if not tail:
+        return None
+    head = _basename(tail[0]).lower()
+    if head == "rm" or _is_rm_rf_words(tail):
+        return RM_RF
+    if (
+        head == "shred"
+        or head == "dd"
+        or head == "mkfs"
+        or head.startswith("mkfs.")
+        or head in {"mke2fs", "mkswap", "wipefs"}
+        or _is_mkfs_words(tail)
+    ):
+        return MKFS
+    if _is_credential_read(tail):
+        return CREDENTIAL_READ
+    return None
 
 
 def _control_plane_in_text(text: str) -> bool:
@@ -1596,8 +1769,26 @@ def _scan_text(
             stripped_early = _strip_wrappers(list(words))
             if stripped_early and stripped_early[0].lower() == "xargs":
                 xargs_tail = _strip_wrappers(stripped_early[1:])
-                if xargs_tail and (xargs_tail[0].lower() == "rm" or _is_rm_rf_words(xargs_tail)):
-                    return finish(RM_RF)
+                xhit = _xargs_halt(xargs_tail)
+                if xhit:
+                    return finish(xhit)
+            orig_head = ""
+            for tok in words:
+                if "=" in tok and not tok.startswith("=") and _IDENT_RE.match(tok.split("=", 1)[0] or ""):
+                    continue
+                orig_head = _basename(tok).lower()
+                break
+            if orig_head == "watch":
+                watch_rest = _strip_wrappers(list(words))
+                if watch_rest:
+                    inner = _scan_text(" ".join(watch_rest), env, depth + 1, memo, subst_as_cmd=True)
+                    if inner:
+                        return finish(inner)
+            pre_cmd = _searcher_pre_cmd(words)
+            if pre_cmd:
+                inner = _scan_text(pre_cmd, env, depth + 1, memo)
+                if inner:
+                    return finish(inner)
             head = _command_word(stage)
             stripped_words = _strip_wrappers(list(words))
             raw0 = stripped_words[0] if stripped_words else ""
@@ -1651,13 +1842,21 @@ def veto_command(command: str) -> str | None:
         return None
     if len(command) > SCAN_CAP:
         return VETO_OVERSIZE
-    for candidate in live_commands(command):
+    candidates = live_commands(command)
+    extracted = candidates[1:]
+    for candidate in extracted:
         if len(candidate) > SCAN_CAP:
             return VETO_OVERSIZE
         rule = _scan_text(candidate)
         if rule is not None:
             return rule
-    return None
+    original = candidates[0]
+    if len(original) > SCAN_CAP:
+        return VETO_OVERSIZE
+    rule = _scan_text(original)
+    if rule == CONTROL_PLANE and extracted and all(_is_searcher_command(item) for item in extracted):
+        return None
+    return rule
 
 
 def veto_from_payload(payload: Any) -> str | None:
@@ -1994,6 +2193,14 @@ EXTRA_HALT_CASES: tuple[tuple[str, str], ...] = (
     ('sh -c "$(echo \'rm -rf /\')"', RM_RF),
     ("bash -c \"$(printf '%s' 'rm -rf /')\"", RM_RF),
     ("$(echo 'rm -rf /')", RM_RF),
+    ("nice -n 5 rm -rf ~", RM_RF),
+    ("ionice -c 3 rm -rf ~", RM_RF),
+    ("watch -n 1 rm -rf ~", RM_RF),
+    ("taskset -c 0 rm -rf ~", RM_RF),
+    ("xargs shred file.txt", MKFS),
+    ("xargs cat ~/.ssh/id_rsa", CREDENTIAL_READ),
+    ('yes | while read f; do process "$f" & done', FORK_BOMB),
+    ("rg --pre 'rm -rf /' foo", RM_RF),
 )
 
 NEGATIVE_CASES: tuple[str, ...] = (

@@ -688,6 +688,69 @@ class EchoPrintfSubstTests(unittest.TestCase):
         self.assertIsNone(veto_command("eval echo hello"))
 
 
+class NiceWrapperTests(unittest.TestCase):
+    """B-NICE: parse nice/ionice/watch/taskset options; do not skip the command."""
+
+    CASES = (
+        "nice -n 5 rm -rf ~",
+        "nice -10 rm -rf ~",
+        "nice --adjustment=5 rm -rf ~",
+        "nice --adjustment 5 rm -rf ~",
+        "ionice -c 3 rm -rf ~",
+        "ionice -c3 -n7 rm -rf ~",
+        "ionice -t rm -rf ~",
+        "watch -n 1 rm -rf ~",
+        "watch 'rm -rf ~'",
+        "watch -n 1 'rm -rf ~'",
+        "taskset -c 0 rm -rf ~",
+        "taskset 0x1 rm -rf ~",
+        "taskset -c 0,1 rm -rf ~",
+    )
+
+    def test_wrappers_halt_string_and_live(self) -> None:
+        for command in self.CASES:
+            with self.subTest(shape="str", command=command):
+                self.assertEqual(veto_command(command), RM_RF, command)
+            with self.subTest(shape="live", command=command):
+                self.assertEqual(veto_command(_live(command)), RM_RF, command)
+
+
+class ShouldFixEchoNiceTests(unittest.TestCase):
+    """Cheap should-fixes: xargs, live-shape rg, yes|while-read, rg --pre."""
+
+    def test_xargs_destructive_and_secret(self) -> None:
+        self.assertEqual(veto_command("xargs shred"), MKFS)
+        self.assertEqual(veto_command("xargs shred file.txt"), MKFS)
+        self.assertEqual(veto_command("xargs dd of=/dev/sda"), MKFS)
+        self.assertEqual(veto_command("xargs mkfs /dev/sda"), MKFS)
+        self.assertEqual(veto_command("xargs cat ~/.ssh/id_rsa"), CREDENTIAL_READ)
+        self.assertEqual(veto_command("echo / | xargs rm"), RM_RF)
+
+    def test_live_shape_rg_url_executes(self) -> None:
+        for command in (
+            "rg ':8770/reload'",
+            "grep ':8770/reload'",
+            "rg 'http://127.0.0.1:8770/reload'",
+            "grep 'http://nugatron:8770/reload'",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(veto_command(command), command)
+                self.assertIsNone(veto_command(_live(command)), command)
+
+    def test_yes_while_read_background_halts(self) -> None:
+        self.assertEqual(
+            veto_command('yes | while read f; do process "$f" & done'),
+            FORK_BOMB,
+        )
+        self.assertIsNone(veto_command('while read f; do process "$f" & done < list.txt'))
+
+    def test_rg_pre_scans_preprocessor(self) -> None:
+        self.assertEqual(veto_command("rg --pre 'rm -rf /' foo"), RM_RF)
+        self.assertEqual(veto_command("rg --pre='rm -rf /' foo"), RM_RF)
+        self.assertEqual(veto_command("rg --pre 'cat ~/.ssh/id_rsa' foo"), CREDENTIAL_READ)
+        self.assertIsNone(veto_command("rg --pre cat foo.txt"))
+
+
 class T4(unittest.TestCase):
     def test_redos_under_100ms_16k(self) -> None:
         cases = {
