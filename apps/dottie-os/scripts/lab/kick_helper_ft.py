@@ -103,12 +103,66 @@ PINS_JSON_MAX_BYTES = 64 * 1024
 _GATE_OK = object()
 _UNSET = object()
 RESERVED_EVAL_PARTITION: dict[str, object] = {"n": 10, "residues": [0, 5]}
-# Exact (source.hf, source.config) pairs. An optional third component is
-# source.revision: when present, the row's source.revision must match it
-# exactly. v3 rows carry no revision, so the current entry is a 2-tuple.
-UUIDLESS_SOURCE_ALLOWLIST: frozenset[tuple[str, ...]] = frozenset(
-    {("openbmb/UltraData-Math", "UltraData-Math-L1")}
-)
+# Per-entry uuid-less allowlist. Keys are (source.hf, source.config) or
+# (source.hf, source.config, source.revision). A 3-tuple requires an exact
+# source.revision match. MANIFEST cannot add, remove, or edit entries.
+# v3 Math rows carry no revision, so the live key is the 2-tuple.
+ULTRADATA_MATH_L1_SHAPE: dict[str, object] = {
+    "schema": "jev-decision-schema-1.0.0",
+    "tier": "L2",
+    "top_keys": frozenset(
+        {"schema", "id", "tier", "source", "state", "questions", "labels", "consent"}
+    ),
+    "source_keys": frozenset(
+        {"hf", "config", "split", "row", "record_id", "content_uuid"}
+    ),
+    "state_keys": frozenset({"message", "meta"}),
+    "state_meta_keys": frozenset({"kind"}),
+    "state_meta_kind": "math_problem",
+    "questions_keys": frozenset({"difficulty", "solvable"}),
+    "questions_fields": {
+        "difficulty": frozenset({"type", "instructions", "criteria"}),
+        "solvable": frozenset({"type", "instructions"}),
+    },
+    "questions_types": {"difficulty": "score", "solvable": "noul"},
+    "labels_keys": frozenset({"difficulty", "solvable"}),
+    "labels_fields": {
+        "difficulty": frozenset({"type", "score"}),
+        "solvable": frozenset({"type", "noul"}),
+    },
+    "consent_keys": frozenset({"capture_training", "public_hf", "champion"}),
+    "forbidden_keys": frozenset(
+        {
+            "trajectoryid",
+            "trajectory",
+            "step",
+            "steps",
+            "toolcall",
+            "toolcalls",
+            "tooluse",
+            "functioncall",
+            "action",
+            "command",
+            "shell",
+            "bash",
+            "tool",
+            "cmd",
+        }
+    ),
+    "forbidden_string_patterns": (
+        r"\$ ",
+        r"bash\s+-c",
+        r"rm\s+-",
+        r"<tool_call>",
+        r'"tool"\s*:',
+        r'"command"\s*:',
+        r"```(?:bash|sh)\b",
+        r"\btool\s*=",
+    ),
+}
+UUIDLESS_SOURCE_ALLOWLIST: dict[tuple[str, ...], dict[str, object]] = {
+    ("openbmb/UltraData-Math", "UltraData-Math-L1"): ULTRADATA_MATH_L1_SHAPE,
+}
 RESERVED_CONTENT_UUIDS_ENV = "HELPER_FT_RESERVED_CONTENT_UUIDS"
 RESERVED_CONTENT_UUIDS_SHA256_ENV = "HELPER_FT_RESERVED_CONTENT_UUIDS_SHA256"
 TRAINER_PATH_FILES: dict[str, str] = {
@@ -1643,40 +1697,161 @@ def _source_str_field(row: Mapping[str, Any], key: str) -> str | None:
     return value
 
 
-def _uuidless_source_allowed(
+def _uuidless_allowlist_spec(
     row: Mapping[str, Any],
-    allowlist: frozenset[tuple[str, ...]] | None = None,
-) -> bool:
-    """True when ``source.hf`` + ``source.config`` exactly match an allowlist entry.
+    allowlist: Mapping[tuple[str, ...], Mapping[str, object]] | None = None,
+) -> Mapping[str, object] | None:
+    """Return the per-entry shape spec when hf+config(+revision) match.
 
-    ``source.hf`` alone is not enough. Entries are ``(hf, config)`` or
-    ``(hf, config, revision)``. A revision component requires an exact match
-    on ``source.revision``; 2-tuple entries do not pin revision.
+    ``source.hf`` alone is not enough. Keys are ``(hf, config)`` or
+    ``(hf, config, revision)``. A 3-tuple requires an exact ``source.revision``.
     """
     entries = UUIDLESS_SOURCE_ALLOWLIST if allowlist is None else allowlist
     hf = _source_str_field(row, "hf")
     config = _source_str_field(row, "config")
     if hf is None or config is None:
-        return False
+        return None
     revision = _source_str_field(row, "revision")
-    for entry in entries:
-        if not isinstance(entry, tuple):
-            continue
-        if len(entry) == 2:
-            entry_hf, entry_config = entry
-            if hf == entry_hf and config == entry_config:
-                return True
-            continue
-        if len(entry) == 3:
-            entry_hf, entry_config, entry_revision = entry
-            if (
-                hf == entry_hf
-                and config == entry_config
-                and revision == entry_revision
-            ):
-                return True
-            continue
+    if revision is not None:
+        keyed = entries.get((hf, config, revision))
+        if keyed is not None:
+            return keyed
+    return entries.get((hf, config))
+
+
+def _uuidless_source_allowed(
+    row: Mapping[str, Any],
+    allowlist: Mapping[tuple[str, ...], Mapping[str, object]] | None = None,
+) -> bool:
+    return _uuidless_allowlist_spec(row, allowlist) is not None
+
+
+def _forbidden_key_name(key: object, forbidden: frozenset[str]) -> bool:
+    stem = normalize_leak_key(key)
+    if stem in forbidden:
+        return True
+    if "trajectory" in stem:
+        return True
+    if "toolcall" in stem or "tooluse" in stem or "functioncall" in stem:
+        return True
+    if stem == "step" or stem.startswith("step"):
+        return True
     return False
+
+
+def _mapping_keys(value: object) -> set[object] | None:
+    if not isinstance(value, Mapping):
+        return None
+    return set(value)
+
+
+def _uuidless_shape_mismatch(
+    row: Mapping[str, Any], spec: Mapping[str, object]
+) -> str | None:
+    """Return a reason if the row is not this dataset's allowlisted shape."""
+    top_keys = spec["top_keys"]
+    extra_top = [key for key in row if key not in top_keys]
+    if extra_top:
+        return f"extra top key {extra_top[0]!r}"
+    for required in ("source", "state", "questions", "labels"):
+        if required not in row:
+            return f"missing {required}"
+    schema = spec.get("schema")
+    if schema is not None and row.get("schema") != schema:
+        return "schema mismatch"
+    tier = spec.get("tier")
+    if tier is not None and row.get("tier") != tier:
+        return "tier mismatch"
+    source_keys = _mapping_keys(row.get("source"))
+    if source_keys is None:
+        return "source not object"
+    allowed_source = spec["source_keys"]
+    extra_source = [key for key in source_keys if key not in allowed_source]
+    if extra_source:
+        return f"extra source key {extra_source[0]!r}"
+    state_keys = _mapping_keys(row.get("state"))
+    if state_keys is None:
+        return "state not object"
+    if state_keys != spec["state_keys"]:
+        return "state keys mismatch"
+    questions_keys = _mapping_keys(row.get("questions"))
+    if questions_keys is None:
+        return "questions not object"
+    if questions_keys != spec["questions_keys"]:
+        return "questions keys mismatch"
+    labels_keys = _mapping_keys(row.get("labels"))
+    if labels_keys is None:
+        return "labels not object"
+    if labels_keys != spec["labels_keys"]:
+        return "labels keys mismatch"
+    if "consent" in row:
+        consent_keys = _mapping_keys(row.get("consent"))
+        if consent_keys is None:
+            return "consent not object"
+        if consent_keys != spec["consent_keys"]:
+            return "consent keys mismatch"
+    state = row["state"]
+    if type(state.get("message")) is not str:
+        return "state.message not str"
+    meta = state.get("meta")
+    meta_keys = _mapping_keys(meta)
+    if meta_keys is None:
+        return "state.meta not object"
+    if meta_keys != spec["state_meta_keys"]:
+        return "state.meta keys mismatch"
+    if meta.get("kind") != spec["state_meta_kind"]:
+        return "state.meta.kind mismatch"
+    questions_fields = spec["questions_fields"]
+    questions_types = spec["questions_types"]
+    questions = row["questions"]
+    if not isinstance(questions_fields, Mapping) or not isinstance(questions_types, Mapping):
+        return "questions spec invalid"
+    for name, allowed in questions_fields.items():
+        child = questions.get(name)
+        child_keys = _mapping_keys(child)
+        if child_keys is None:
+            return f"questions.{name} not object"
+        if child_keys != allowed:
+            return f"questions.{name} keys mismatch"
+        expected_type = questions_types.get(name)
+        if expected_type is not None and child.get("type") != expected_type:
+            return f"questions.{name}.type mismatch"
+    labels_fields = spec["labels_fields"]
+    labels = row["labels"]
+    if not isinstance(labels_fields, Mapping):
+        return "labels spec invalid"
+    for name, allowed in labels_fields.items():
+        child = labels.get(name)
+        child_keys = _mapping_keys(child)
+        if child_keys is None:
+            return f"labels.{name} not object"
+        if child_keys != allowed:
+            return f"labels.{name} keys mismatch"
+    forbidden = spec["forbidden_keys"]
+    if not isinstance(forbidden, frozenset):
+        return "forbidden_keys spec invalid"
+    patterns = spec["forbidden_string_patterns"]
+    string_res = tuple(
+        re.compile(pattern, re.I) if type(pattern) is str else pattern
+        for pattern in patterns
+    )
+    stack: list[object] = [row]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, Mapping):
+            for key, child in cur.items():
+                if _forbidden_key_name(key, forbidden):
+                    return f"forbidden key {key!r}"
+                stack.append(child)
+            continue
+        if isinstance(cur, list):
+            stack.extend(cur)
+            continue
+        if type(cur) is str:
+            for regex in string_res:
+                if regex.search(cur):
+                    return "forbidden string marker"
+    return None
 
 
 class ContentUuidRowError(Exception):
@@ -1730,9 +1905,11 @@ def collect_reserved_partition(
     Uuid-less rows are ``reserved_eval_partition.uuid_missing`` unless
     ``(source.hf, source.config)`` exactly matches ``UUIDLESS_SOURCE_ALLOWLIST``
     (and ``source.revision`` when that entry pins one). ``source.hf`` alone
-    is not enough. Allowlisted uuid-less rows skip the modulo check, still
-    require a verified ``source.content_uuid``, and still run the content-uuid
-    membership check.
+    is not enough. An allowlisted uuid-less row must also match that entry's
+    shape spec or it is ``reserved_eval_partition.uuid_missing.shape_mismatch``.
+    The spec is a gate constant; MANIFEST cannot change it. Allowlisted
+    uuid-less rows skip the modulo check, still require a verified
+    ``source.content_uuid``, and still run the content-uuid membership check.
     """
     cfg = _reserved_partition_cfg(manifest, pinned_content_shas)
     hits: list[tuple[str, str]] = []
@@ -1756,11 +1933,23 @@ def collect_reserved_partition(
                 return hits
             continue
         if uuid_text is None:
-            if not _uuidless_source_allowed(row):
+            spec = _uuidless_allowlist_spec(row)
+            if spec is None:
                 hits.append(
                     (
                         "reserved_eval_partition.uuid_missing",
                         f"{rid}:missing source.uuid",
+                    )
+                )
+                if len(hits) >= 10:
+                    return hits
+                continue
+            mismatch = _uuidless_shape_mismatch(row, spec)
+            if mismatch:
+                hits.append(
+                    (
+                        "reserved_eval_partition.uuid_missing.shape_mismatch",
+                        f"{rid}:{mismatch}",
                     )
                 )
                 if len(hits) >= 10:
