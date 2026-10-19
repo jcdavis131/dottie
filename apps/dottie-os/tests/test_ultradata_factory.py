@@ -5121,6 +5121,137 @@ class HelperFtContentUuidTests(unittest.TestCase):
         self.assertEqual(evidence["result"], "MATCH")
 
 
+def _uuid_with_residue(modulus: int, residue: int, prefix: str) -> str:
+    for idx in range(100_000):
+        text = f"{prefix}-{idx}"
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if int(digest, 16) % modulus == residue:
+            return text
+    raise AssertionError(f"no uuid with residue {residue} mod {modulus}")
+
+
+class HelperFtReservedPartitionTests(unittest.TestCase):
+    """Reserved eval partition: uuid mod N==k and content-sha denylist."""
+
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+        _start_hq_http_mock(self)
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            return {"ok": True, "checkpoint_id": "ckpt-part", "exit_code": 0}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+
+    def tearDown(self) -> None:
+        kick_helper_ft.post_kickoff = self._orig_post
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
+
+    def _write(self, dest: Path, rows: list[dict], *, pack_id: str, n: int, k: int, content_shas: list[str] | None = None) -> dict:
+        manifest = _write_action_pack(dest, rows, pack_id=pack_id)
+        payload = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
+        payload["reserved_eval_partition"] = {
+            "n": n,
+            "k": k,
+            "content_shas": list(content_shas or []),
+        }
+        (dest / "MANIFEST.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        return _refresh_hashes(dest)
+
+    def test_uuid_in_reserved_residue_refused(self) -> None:
+        hit = _uuid_with_residue(7, 3, "hit")
+        miss = _uuid_with_residue(7, 1, "miss")
+        a = _row(rid="part-hit", action="execute")
+        b = _row(rid="part-miss", action="halt")
+        a["source"]["uuid"] = hit
+        b["source"]["uuid"] = miss
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(dest, [a, b], pack_id="part-uuid-hit", n=7, k=3)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "reserved_eval_partition")
+        self.assertTrue(any("part-hit" in str(item) for item in ctx.exception.actual))
+
+    def test_reserved_content_sha_refused(self) -> None:
+        a = _row(rid="csha-hit", action="execute")
+        b = _row(rid="csha-miss", action="halt")
+        a["source"]["uuid"] = _uuid_with_residue(5, 1, "csha-a")
+        b["source"]["uuid"] = _uuid_with_residue(5, 1, "csha-b")
+        reserved = content_uuid.content_uuid(a)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(
+                dest, [a, b], pack_id="part-csha-hit", n=5, k=0, content_shas=[reserved]
+            )
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "reserved_eval_partition")
+        listed = " ".join(str(item) for item in ctx.exception.actual)
+        self.assertIn("csha-hit", listed)
+        self.assertIn(reserved, listed)
+
+    def test_missing_uuid_refused(self) -> None:
+        a = _row(rid="miss-uuid", action="execute")
+        b = _row(rid="has-uuid", action="halt")
+        b["source"]["uuid"] = _uuid_with_residue(5, 1, "has")
+        a["source"].pop("uuid", None)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(dest, [a, b], pack_id="part-missing-uuid", n=5, k=0)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "reserved_eval_partition")
+        self.assertTrue(any("miss-uuid" in str(item) for item in ctx.exception.actual))
+
+    def test_clean_twin_outside_partition_accepted(self) -> None:
+        a = _row(rid="twin-a", action="execute")
+        b = _row(rid="twin-b", action="halt")
+        a["source"]["uuid"] = _uuid_with_residue(7, 1, "twin-a")
+        b["source"]["uuid"] = _uuid_with_residue(7, 2, "twin-b")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(dest, [a, b], pack_id="part-clean-twin", n=7, k=3)
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
+    def test_content_uuid_satisfies_uuid_rule(self) -> None:
+        a = _row(rid="cu-a", action="execute")
+        b = _row(rid="cu-b", action="halt")
+        a["source"].pop("uuid", None)
+        b["source"].pop("uuid", None)
+        a["source"]["uuid"] = content_uuid.content_uuid(a)
+        b["source"]["uuid"] = content_uuid.content_uuid(b)
+        # pick k that neither residue hits
+        residues = {
+            int(hashlib.sha256(a["source"]["uuid"].encode("utf-8")).hexdigest(), 16) % 11,
+            int(hashlib.sha256(b["source"]["uuid"].encode("utf-8")).hexdigest(), 16) % 11,
+        }
+        k = next(idx for idx in range(11) if idx not in residues)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(dest, [a, b], pack_id="part-content-uuid-ok", n=11, k=k)
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -1383,6 +1383,78 @@ def collect_forged_content_uuids(recorded_paths: Mapping[str, str]) -> list[str]
     return hits
 
 
+def _reserved_partition_cfg(manifest: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    cfg = manifest.get("reserved_eval_partition")
+    if cfg is None:
+        return None
+    if not isinstance(cfg, Mapping):
+        _refuse("reserved_eval_partition", "object with n and k", type(cfg).__name__)
+    if "n" not in cfg or "k" not in cfg:
+        _refuse("reserved_eval_partition", "n and k (no default)", sorted(cfg))
+    modulus = cfg["n"]
+    residue = cfg["k"]
+    if type(modulus) is not int or isinstance(modulus, bool) or modulus < 2:
+        _refuse("reserved_eval_partition.n", "int >= 2", modulus)
+    if type(residue) is not int or isinstance(residue, bool) or residue < 0 or residue >= modulus:
+        _refuse("reserved_eval_partition.k", f"int in [0, {modulus})", residue)
+    raw_shas = cfg.get("content_shas", cfg.get("reserved_content_shas", []))
+    if raw_shas is None:
+        raw_shas = []
+    if not isinstance(raw_shas, list):
+        _refuse("reserved_eval_partition.content_shas", "list of sha256 hex", type(raw_shas).__name__)
+    shas: set[str] = set()
+    for idx, value in enumerate(raw_shas):
+        shas.add(_require_sha256_hex(f"reserved_eval_partition.content_shas[{idx}]", value))
+    return {"n": modulus, "k": residue, "content_shas": shas}
+
+
+def collect_reserved_partition(
+    manifest: Mapping[str, Any],
+    recorded_paths: Mapping[str, str],
+) -> list[str]:
+    """Refuse training rows in the reserved eval partition (conditions 1 and 2).
+
+    Condition 1: ``int(sha256(uuid_text), 16) % n == k`` with ``n`` and ``k``
+    from ``MANIFEST.reserved_eval_partition``. There is no default that passes.
+    Condition 2: the row's content uuid (same helper Mill uses) is in
+    ``content_shas``. A row satisfies the uuid rule with ``source.uuid`` or a
+    content uuid the gate recomputes and verifies. Missing both refuses.
+    """
+    cfg = _reserved_partition_cfg(manifest)
+    if cfg is None:
+        return []
+    hits: list[str] = []
+    modulus = cfg["n"]
+    residue = cfg["k"]
+    reserved = cfg["content_shas"]
+    for row in _training_rows(recorded_paths):
+        rid = _row_id(row)
+        try:
+            verified = content_uuid.verify_content_uuid(row)
+        except content_uuid.ContentUuidError as exc:
+            hits.append(str(exc))
+            if len(hits) >= 10:
+                return hits
+            continue
+        uuid_text = content_uuid.source_uuid_text(row)
+        if uuid_text is None and verified is None:
+            hits.append(f"{rid}:missing source.uuid")
+            if len(hits) >= 10:
+                return hits
+            continue
+        if uuid_text is None:
+            uuid_text = verified
+        digest = hashlib.sha256(uuid_text.encode("utf-8")).hexdigest()
+        if int(digest, 16) % modulus == residue:
+            hits.append(f"{rid}:uuid_mod=={residue}")
+        content_sha = content_uuid.content_uuid(row)
+        if content_sha in reserved:
+            hits.append(f"{rid}:reserved content sha {content_sha}")
+        if len(hits) >= 10:
+            return hits
+    return hits
+
+
 def enforce_pack_gates(
     manifest: Mapping[str, Any],
     recorded_paths: Mapping[str, str],
@@ -1404,6 +1476,9 @@ def enforce_pack_gates(
     forged = collect_forged_content_uuids(recorded_paths)
     if forged:
         _refuse("content_uuid", "recomputed digest", forged[:10])
+    reserved = collect_reserved_partition(manifest, recorded_paths)
+    if reserved:
+        _refuse("reserved_eval_partition", "outside reserved slice", reserved[:10])
     leaks = collect_state_leaks(recorded_paths, pack_dir=pack_dir)
     if leaks:
         _refuse("state.leak", "absent", leaks[:10])
