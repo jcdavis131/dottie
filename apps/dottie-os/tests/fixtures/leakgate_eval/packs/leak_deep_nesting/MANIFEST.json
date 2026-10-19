@@ -1,0 +1,14 @@
+{
+ "pack_id": "leakfix-leak_deep_nesting",
+ "rows": 16,
+ "train_rows": 12,
+ "holdout_rows": 4,
+ "sha256_pack": "6d4f8a434b3f259a7f4060124cde32b5a10ed56d437e18366e09aacc69282ac0",
+ "sha256_train": "84c18c3af54bbd66a848ca30364f2153e757901a92fbf8da9b6e4d5d5bf50d52",
+ "sha256_holdout": "9fd8d39bb29cd6a68c7a69fb1e1842a571020529692f9eaefc297f9278394dec",
+ "eval_only": true,
+ "not_for_train": true,
+ "champion_touched": false,
+ "ft_kicked": false,
+ "live_gate_touched": false
+}

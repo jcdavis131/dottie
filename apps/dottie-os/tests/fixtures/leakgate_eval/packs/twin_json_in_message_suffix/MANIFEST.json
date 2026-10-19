@@ -1,0 +1,14 @@
+{
+ "pack_id": "leakfix-twin_json_in_message_suffix",
+ "rows": 16,
+ "train_rows": 12,
+ "holdout_rows": 4,
+ "sha256_pack": "8fc8c4e7e6ea7a824cb57ce11a8a6e9a7fc10864cf6422d7b2dfe82bf445d74a",
+ "sha256_train": "c974351e6ec5703dd539cb8a65814b29e34a0b6aa5d933bc70fa83446fbc2091",
+ "sha256_holdout": "959dd6de3120748889a32587467f27c4ee106ff9fcc18f25fcb4aa52d1d77cf6",
+ "eval_only": true,
+ "not_for_train": true,
+ "champion_touched": false,
+ "ft_kicked": false,
+ "live_gate_touched": false
+}

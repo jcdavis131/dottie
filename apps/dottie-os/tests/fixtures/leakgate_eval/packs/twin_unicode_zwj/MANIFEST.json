@@ -1,0 +1,14 @@
+{
+ "pack_id": "leakfix-twin_unicode_zwj",
+ "rows": 16,
+ "train_rows": 12,
+ "holdout_rows": 4,
+ "sha256_pack": "f78a5f8ae177ea61bbed04d5bb0808c88597b8f6a802f9811de715fa0aecb275",
+ "sha256_train": "f32dd74337872b88952c6bd2dd70ec71b39c0a4bd618748f4fb489dce004882d",
+ "sha256_holdout": "a18151dfd0c3648b6951f1906361ad91f7fd223ff774e46a3eed117d255e6183",
+ "eval_only": true,
+ "not_for_train": true,
+ "champion_touched": false,
+ "ft_kicked": false,
+ "live_gate_touched": false
+}

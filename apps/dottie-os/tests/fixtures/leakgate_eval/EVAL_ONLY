@@ -1,0 +1,2 @@
+eval-only / not_for_train leak-gate fixtures (Mill 20261018-230457).
+Do not train, kick for GPU, or score a checkpoint on these packs.

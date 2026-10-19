@@ -112,6 +112,7 @@ apps/dottie-os/staging/
 apps/dottie-os/hop/
 apps/dottie-os/registry/
 apps/dottie-os/**/curated_pack_*.jsonl
+!apps/dottie-os/tests/fixtures/leakgate_eval/**/curated_pack_*.jsonl
 apps/dottie-os/**/ultradata_harvest_*/
 
 # --- Dottie SOTA sessions / harness (prime-agent edition, local-only) ---
