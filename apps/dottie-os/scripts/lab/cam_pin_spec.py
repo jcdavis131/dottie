@@ -376,6 +376,12 @@ def verify_v2_lifetime(
 
 
 def sign_pin_v2(fields: dict[str, Any], raw_private: bytes) -> str:
+    """Cam-side CLI and tests only. Kick and :8765 must not call this.
+
+    The private key is never read here. ``tools/sign_cam_pin.py`` supplies
+    bytes from a path or stdin on Cam's device. Tests generate ephemeral
+    keys at runtime.
+    """
     message = canonical_pin_bytes_v2(fields)
     return sign_pin_bytes(message, raw_private)
 

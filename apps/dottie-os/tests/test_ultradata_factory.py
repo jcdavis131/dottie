@@ -41,7 +41,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+    PublicFormat,
+)
 
 APP = Path(__file__).resolve().parents[1]
 SCRIPTS = APP / "scripts"
@@ -462,11 +467,18 @@ def _write_helper_pack(dest: Path) -> dict:
 SWARM_HQ_PIN_CONTRACT_REQUIRED = kick_helper_ft.HQ_PIN_REQUIRED_KEYS
 SWARM_HQ_PIN_CONTRACT_ALLOWED = kick_helper_ft.HQ_PIN_ALLOWED_KEYS
 SWARM_HQ_AGENT_TOKEN_FIXTURE = "test-swarm-hq-agent-token"
-TEST_CAM_PRIVATE = base64.b64decode("RcEEdi7r4yRF6hbT98+itrc4A5q7nXNg/b/DTBv1Ptw=")
+def _ephemeral_ed25519_seed() -> bytes:
+    """Runtime-only seed. Never committed, never an env default."""
+    return Ed25519PrivateKey.generate().private_bytes(
+        Encoding.Raw, PrivateFormat.Raw, NoEncryption()
+    )
+
+
+TEST_CAM_PRIVATE = _ephemeral_ed25519_seed()
 TEST_CAM_KEY_ID = "cam-pin-ed25519-1"
 PINNED_HQ_ORIGIN = "https://swarm-hq.test"
 HQ_VECTOR_PATH = APP / "tests" / "fixtures" / "cam-pin-vector.json"
-HQ_VECTOR_SHA256 = "ef12aada8b666079513f716fd9dee7c88176fa302050699ce76460b7aa180666"
+HQ_VECTOR_SHA256 = "81bca25c743054c5d8f63e28468ac490195dc3008a3529a673278693b335b025"
 _TEST_TRUST_BLOBS = {
     "apps/dottie-os/trust/cam_pin_ed25519.pub": "test-pub-blob",
     "apps/dottie-os/trust/cam_pin_key_id": "test-key-id-blob",
@@ -1961,7 +1973,10 @@ def _fresh_kickoff_body(dest: Path, manifest: dict, *, run_id: str = "helper-ft-
     os.chmod(pin_path, 0o400)
     _STAGED_PIN_STATE["path"] = pin_path
     _STAGED_PIN_STATE["pin"] = pin
-    _STAGED_PIN_STATE["run_id"] = pin["binding"]["run_id"]
+    binding = pin.get("binding") if isinstance(pin.get("binding"), dict) else {}
+    _STAGED_PIN_STATE["run_id"] = (
+        binding.get("run_id") or pin.get("run_id") or "helper-ft-test-run"
+    )
     trainer_paths = {
         "pack": str((run_private / "curated_pack_v2.jsonl").resolve()),
         "train": str((run_private / "curated_pack_v2_train.jsonl").resolve()),
@@ -2965,6 +2980,50 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             out = buf.getvalue()
             self.assertNotIn(priv.read_bytes().hex(), out)
             self.assertTrue(out.strip())
+            v2_path = Path(tmp) / "pin-v2.json"
+            issued, not_before, not_after = _v2_window()
+            v2_path.write_text(
+                json.dumps(
+                    {
+                        "format": cam_pin_spec.PIN_FORMAT_V2,
+                        "key_id": "cam-pin-ed25519-tool",
+                        "binding": {
+                            "lease_owner": "human:cam",
+                            "pack_id": "p",
+                            "run_id": "run-cli",
+                        },
+                        "issued_at": _rfc3339_z(issued),
+                        "not_before": _rfc3339_z(not_before),
+                        "not_after": _rfc3339_z(not_after),
+                        "nonce": "ab" * 32,
+                        "sha256_pack": "11" * 32,
+                        "sha256_train": "22" * 32,
+                        "sha256_holdout": "33" * 32,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            stdin_buf = BytesIO(priv.read_bytes())
+
+            class _Stdin:
+                buffer = stdin_buf
+
+            buf2 = StringIO()
+            old_in = sys.stdin
+            sys.stdout = buf2
+            sys.stdin = _Stdin()  # type: ignore[assignment]
+            try:
+                rc3 = sign.main(["--private-key", "-", "--pin", str(v2_path)])
+            finally:
+                sys.stdout = old
+                sys.stdin = old_in
+            self.assertEqual(rc3, 0)
+            self.assertNotIn(priv.read_bytes().hex(), buf2.getvalue())
+            self.assertTrue(buf2.getvalue().strip())
+            sign_src = Path(APP / "tools" / "sign_cam_pin.py").read_text(encoding="utf-8")
+            self.assertNotIn("os.environ", sign_src)
+            self.assertIn("--private-key", sign_src)
+            self.assertIn("stdin", sign_src.lower())
 
     def test_committed_pubkey_placeholder_refuses_runtime(self) -> None:
         self._key_patcher.stop()
@@ -4781,8 +4840,12 @@ class CamPinVectorTests(unittest.TestCase):
 
     def test_vector_file_sha256_matches_hq_a2cf90e5(self) -> None:
         raw = HQ_VECTOR_PATH.read_bytes()
-        self.assertEqual(len(raw), 2548)
+        self.assertEqual(len(raw), 2507)
         self.assertEqual(hashlib.sha256(raw).hexdigest(), HQ_VECTOR_SHA256)
+        text = raw.decode("utf-8")
+        self.assertNotIn("private_seed", text)
+        self.assertNotIn("private_key", text.lower())
+        self.assertNotIn("Zh7zz/VLRPdKyY8Tvbu9lRzwHib3oieQ64C+WhugWxc=", text)
 
     def test_vector_canonical_and_sig_cli_and_8765(self) -> None:
         vector = self._vector()
@@ -6911,6 +6974,93 @@ class HelperFtK1PinV2Tests(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(self.hq_requests, [])
+
+    def test_valid_v1_signature_never_authorizes_kick_child_or_launcher(self) -> None:
+        """A valid v1 Ed25519 pin cannot authorize a kick in child or launcher."""
+        launches: list[dict] = []
+
+        def stub(body: dict) -> dict:
+            launches.append(body)
+            return {"ok": True, "checkpoint_id": "must-not-launch", "exit_code": 0}
+
+        client = helper_ft_kickoff.TestClient(launch_trainer=stub)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            v1 = _sign_pin(
+                {
+                    "pack_id": manifest["pack_id"],
+                    "sha256_pack": manifest["sha256_pack"],
+                    "sha256_train": manifest["sha256_train"],
+                    "sha256_holdout": manifest["sha256_holdout"],
+                    "rows_total": manifest["rows"],
+                    "rows_train": manifest["train_rows"],
+                    "rows_holdout": manifest["holdout_rows"],
+                    "recordedAt": "2026-10-19T00:00:00.000Z",
+                    "kid": "cam-stamp-kid-1",
+                    "cam_key_id": TEST_CAM_KEY_ID,
+                    "recordedBy": "cam",
+                    "stampVerified": True,
+                    "pack_matches": True,
+                }
+            )
+            cam_pin_spec.verify_cam_sig_v1(v1)
+            path = _write_staged_pin(v1)
+            with self.assertRaises(kick_helper_ft.KickRefused) as child:
+                self._orig_kick(dest, run_id="helper-ft-test-run", pin_path=path)
+            rc = kick_helper_ft.main(
+                ["--pack", str(dest), "--run-id", "helper-ft-test-run", "--pin", str(path)]
+            )
+            self._pin(manifest)
+            body = _fresh_kickoff_body(dest, manifest)
+            staged = Path(body["pin_path"])
+            os.chmod(staged, 0o600)
+            staged.write_text(
+                json.dumps(v1, separators=(",", ":"), sort_keys=True), encoding="utf-8"
+            )
+            os.chmod(staged, 0o400)
+            body["pin"] = dict(v1)
+            body["evidence"]["pin"] = dict(v1)
+            launched = client.post("/train/kickoff", json=body)
+            body_only = _fresh_kickoff_body(dest, manifest)
+            staged_only = Path(body_only["pin_path"])
+            if staged_only.is_file():
+                os.chmod(staged_only, 0o600)
+                staged_only.unlink()
+            body_only.pop("pin_path", None)
+            body_only["pin"] = dict(v1)
+            body_only["evidence"]["pin"] = dict(v1)
+            body_only_resp = client.post("/train/kickoff", json=body_only)
+        self.assertEqual(child.exception.field, "cam-pin.format")
+        self.assertEqual(child.exception.expected, cam_pin_spec.PIN_FORMAT_V2)
+        self.assertEqual(child.exception.actual, cam_pin_spec.PIN_FORMAT_V1)
+        self.assertEqual(rc, 1)
+        self.assertEqual(launched.status_code, 400)
+        self.assertEqual(launched.json()["field"], "cam-pin.format")
+        self.assertEqual(launched.json()["actual"], cam_pin_spec.PIN_FORMAT_V1)
+        self.assertEqual(body_only_resp.status_code, 400)
+        self.assertEqual(body_only_resp.json()["field"], "cam-pin")
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(launches, [])
+        self.assertEqual(self.hq_requests, [])
+
+    def test_agent_and_server_never_call_signer(self) -> None:
+        kick_src = Path(kick_helper_ft.__file__).read_text(encoding="utf-8")
+        kickoff_src = Path(helper_ft_kickoff.__file__).read_text(encoding="utf-8")
+        readme = (APP / "README.md").read_text(encoding="utf-8")
+        self.assertNotIn("sign_pin_v2", kick_src)
+        self.assertNotIn("sign_cam_pin", kick_src)
+        self.assertNotIn("sign_pin_bytes(", kick_src)
+        self.assertNotIn("sign_pin_v2", kickoff_src)
+        self.assertNotIn("sign_cam_pin", kickoff_src)
+        self.assertNotIn("sign_pin_bytes(", kickoff_src)
+        self.assertIn("Cam-side v2 signer", readme)
+        self.assertIn("--private-key -", readme)
+        self.assertIn("agent-supplied HTTP body is not provenance", readme)
+        src = Path(__file__).read_text(encoding="utf-8")
+        self.assertIn("_ephemeral_ed25519_seed", src)
+        self.assertIn("TEST_CAM_PRIVATE = _ephemeral_ed25519_seed()", src)
 
     def test_run_id_missing_and_mismatch_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
