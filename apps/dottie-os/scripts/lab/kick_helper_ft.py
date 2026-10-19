@@ -3439,14 +3439,9 @@ def clopper_pearson_upper(hits: int, n: int, *, confidence: float = 0.99) -> flo
 
 
 def _forward_sample_too_small(hits: int, effective: int) -> bool:
-    """Refuse forward when the 99% CP upper bound is untrustworthy or >= 0.5 below the floor."""
+    """Refuse forward when effective tags are below the mill floor. Fail-closed, not report-only."""
     floor = row_fields.mill_forward_sample_floor()
-    minimum = row_fields.mill_forward_sample_min()
-    if effective < minimum:
-        return True
-    if effective >= floor:
-        return False
-    return clopper_pearson_upper(hits, effective) >= 0.5
+    return effective < floor
 
 
 def _collect_v2x_near_dup(

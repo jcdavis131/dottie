@@ -8494,7 +8494,7 @@ class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
 DENIED_FIELD_N_TEXT = "the reserved eval n member hid here"
 _EXTRACT_PATHS_SKIP = "mill tokenizer v2.2 extract_paths not vendored"
 _FP_PAD_SKIP = "mill tokenizer v2.2 fingerprint buckets/dummy tags not vendored"
-_FP_FILE_SKIP = "mill tokenizer v2.5 fingerprint file / n_refs not vendored"
+_FP_FILE_SKIP = "mill tokenizer v2.6 fingerprint file / n_refs not vendored"
 
 
 def _place_denied_field(row: dict, field: str, value: object) -> dict:
@@ -8573,9 +8573,11 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
         self.assertFalse((LAB / "neardup_tokens-v2_4.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2.5.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2_5.py").is_file())
-        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.5")
+        self.assertFalse((LAB / "neardup_tokens-v2.6.py").is_file())
+        self.assertFalse((LAB / "neardup_tokens-v2_6.py").is_file())
+        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.6")
         self.assertEqual(row_fields.MILL_FP_FORMAT_PLACEHOLDER, "mill-ndfp-3")
-        self.assertTrue(row_fields.NEAR_DUP_TOKENIZER_V25_SHA256.startswith("NEAR_DUP_TOKENIZER_V25_SHA256_PLACEHOLDER"))
+        self.assertTrue(row_fields.NEAR_DUP_TOKENIZER_V26_SHA256.startswith("NEAR_DUP_TOKENIZER_V26_SHA256_PLACEHOLDER"))
         self.assertTrue(row_fields.STOPLIST_SHA256.startswith("STOPLIST_SHA256_PLACEHOLDER"))
         self.assertTrue(row_fields.STOPLIST_SOURCE_PACK_SHA256.startswith("STOPLIST_SOURCE_PACK_SHA256_PLACEHOLDER"))
         self.assertEqual(row_fields.STOPLIST_SOURCE_ROWS, 0)
@@ -8710,8 +8712,8 @@ class HelperFtTrainerSeamAstTests(unittest.TestCase):
                     offenders.append(f"{path.name}:{node.lineno}")
         self.assertEqual(offenders, [])
 
-    def test_pin_target_is_v25_format_mill_ndfp_3(self) -> None:
-        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.5")
+    def test_pin_target_is_v26_format_mill_ndfp_3(self) -> None:
+        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.6")
         self.assertEqual(row_fields.MILL_FP_FORMAT_PLACEHOLDER, "mill-ndfp-3")
         self.assertEqual(row_fields.mill_stoplist_sha(), row_fields.STOPLIST_SHA256)
         prior = "mill-ndfp-" + str(2)
@@ -8733,6 +8735,8 @@ class HelperFtTrainerSeamAstTests(unittest.TestCase):
             self.assertNotIn(critic_v24, text)
         self.assertFalse((LAB / "neardup_tokens-v2.4.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2_4.py").is_file())
+        self.assertFalse((LAB / "neardup_tokens-v2.5.py").is_file())
+        self.assertFalse((LAB / "neardup_tokens-v2_5.py").is_file())
         self.assertFalse((Path("apps/dottie-os/tests") / "critic_neardup_v2_4.py").is_file())
 
 
@@ -9138,6 +9142,7 @@ def _install_fake_v22_fp_file_mill() -> object:
     mill.KCV_FIELD = "kcv"
     mill.HasherMismatchError = _FakeHasherMismatchError
     mill.FORWARD_THRESHOLD = 0.43
+    mill.FORWARD_SAMPLE_FLOOR = 64
     mill.CAP = 1024
     mill.BUCKETS = (32, 64, 128, 256, 512, 1024)
     mill.FP_BUCKETS = mill.BUCKETS
@@ -9650,7 +9655,8 @@ class HelperFtMillFpPadTests(unittest.TestCase):
         buckets = row_fields.mill_buckets()
         self.assertTrue(buckets)
         self.assertTrue(all(type(item) is int and item >= 16 for item in buckets))
-        self.assertGreaterEqual(row_fields.mill_cap(), 1)
+        self.assertEqual(row_fields.mill_cap(), 1024)
+        self.assertEqual(row_fields.mill_buckets(), (32, 64, 128, 256, 512, 1024))
         self.assertEqual(row_fields.mill_sample_margin(), 0.07)
         self.assertEqual(row_fields.mill_min_ref(), cam_pin_spec.PINNED_NEAR_DUP_MIN_REF)
         self.assertTrue(callable(getattr(mill, "dummy_tags", None) or getattr(mill, "derive_dummy_shingles", None)))
@@ -10116,6 +10122,8 @@ class HelperFtV22FpFileTests(unittest.TestCase):
             )
         self.assertEqual(len(found), 1)
         self.assertEqual(len(found[digest][1]), 1024)
+        self.assertEqual(row_fields.mill_cap(), 1024)
+        self.assertIn(1024, row_fields.mill_buckets())
 
     def test_stoplist_sha_mismatch_refused(self) -> None:
         key_id = "factory-hmac-test-key"
@@ -10171,14 +10179,18 @@ class HelperFtV22FpFileTests(unittest.TestCase):
         self.assertTrue(any("near_dup of" in msg for _f, msg in hits), hits)
 
     def test_forward_threshold_is_constant(self) -> None:
+        self.assertEqual(row_fields.mill_cap(), 1024)
+        self.assertEqual(row_fields.mill_buckets(), (32, 64, 128, 256, 512, 1024))
         self.assertEqual(row_fields.mill_forward_threshold(), 0.43)
         self.assertEqual(self._mill.FORWARD_THRESHOLD, 0.43)
+        self.assertEqual(row_fields.mill_forward_threshold(), row_fields.mill_forward_threshold())
 
-    def test_forward_sample_clopper_pearson_backstop(self) -> None:
-        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 7))
+    def test_forward_sample_too_small_fail_closed(self) -> None:
+        self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 7))
         self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 6))
         self.assertTrue(kick_helper_ft._forward_sample_too_small(1, 10))
-        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 63))
+        self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 63))
+        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 64))
         row = _strict_row("cp-row", "halt")
         row["subset"] = "Agent"
         row["trajectory_id"] = "cp-row"
@@ -10266,7 +10278,7 @@ class HelperFtV22FpFileTests(unittest.TestCase):
 
 @unittest.skipUnless(row_fields.mill_fp_file_ready(), _FP_FILE_SKIP)
 class HelperFtMillFpFileTests(unittest.TestCase):
-    """Contract tests for mill v2.5 fingerprint file. Skip until vendored."""
+    """Contract tests for mill v2.6 fingerprint file. Skip until vendored."""
 
     def test_mill_exports_kcv_and_index_binding(self) -> None:
         mill = content_uuid._load_mill_near_dup_tokenizer()
@@ -10299,11 +10311,13 @@ class HelperFtMillFpFileTests(unittest.TestCase):
         self.assertIsInstance(value, str)
         self.assertTrue(value)
         self.assertTrue(callable(getattr(mill, "load_fingerprint_file", None)))
-        self.assertGreaterEqual(row_fields.mill_cap(), 1)
-        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.5")
+        self.assertEqual(row_fields.mill_cap(), 1024)
+        self.assertEqual(row_fields.mill_buckets(), (32, 64, 128, 256, 512, 1024))
+        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.6")
         self.assertEqual(row_fields.mill_fp_format(), "mill-ndfp-3")
         self.assertEqual(row_fields.mill_stoplist_sha(), row_fields.STOPLIST_SHA256)
         self.assertEqual(row_fields.mill_reverse_floor(), 64)
+        self.assertEqual(row_fields.mill_forward_threshold(), 0.43)
 
     def test_duplicate_index_refused(self) -> None:
         rec = {"index": 0}
@@ -10378,11 +10392,16 @@ class HelperFtMillFpFileTests(unittest.TestCase):
         self.assertEqual(row_fields.mill_forward_threshold(), 0.43)
         self.assertEqual(row_fields.mill_forward_threshold(), row_fields.mill_forward_threshold())
 
-    def test_forward_sample_clopper_pearson_backstop(self) -> None:
-        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 7))
+    def test_forward_sample_too_small_fail_closed(self) -> None:
+        self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 7))
         self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 6))
         self.assertTrue(kick_helper_ft._forward_sample_too_small(1, 10))
-        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 63))
+        self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 63))
+        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 64))
+
+    def test_cap_bucket_is_1024(self) -> None:
+        self.assertEqual(row_fields.mill_cap(), 1024)
+        self.assertIn(1024, row_fields.mill_buckets())
 
     def test_stoplist_sha_is_pinned_constant(self) -> None:
         self.assertEqual(row_fields.mill_stoplist_sha(), row_fields.STOPLIST_SHA256)
