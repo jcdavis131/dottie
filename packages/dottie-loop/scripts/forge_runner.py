@@ -138,26 +138,37 @@ def tick(args: argparse.Namespace) -> dict[str, Any]:
     return {"claimed": spec.job_id, "result": res}
 
 
+def _helper_ft_kickoff_path() -> Path | None:
+    here = Path(__file__).resolve()
+    if len(here.parents) >= 4:
+        candidate = here.parents[3] / "apps" / "dottie-os" / "scripts" / "lab" / "helper_ft_kickoff.py"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _load_helper_ft_kickoff():
+    path = _helper_ft_kickoff_path()
+    if path is None:
+        return None
+    spec = importlib.util.spec_from_file_location("helper_ft_kickoff", path)
+    if spec is None or spec.loader is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     """HELPER FT ``POST /train/kickoff``. Never accepts ``inbox: latest``.
 
     Canonical implementation: ``apps/dottie-os/scripts/lab/helper_ft_kickoff.py``.
-    When this runner is copied off-tree, still refuse latest/missing evidence.
+    Checks run before any GPU launch. When this runner is copied off-tree,
+    still refuse latest/missing evidence.
     """
-    here = Path(__file__).resolve()
-    candidates = []
-    if len(here.parents) >= 4:
-        candidates.append(
-            here.parents[3] / "apps" / "dottie-os" / "scripts" / "lab" / "helper_ft_kickoff.py"
-        )
-    for path in candidates:
-        if path.is_file():
-            spec = importlib.util.spec_from_file_location("helper_ft_kickoff", path)
-            if spec is None or spec.loader is None:
-                break
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod.handle_train_kickoff(body)
+    mod = _load_helper_ft_kickoff()
+    if mod is not None:
+        return mod.handle_train_kickoff(body)
     if not isinstance(body, dict):
         return {"ok": False, "field": "body", "expected": "object", "actual": type(body).__name__}
     inbox = body.get("inbox")
@@ -170,7 +181,27 @@ def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     return {"ok": False, "field": "handler", "expected": "helper_ft_kickoff.py", "actual": "missing"}
 
 
+def helper_ft_wsgi_app(*, launch_trainer=None):
+    """WSGI app for the in-repo :8765 HELPER FT route."""
+    mod = _load_helper_ft_kickoff()
+    if mod is None:
+        raise RuntimeError("helper_ft_kickoff.py missing")
+    return mod.make_app(launch_trainer=launch_trainer)
+
+
+def serve_helper_ft_kickoff(host: str = "127.0.0.1", port: int = 8765, *, launch_trainer=None) -> None:
+    """Bind :8765 and run HELPER FT checks before any wired trainer launch."""
+    mod = _load_helper_ft_kickoff()
+    if mod is None:
+        raise RuntimeError("helper_ft_kickoff.py missing")
+    mod.serve(host, port, launch_trainer=launch_trainer)
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "--helper-ft-serve":
+        serve_helper_ft_kickoff()
+        return 0
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--queue-repo", required=True, help="git URL of the private forge queue repository")
     ap.add_argument("--workdir", default="~/forge")

@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Stage-5 HELPER factory-trainer kick: point-of-use pack integrity, then kickoff.
 
-The only trust anchor is a Cam-stamped pack-pin fetched over HTTPS from Swarm
-HQ (``GET {SWARM_HQ_URL}/api/packs/<pack_id>/pin``). The API must report the
-record as created with Cam's stamp token (``recordedBy=cam``,
-``stampVerified=true`` on the server). There is no ticket, Mill-signed, or
-``--cam-pin`` paste path: agents share the host and can fake those. Redis is
-never read. If HQ is unreachable, refuse.
+The trust anchor is Cam's Ed25519 signature over the canonical pin bytes
+(see ``cam_pin_spec.py``), verified against the public key committed at
+``apps/dottie-os/trust/cam_pin_ed25519.pub``. Swarm HQ is only a transport:
+``stampVerified`` and ``pack_matches`` are advisory and never sufficient.
+The HQ origin is the hardcoded ``cam_pin_spec.SWARM_HQ_ORIGIN`` (HTTPS, no
+redirects, no proxies). There is no ``SWARM_HQ_URL`` env, CLI, or config
+override. Redis is never read.
 
-The pin must be present with ``stampVerified`` and ``pack_matches`` both true,
-match ``MANIFEST.json``, match the computed hashes of the run-private copies,
-and match the three row counts against the MANIFEST and the counted copies.
-``pack_matches`` is necessary, never sufficient. ``--cam-pin``, a pin env var,
-and a local pin file are refused before hashing or kickoff. Rewriting the pack and the MANIFEST
-together still fails. After the gate passes, this script POSTs
-``/train/kickoff`` with the same pin; ``inbox: latest`` is never sent.
+This process hashes and counts the run-private copies itself and compares
+those to the signed pin and MANIFEST. ``--cam-pin``, a pin env var, and a
+local pin file are refused before hashing or kickoff. After the gate
+passes, this script POSTs ``/train/kickoff``; ``inbox: latest`` is never
+sent. Copies are 0400 in a 0700 directory. Post-train re-hash runs after
+training finishes.
 
 There is no skip flag or skip env var. Does not promote, does not touch serve,
 :8770, champion files, or the LIVE gate.
@@ -32,7 +32,6 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
-import urllib.parse
 import urllib.request
 import uuid
 from collections import Counter
@@ -40,30 +39,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, NoReturn
 
+_LAB = str(Path(__file__).resolve().parent)
+if _LAB not in sys.path:
+    sys.path.insert(0, _LAB)
+
+import cam_pin_spec
+
 PACK_FILE = "curated_pack_v2.jsonl"
 TRAIN_FILE = "curated_pack_v2_train.jsonl"
 HOLDOUT_FILE = "curated_pack_v2_holdout.jsonl"
 MANIFEST_FILE = "MANIFEST.json"
 DEFAULT_LOG_NAME = "helper_ft.log"
 DEFAULT_KICKOFF_URL = "http://127.0.0.1:8765/train/kickoff"
-SWARM_HQ_URL_ENV = "SWARM_HQ_URL"
-SWARM_HQ_AGENT_TOKEN_ENV = "SWARM_HQ_AGENT_TOKEN"
+SWARM_HQ_AGENT_TOKEN_ENV = cam_pin_spec.SWARM_HQ_AGENT_TOKEN_ENV
 PIN_SOURCE = "swarm-hq-cam-pin"
-CAM_RECORDED_BY = "cam"
-HQ_PIN_REQUIRED_KEYS = (
-    "pack_id",
-    "sha256_pack",
-    "sha256_train",
-    "sha256_holdout",
-    "rows_total",
-    "rows_train",
-    "rows_holdout",
-    "pack_matches",
-    "recordedBy",
-    "recordedAt",
-    "kid",
-)
-HQ_PIN_ALLOWED_KEYS = frozenset((*HQ_PIN_REQUIRED_KEYS, "stampVerified", "verified"))
+HQ_PIN_REQUIRED_KEYS = cam_pin_spec.HQ_PIN_REQUIRED_KEYS
+HQ_PIN_ALLOWED_KEYS = cam_pin_spec.HQ_PIN_ALLOWED_KEYS
 CHUNK = 1 << 20
 SHA256_LEN = 64
 _HEX = frozenset("0123456789abcdef")
@@ -138,6 +129,10 @@ def _script_git_sha() -> str | None:
     return sha if proc.returncode == 0 and sha else None
 
 
+def _script_sha256() -> str:
+    return sha256_file(Path(__file__).resolve())
+
+
 def _open_flags_read() -> int:
     flags = os.O_RDONLY
     if hasattr(os, "O_BINARY"):
@@ -189,12 +184,10 @@ def count_rows(path: Path) -> int:
 
 
 def _require_sha256_hex(field: str, value: object) -> str:
-    if not isinstance(value, str) or not value:
-        _refuse(field, "present", "missing")
-    lowered = value.strip().lower()
-    if len(lowered) != SHA256_LEN or any(ch not in _HEX for ch in lowered):
-        _refuse(field, "64-char hex", value)
-    return lowered
+    try:
+        return cam_pin_spec.require_sha256_hex(field, value)
+    except cam_pin_spec.CamPinError as exc:
+        _refuse(exc.field, exc.expected, exc.actual)
 
 
 def _require_int(field: str, value: object) -> int:
@@ -301,6 +294,11 @@ def _copy_and_hash(src: Path, dest: Path, field: str) -> str:
             _refuse(field, "readable regular file", f"OSError:{exc.errno}")
         finally:
             os.close(out_fd)
+        try:
+            os.chmod(dest, 0o400)
+        except OSError:
+            if os.name != "nt":
+                raise
         return digest.hexdigest()
     finally:
         os.close(fd)
@@ -358,125 +356,49 @@ def _read_manifest(pack_dir: Path) -> dict[str, Any]:
 
 
 def _require_cam_pin(record: object, pack_id: str) -> dict[str, Any]:
-    """Refuse unless HQ reports a Cam-stamped pin for this pack_id."""
+    """Bind the verified Cam-signed pin to this pack_id. Exact match, no strip."""
     if not isinstance(record, dict) or not record:
         _refuse("cam-pin", "present", "missing")
-    recorded = record.get("recordedBy")
-    if recorded != CAM_RECORDED_BY:
-        _refuse("cam-pin.recordedBy", CAM_RECORDED_BY, recorded)
-    if record.get("stampVerified") is not True:
-        _refuse("cam-pin.stampVerified", True, record.get("stampVerified"))
-    if record.get("pack_matches") is not True:
-        _refuse("cam-pin.pack_matches", True, record.get("pack_matches"))
     pin_pack = record.get("pack_id")
-    if not isinstance(pin_pack, str) or not pin_pack.strip():
+    if type(pin_pack) is not str or not pin_pack:
         _refuse("cam-pin.pack_id", "present", "missing")
-    if pin_pack.strip() != pack_id:
+    if pin_pack != pack_id:
         _refuse("cam-pin.pack_id", pack_id, pin_pack)
     pin: dict[str, Any] = {
         "pack_id": pack_id,
-        "recordedBy": CAM_RECORDED_BY,
-        "stampVerified": True,
-        "pack_matches": True,
         "source": PIN_SOURCE,
+        "recordedAt": record.get("recordedAt"),
+        "kid": record.get("kid"),
+        "cam_key_id": record.get("cam_key_id"),
+        "cam_sig": record.get("cam_sig"),
     }
+    if "recordedBy" in record:
+        pin["recordedBy"] = record["recordedBy"]
+    if "stampVerified" in record:
+        pin["stampVerified"] = record["stampVerified"]
+    if "pack_matches" in record:
+        pin["pack_matches"] = record["pack_matches"]
     for sha_field, _filename, _manifest_rows, pin_rows in ARTIFACTS:
         pin[sha_field] = _require_sha256_hex(f"cam-pin.{sha_field}", record.get(sha_field))
         pin[pin_rows] = _require_int(f"cam-pin.{pin_rows}", record.get(pin_rows))
     return pin
 
 
-def _agent_token() -> str:
-    token = os.environ.get(SWARM_HQ_AGENT_TOKEN_ENV)
-    if not isinstance(token, str) or not token.strip():
-        _refuse(SWARM_HQ_AGENT_TOKEN_ENV, "present", "missing")
-    return token.strip()
-
-
 def _parse_hq_pin_payload(payload: object) -> dict[str, Any]:
-    """Parse Swarm HQ's flat pin JSON. Unknown or missing keys refuse."""
-    if not isinstance(payload, dict) or not payload:
-        _refuse("cam-pin", "present", "missing")
-    unknown = [key for key in payload if key not in HQ_PIN_ALLOWED_KEYS]
-    if unknown:
-        _refuse("cam-pin", "HQ pin keys", f"unknown {unknown[0]}")
-    for key in HQ_PIN_REQUIRED_KEYS:
-        if key not in payload:
-            _refuse(f"cam-pin.{key}", "present", "missing")
-    recorded_at = payload.get("recordedAt")
-    if not isinstance(recorded_at, str) or not recorded_at.strip():
-        _refuse("cam-pin.recordedAt", "present", "missing")
-    kid = payload.get("kid")
-    if not isinstance(kid, str) or not kid.strip():
-        _refuse("cam-pin.kid", "present", "missing")
-    has_stamp = "stampVerified" in payload
-    has_alias = "verified" in payload
-    if not has_stamp and not has_alias:
-        _refuse("cam-pin.stampVerified", "present", "missing")
-    stamp = payload.get("stampVerified") if has_stamp else payload.get("verified")
-    if has_stamp and has_alias and payload.get("stampVerified") is not payload.get("verified"):
-        _refuse("cam-pin.stampVerified", payload.get("stampVerified"), payload.get("verified"))
-    if type(stamp) is not bool:
-        _refuse("cam-pin.stampVerified", "bool", type(stamp).__name__)
-    matches = payload.get("pack_matches")
-    if type(matches) is not bool:
-        _refuse("cam-pin.pack_matches", "bool", type(matches).__name__)
-    record = {key: payload[key] for key in HQ_PIN_REQUIRED_KEYS}
-    record["stampVerified"] = stamp
-    record["pack_matches"] = matches
-    for row_key in ("rows_total", "rows_train", "rows_holdout"):
-        record[row_key] = _require_int(f"cam-pin.{row_key}", payload.get(row_key))
-    return record
+    try:
+        return cam_pin_spec.parse_hq_pin_payload(payload)
+    except cam_pin_spec.CamPinError as exc:
+        _refuse(exc.field, exc.expected, exc.actual)
 
 
 def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
-    """GET ``{SWARM_HQ_URL}/api/packs/<pack_id>/pin`` over HTTPS. Never Redis."""
-    if not isinstance(pack_id, str) or not pack_id.strip():
+    """GET the pinned-origin pin and verify Cam's Ed25519 signature. Never Redis."""
+    if type(pack_id) is not str or not pack_id:
         _refuse("pack_id", "present", "missing")
-    base = os.environ.get(SWARM_HQ_URL_ENV)
-    if not isinstance(base, str) or not base.strip():
-        _refuse(SWARM_HQ_URL_ENV, "present", "missing")
-    base = base.strip()
-    if not base.lower().startswith("https://"):
-        _refuse(SWARM_HQ_URL_ENV, "https URL", base)
-    token = _agent_token()
-    url = base.rstrip("/") + "/api/packs/" + urllib.parse.quote(pack_id.strip(), safe="") + "/pin"
-    request = urllib.request.Request(
-        url,
-        method="GET",
-        headers={
-            "Accept": "application/json",
-            "x-agent-token": token,
-        },
-    )
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            blob = response.read()
-            status = getattr(response, "status", None) or response.getcode()
-    except urllib.error.HTTPError as exc:
-        if exc.code == 401:
-            _refuse("cam-pin", "authorized", "HTTP 401")
-        if exc.code == 404:
-            _refuse("cam-pin", "present", "HTTP 404")
-        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {exc.code}")
-    except urllib.error.URLError as exc:
-        reason = getattr(exc, "reason", None) or exc
-        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"unreachable:{reason}")
-    except OSError as exc:
-        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"OSError:{getattr(exc, 'errno', None)}")
-    if status not in (200, None) and int(status) != 200:
-        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {status}")
-    try:
-        raw = blob.decode("utf-8")
-    except UnicodeDecodeError:
-        _refuse("cam-pin", "utf-8 JSON", "invalid encoding")
-    try:
-        payload = json.loads(raw, object_pairs_hook=_no_duplicate_hq_keys) if raw else None
-    except KickRefused:
-        raise
-    except ValueError:
-        _refuse("cam-pin", "JSON object", "invalid JSON")
-    return _parse_hq_pin_payload(payload)
+        return cam_pin_spec.fetch_signed_pin(pack_id)
+    except cam_pin_spec.CamPinError as exc:
+        _refuse(exc.field, exc.expected, exc.actual)
 
 
 def _line_identities(path: Path, field: str) -> tuple[list[str], list[str]]:
@@ -546,9 +468,8 @@ def verify_and_stage(
     _copy_and_hash(_regular_file_in_pack(pack_root, MANIFEST_FILE), manifest_dest, MANIFEST_FILE)
     manifest = _read_manifest(run_private)
     pack_id = manifest.get("pack_id")
-    if not isinstance(pack_id, str) or not pack_id.strip():
+    if type(pack_id) is not str or not pack_id:
         _refuse("pack_id", "present", "missing")
-    pack_id = pack_id.strip()
     if manifest.get("champion_touched") is not False:
         _refuse("champion_touched", False, manifest.get("champion_touched"))
     pin = _require_cam_pin(fetch_cam_pin(pack_id), pack_id)
@@ -616,22 +537,20 @@ def verify_and_stage(
 
 
 def write_evidence(evidence: Mapping[str, Any], evidence_path: Path) -> Path:
-    """Atomically write evidence JSON (temp file + os.replace)."""
+    """Atomically write evidence JSON (mkstemp in the same directory + os.replace)."""
     evidence_path = Path(evidence_path)
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = evidence_path.with_name(evidence_path.name + f".{os.getpid()}.tmp")
     payload = (json.dumps(dict(evidence), indent=2) + "\n").encode("utf-8")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    if hasattr(os, "O_BINARY"):
-        flags |= os.O_BINARY
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    fd = os.open(tmp, flags, 0o600)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=evidence_path.name + ".",
+        suffix=".tmp",
+        dir=str(evidence_path.parent),
+    )
     try:
         os.write(fd, payload)
     finally:
         os.close(fd)
-    os.replace(tmp, evidence_path)
+    os.replace(tmp_name, evidence_path)
     return evidence_path
 
 
@@ -716,6 +635,7 @@ def kick(
     _refuse_skip_env()
     _refuse_pin_env()
     pack_dir = Path(pack_dir)
+    _refuse_local_pin_files(_resolve_pack_dir(pack_dir))
     run_id = _new_run_id()
     if log_path is not None:
         log_path = Path(log_path)
@@ -731,15 +651,24 @@ def kick(
     except OSError:
         if os.name != "nt":
             raise
+    git_sha = _script_git_sha()
+    try:
+        trust_blobs = cam_pin_spec.require_committed_trust()
+    except cam_pin_spec.CamPinError as exc:
+        _refuse(exc.field, exc.expected, exc.actual)
     evidence: dict[str, Any] = {
         "ok": False,
         "run_id": run_id,
         "checkpoint_id": None,
-        "script_git_sha": _script_git_sha(),
+        "script_git_sha": git_sha,
+        "script_sha256": _script_sha256(),
+        "kickoff_url": kickoff_url,
         "host": socket.gethostname(),
         "anchor_source": PIN_SOURCE,
         "evidence_path": str(evidence_path.resolve()),
         "checked_at": _utc_now(),
+        "trust_blobs": trust_blobs,
+        "head_sha": trust_blobs.get("HEAD"),
     }
 
     def persist() -> None:
@@ -750,8 +679,12 @@ def kick(
         evidence.update(staged)
         evidence["run_id"] = run_id
         evidence["checkpoint_id"] = None
-        evidence["script_git_sha"] = evidence.get("script_git_sha") or _script_git_sha()
+        evidence["script_git_sha"] = git_sha
+        evidence["script_sha256"] = evidence.get("script_sha256") or _script_sha256()
+        evidence["kickoff_url"] = kickoff_url
         evidence["evidence_path"] = str(evidence_path.resolve())
+        evidence["trust_blobs"] = trust_blobs
+        evidence["head_sha"] = trust_blobs.get("HEAD")
         persist()
         body = {
             "mode": "helper-ft",
@@ -775,6 +708,9 @@ def kick(
         if isinstance(result, dict) and result.get("checkpoint_id"):
             evidence["checkpoint_id"] = result["checkpoint_id"]
             persist()
+        # Training must finish before the end-of-training re-hash. kickoff's
+        # launcher is expected to block until the trainer returns; the CLI
+        # start_training hook (tests) also runs to completion first.
         if start_training is None:
             _authorized_start_training(run_private, evidence, log_path, _gate=_GATE_OK)
         else:

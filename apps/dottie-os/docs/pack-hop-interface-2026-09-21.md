@@ -64,7 +64,7 @@ Caps for this harvest run (Forge): agent **120** / code **80** / math **60**.
 | nugatron inbox / registry staging | Ingest pack + MANIFEST; verify sha256 |
 | Radar | Pulse outbox/inbox presence + health; no edits |
 | Brief | Update lab brief from MANIFEST fields |
-| FT job (Cam kick only) | `scripts/lab/kick_helper_ft.py` fetches a Cam-stamped pack-pin from Swarm HQ (`SWARM_HQ_URL`, HTTPS `GET /api/packs/<pack_id>/pin`). The pin must match MANIFEST and run-private copies. `--cam-pin`, pin env vars, and local pin files are refused. Then POSTs `:8765/train/kickoff`. The handler re-fetches the same HQ pin; a body-only pin is not provenance. `inbox:latest` and other HELPER FT start routes are refused. Never auto-promote. |
+| FT job (Cam kick only) | `scripts/lab/kick_helper_ft.py` fetches a Cam-signed pack-pin from the hardcoded `SWARM_HQ_ORIGIN` (HTTPS `GET /api/packs/<pack_id>/pin`, no redirects, no `SWARM_HQ_URL`). Ed25519 `cam_sig` is verified against `trust/cam_pin_ed25519.pub`. The pin must match MANIFEST and run-private copies. `--cam-pin`, pin env vars, and local pin files are refused. Then POSTs `:8765/train/kickoff`. The handler re-fetches the same HQ pin; a body-only pin is not provenance. `inbox:latest` and other HELPER FT start routes are refused. Never auto-promote. |
 
 ---
 

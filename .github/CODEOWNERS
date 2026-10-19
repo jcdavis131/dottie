@@ -1,0 +1,5 @@
+# HELPER FT pack-pin trust. Cam must enable branch protection on main with
+# required code-owner review; agents cannot set that from a PR.
+apps/dottie-os/trust/ @jcdavis131
+apps/dottie-os/trust/cam_pin_ed25519.pub @jcdavis131
+apps/dottie-os/scripts/lab/cam_pin_spec.py @jcdavis131

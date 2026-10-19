@@ -1,31 +1,34 @@
 #!/usr/bin/env python3
 """Forge-runner HELPER FT ``POST /train/kickoff`` handler (:8765).
 
-Re-fetches the Cam-stamped pack-pin from Swarm HQ over HTTPS, then re-hashes
-and re-counts run-private pack/train/holdout. ``stampVerified`` and
-``pack_matches`` must both be true, but ``pack_matches`` is never sufficient:
-the pin's pack_id, three shas, and three row counts are compared with this
-handler's own hashes and counts of the copies plus the MANIFEST. A pin
-carried only in the request body is not provenance. An evidence blob that
-exists or says ``ok: true`` is not enough.
+Re-fetches the Cam-signed pack-pin from the pinned Swarm HQ origin, verifies
+Cam's Ed25519 signature against the committed public key, then hashes and
+counts only the run-private copies (never request paths, never the inbox).
+``stampVerified`` and ``pack_matches`` are advisory and never sufficient.
+A pin carried only in the request body is not provenance.
 
-``inbox: latest`` and every other HELPER FT start route are refused. Stdlib
-only. Does not promote, does not touch serve, :8770, or champion files.
+``inbox: latest`` and every other HELPER FT start route are refused.
+``default_launch_trainer`` refuses unless a real launcher is wired.
+Does not promote, does not touch serve, :8770, or champion files.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import stat
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable
 from wsgiref.simple_server import make_server
+
+_LAB = str(Path(__file__).resolve().parent)
+if _LAB not in sys.path:
+    sys.path.insert(0, _LAB)
+
+import cam_pin_spec
 
 CHUNK = 1 << 20
 SHA256_LEN = 64
@@ -33,30 +36,21 @@ _HEX = frozenset("0123456789abcdef")
 MAX_EVIDENCE_AGE_SECONDS = 15 * 60
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-SWARM_HQ_URL_ENV = "SWARM_HQ_URL"
-SWARM_HQ_AGENT_TOKEN_ENV = "SWARM_HQ_AGENT_TOKEN"
-CAM_RECORDED_BY = "cam"
+SWARM_HQ_AGENT_TOKEN_ENV = cam_pin_spec.SWARM_HQ_AGENT_TOKEN_ENV
 PIN_SOURCE = "swarm-hq-cam-pin"
-HQ_PIN_REQUIRED_KEYS = (
-    "pack_id",
-    "sha256_pack",
-    "sha256_train",
-    "sha256_holdout",
-    "rows_total",
-    "rows_train",
-    "rows_holdout",
-    "pack_matches",
-    "recordedBy",
-    "recordedAt",
-    "kid",
-)
-HQ_PIN_ALLOWED_KEYS = frozenset((*HQ_PIN_REQUIRED_KEYS, "stampVerified", "verified"))
-# (sha field, paths key, MANIFEST row field, pin row field)
+HQ_PIN_REQUIRED_KEYS = cam_pin_spec.HQ_PIN_REQUIRED_KEYS
+HQ_PIN_ALLOWED_KEYS = cam_pin_spec.HQ_PIN_ALLOWED_KEYS
+PACK_FILE = "curated_pack_v2.jsonl"
+TRAIN_FILE = "curated_pack_v2_train.jsonl"
+HOLDOUT_FILE = "curated_pack_v2_holdout.jsonl"
+MANIFEST_FILE = "MANIFEST.json"
+# (sha field, run-private filename, MANIFEST row field, pin row field)
 ARTIFACTS = (
-    ("sha256_pack", "pack", "rows", "rows_total"),
-    ("sha256_train", "train", "train_rows", "rows_train"),
-    ("sha256_holdout", "holdout", "holdout_rows", "rows_holdout"),
+    ("sha256_pack", PACK_FILE, "rows", "rows_total"),
+    ("sha256_train", TRAIN_FILE, "train_rows", "rows_train"),
+    ("sha256_holdout", HOLDOUT_FILE, "holdout_rows", "rows_holdout"),
 )
+MAX_BODY_BYTES = 64 * 1024
 # Every HELPER FT start path other than POST /train/kickoff.
 OTHER_HELPER_FT_START_PATHS = frozenset(
     {
@@ -106,12 +100,10 @@ def _sha256_file(path: Path) -> str:
 
 
 def _require_sha(field: str, value: object) -> str | dict[str, Any]:
-    if not isinstance(value, str) or not value:
-        return _bad(field, "present", "missing")
-    lowered = value.strip().lower()
-    if len(lowered) != SHA256_LEN or any(ch not in _HEX for ch in lowered):
-        return _bad(field, "64-char hex", value)
-    return lowered
+    try:
+        return cam_pin_spec.require_sha256_hex(field, value)
+    except cam_pin_spec.CamPinError as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
 
 
 def _require_int(field: str, value: object) -> int | dict[str, Any]:
@@ -131,25 +123,54 @@ def _count_rows(path: Path) -> int | dict[str, Any]:
         return _bad(path.name, "readable text file", f"OSError:{exc.errno}")
 
 
-def _read_kickoff_manifest(paths: dict[str, Any]) -> dict[str, Any]:
-    named = paths.get("manifest")
-    if not isinstance(named, str) or not named:
-        pack = paths.get("pack")
-        if isinstance(pack, str) and pack:
-            named = str(Path(pack).parent / "MANIFEST.json")
-        else:
-            return _bad("paths.manifest", "present", "missing")
-    path = Path(named)
-    if not path.is_file():
-        return _bad("MANIFEST.json", "present", "missing")
+def _no_duplicate_manifest_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    seen: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in seen:
+            raise ValueError(f"duplicate {key}")
+        seen[key] = value
+    return seen
+
+
+def _read_run_private_manifest(root: Path) -> dict[str, Any]:
+    path = root / MANIFEST_FILE
+    flags = os.O_RDONLY
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return _bad(MANIFEST_FILE, "present", "missing")
+    except OSError as exc:
+        return _bad(MANIFEST_FILE, "readable regular file", f"OSError:{exc.errno}")
+    if stat.S_ISLNK(info.st_mode):
+        return _bad(MANIFEST_FILE, "regular file", "symlink")
+    if not stat.S_ISREG(info.st_mode):
+        return _bad(MANIFEST_FILE, "regular file", "non-regular")
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        return _bad(MANIFEST_FILE, "readable regular file", f"OSError:{exc.errno}")
+    try:
+        raw = os.read(fd, cam_pin_spec.MAX_PIN_BYTES + 1)
+    finally:
+        os.close(fd)
+    try:
+        text = raw.decode("utf-8")
     except UnicodeDecodeError:
-        return _bad("MANIFEST.json", "utf-8 text", "invalid encoding")
-    except (OSError, ValueError) as exc:
-        return _bad("MANIFEST.json", "readable JSON", type(exc).__name__)
+        return _bad(MANIFEST_FILE, "utf-8 text", "invalid encoding")
+    try:
+        payload = json.loads(text, object_pairs_hook=_no_duplicate_manifest_keys)
+    except ValueError as exc:
+        if "duplicate" in str(exc):
+            return _bad(MANIFEST_FILE, "unique keys", str(exc))
+        return _bad(MANIFEST_FILE, "valid JSON object", "invalid JSON")
     if not isinstance(payload, dict):
-        return _bad("MANIFEST.json", "object", type(payload).__name__)
+        return _bad(MANIFEST_FILE, "object", type(payload).__name__)
     return payload
 
 
@@ -169,142 +190,51 @@ def _parse_checked_at(value: object) -> datetime | dict[str, Any]:
 
 
 def default_launch_trainer(body: dict[str, Any]) -> dict[str, Any]:
-    """Below-gate launch hook. This tree does not run GPU training."""
+    """Refuse unless a real trainer launcher is wired in."""
     del body
-    return {"ok": True, "checkpoint_id": None, "launched": True}
+    return _bad("trainer", "wired launch_trainer", "default no-op")
 
 
 def _parse_hq_pin_payload(payload: object) -> dict[str, Any]:
-    """Parse Swarm HQ's flat pin JSON. Unknown or missing keys refuse."""
-    if not isinstance(payload, dict) or not payload:
-        return _bad("cam-pin", "present", "missing")
-    unknown = [key for key in payload if key not in HQ_PIN_ALLOWED_KEYS]
-    if unknown:
-        return _bad("cam-pin", "HQ pin keys", f"unknown {unknown[0]}")
-    for key in HQ_PIN_REQUIRED_KEYS:
-        if key not in payload:
-            return _bad(f"cam-pin.{key}", "present", "missing")
-    recorded_at = payload.get("recordedAt")
-    if not isinstance(recorded_at, str) or not recorded_at.strip():
-        return _bad("cam-pin.recordedAt", "present", "missing")
-    kid = payload.get("kid")
-    if not isinstance(kid, str) or not kid.strip():
-        return _bad("cam-pin.kid", "present", "missing")
-    has_stamp = "stampVerified" in payload
-    has_alias = "verified" in payload
-    if not has_stamp and not has_alias:
-        return _bad("cam-pin.stampVerified", "present", "missing")
-    stamp = payload.get("stampVerified") if has_stamp else payload.get("verified")
-    if has_stamp and has_alias and payload.get("stampVerified") is not payload.get("verified"):
-        return _bad("cam-pin.stampVerified", payload.get("stampVerified"), payload.get("verified"))
-    if type(stamp) is not bool:
-        return _bad("cam-pin.stampVerified", "bool", type(stamp).__name__)
-    matches = payload.get("pack_matches")
-    if type(matches) is not bool:
-        return _bad("cam-pin.pack_matches", "bool", type(matches).__name__)
-    record = {key: payload[key] for key in HQ_PIN_REQUIRED_KEYS}
-    record["stampVerified"] = stamp
-    record["pack_matches"] = matches
-    for row_key in ("rows_total", "rows_train", "rows_holdout"):
-        typed = _require_int(f"cam-pin.{row_key}", payload.get(row_key))
-        if isinstance(typed, dict):
-            return typed
-        record[row_key] = typed
-    return record
+    try:
+        return cam_pin_spec.parse_hq_pin_payload(payload)
+    except cam_pin_spec.CamPinError as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
 
 
 def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
-    """GET ``{SWARM_HQ_URL}/api/packs/<pack_id>/pin`` over HTTPS. Never Redis."""
-    if not isinstance(pack_id, str) or not pack_id.strip():
+    """GET the pinned-origin pin and verify Cam's Ed25519 signature."""
+    if type(pack_id) is not str or not pack_id:
         return _bad("pack_id", "present", "missing")
-    base = os.environ.get(SWARM_HQ_URL_ENV)
-    if not isinstance(base, str) or not base.strip():
-        return _bad(SWARM_HQ_URL_ENV, "present", "missing")
-    base = base.strip()
-    if not base.lower().startswith("https://"):
-        return _bad(SWARM_HQ_URL_ENV, "https URL", base)
-    token = os.environ.get(SWARM_HQ_AGENT_TOKEN_ENV)
-    if not isinstance(token, str) or not token.strip():
-        return _bad(SWARM_HQ_AGENT_TOKEN_ENV, "present", "missing")
-    url = base.rstrip("/") + "/api/packs/" + urllib.parse.quote(pack_id.strip(), safe="") + "/pin"
-    request = urllib.request.Request(
-        url,
-        method="GET",
-        headers={
-            "Accept": "application/json",
-            "x-agent-token": token.strip(),
-        },
-    )
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            blob = response.read()
-            status = getattr(response, "status", None) or response.getcode()
-    except urllib.error.HTTPError as exc:
-        if exc.code == 401:
-            return _bad("cam-pin", "authorized", "HTTP 401")
-        if exc.code == 404:
-            return _bad("cam-pin", "present", "HTTP 404")
-        return _bad("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {exc.code}")
-    except urllib.error.URLError as exc:
-        reason = getattr(exc, "reason", None) or exc
-        return _bad("cam-pin", "HTTPS Swarm HQ pin", f"unreachable:{reason}")
-    except OSError as exc:
-        return _bad("cam-pin", "HTTPS Swarm HQ pin", f"OSError:{getattr(exc, 'errno', None)}")
-    if status not in (200, None) and int(status) != 200:
-        return _bad("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {status}")
-    try:
-        raw = blob.decode("utf-8")
-    except UnicodeDecodeError:
-        return _bad("cam-pin", "utf-8 JSON", "invalid encoding")
-    duplicates: list[str] = []
-
-    def _unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        seen: dict[str, Any] = {}
-        for key, value in pairs:
-            if key in seen:
-                duplicates.append(key)
-            seen[key] = value
-        return seen
-
-    try:
-        payload = json.loads(raw, object_pairs_hook=_unique) if raw else None
-    except ValueError:
-        return _bad("cam-pin", "JSON object", "invalid JSON")
-    if duplicates:
-        return _bad("cam-pin", "unique keys", f"duplicate {duplicates[0]}")
-    parsed = _parse_hq_pin_payload(payload)
-    if parsed.get("ok") is False:
-        return parsed
+        parsed = cam_pin_spec.fetch_signed_pin(pack_id)
+    except cam_pin_spec.CamPinError as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
     return {"ok": True, "pin": parsed}
 
 
 def require_hq_cam_pin(pack_id: str) -> dict[str, Any]:
-    """Re-fetch the Cam pin. A request-body pin is not provenance."""
+    """Re-fetch the Cam-signed pin. A request-body pin is not provenance."""
     fetched = fetch_cam_pin(pack_id)
     if fetched.get("ok") is not True:
         return fetched
     record = fetched.get("pin")
     if not isinstance(record, dict) or not record:
         return _bad("cam-pin", "present", "missing")
-    if record.get("recordedBy") != CAM_RECORDED_BY:
-        return _bad("cam-pin.recordedBy", CAM_RECORDED_BY, record.get("recordedBy"))
-    if record.get("stampVerified") is not True:
-        return _bad("cam-pin.stampVerified", True, record.get("stampVerified"))
-    if record.get("pack_matches") is not True:
-        return _bad("cam-pin.pack_matches", True, record.get("pack_matches"))
     pin_pack = record.get("pack_id")
-    if not isinstance(pin_pack, str) or not pin_pack.strip():
+    if type(pin_pack) is not str or not pin_pack:
         return _bad("cam-pin.pack_id", "present", "missing")
-    if pin_pack.strip() != pack_id:
+    if pin_pack != pack_id:
         return _bad("cam-pin.pack_id", pack_id, pin_pack)
     pin: dict[str, Any] = {
         "pack_id": pack_id,
-        "recordedBy": CAM_RECORDED_BY,
-        "stampVerified": True,
-        "pack_matches": True,
         "source": PIN_SOURCE,
+        "recordedAt": record.get("recordedAt"),
+        "kid": record.get("kid"),
+        "cam_key_id": record.get("cam_key_id"),
+        "cam_sig": record.get("cam_sig"),
     }
-    for sha_field, _path_key, _manifest_rows, pin_rows_field in ARTIFACTS:
+    for sha_field, _filename, _manifest_rows, pin_rows_field in ARTIFACTS:
         required = _require_sha(f"cam-pin.{sha_field}", record.get(sha_field))
         if isinstance(required, dict):
             return required
@@ -324,8 +254,8 @@ def handle_train_kickoff(
     """Refuse HELPER FT kickoff unless HQ pin matches re-hashed files.
 
     Re-fetches the Cam pin from Swarm HQ. A body-only pin is refused.
-    ``pack_matches`` is necessary, never sufficient. ``inbox: latest`` is
-    never accepted. Evidence ``ok: true`` is not trust.
+    ``stampVerified`` and ``pack_matches`` are advisory and never sufficient.
+    ``inbox: latest`` is never accepted. Evidence ``ok: true`` is not trust.
     """
     if not isinstance(body, dict):
         return _bad("body", "object", type(body).__name__)
@@ -377,51 +307,49 @@ def handle_train_kickoff(
     pin = body.get("pin")
     if not isinstance(pin, dict) or not pin:
         return _bad("pin", "present", "missing")
-    if pin.get("recordedBy") != CAM_RECORDED_BY:
-        return _bad("pin.recordedBy", CAM_RECORDED_BY, pin.get("recordedBy"))
-    if pin.get("stampVerified") is not True:
-        return _bad("pin.stampVerified", True, pin.get("stampVerified"))
-    if pin.get("pack_matches") is not True:
-        return _bad("pin.pack_matches", True, pin.get("pack_matches"))
     if pin.get("pack_id") != pack_id:
         return _bad("pin.pack_id", pack_id, pin.get("pack_id"))
     hq = require_hq_cam_pin(pack_id)
     if hq.get("ok") is not True:
         return hq
     hq_pin = hq["pin"]
-    paths = body.get("paths")
-    if not isinstance(paths, dict) or not paths:
-        return _bad("paths", "present", "missing")
-    manifest = _read_kickoff_manifest(paths)
+    hq_id = cam_pin_spec.pin_identity(hq_pin)
+    body_id = cam_pin_spec.pin_identity(pin)
+    ev_pin = evidence.get("pin") if isinstance(evidence.get("pin"), dict) else {}
+    ev_id = cam_pin_spec.pin_identity(ev_pin) if ev_pin else None
+    if body_id != hq_id:
+        return _bad("pin", hq_id, body_id)
+    if ev_id is not None and ev_id != hq_id:
+        return _bad("evidence.pin", hq_id, ev_id)
+    run_private = body.get("run_private_dir")
+    if type(run_private) is not str or not run_private:
+        return _bad("run_private_dir", "present", "missing")
+    root = Path(run_private)
+    try:
+        info = os.lstat(root)
+    except FileNotFoundError:
+        return _bad("run_private_dir", "present", "missing")
+    except OSError as exc:
+        return _bad("run_private_dir", "readable directory", f"OSError:{exc.errno}")
+    if stat.S_ISLNK(info.st_mode):
+        return _bad("run_private_dir", "real directory", "symlink")
+    if not stat.S_ISDIR(info.st_mode):
+        return _bad("run_private_dir", "directory", "not a directory")
+    manifest = _read_run_private_manifest(root)
     if manifest.get("ok") is False and "field" in manifest:
         return manifest
-    ev_anchor = evidence.get("pin") if isinstance(evidence.get("pin"), dict) else evidence.get("expected_shas")
-    if not isinstance(ev_anchor, dict) or not ev_anchor:
-        return _bad("evidence.pin", "present", "missing")
-    computed = evidence.get("computed_shas") if isinstance(evidence.get("computed_shas"), dict) else {}
-    for sha_field, path_key, manifest_rows_field, pin_rows_field in ARTIFACTS:
+    if manifest.get("pack_id") != pack_id:
+        return _bad("pack_id", pack_id, manifest.get("pack_id"))
+    fetched_pin = {"ok": True, "pin": hq_pin, "source": PIN_SOURCE}
+    evidence["kickoff_pin_fetch"] = fetched_pin
+    for sha_field, filename, manifest_rows_field, pin_rows_field in ARTIFACTS:
         req = _require_sha(sha_field, body.get(sha_field))
         if isinstance(req, dict):
             return req
         hq_sha = hq_pin[sha_field]
-        body_sha = _require_sha(f"pin.{sha_field}", pin.get(sha_field))
-        if isinstance(body_sha, dict):
-            return body_sha
-        if body_sha != hq_sha:
-            return _bad(sha_field, hq_sha, body_sha)
-        ev_expected = _require_sha(f"evidence.pin.{sha_field}", ev_anchor.get(sha_field))
-        if isinstance(ev_expected, dict):
-            return ev_expected
         if req != hq_sha:
             return _bad(sha_field, hq_sha, req)
-        if ev_expected != hq_sha:
-            return _bad(sha_field, hq_sha, ev_expected)
         pin_rows = hq_pin[pin_rows_field]
-        body_rows = _require_int(f"pin.{pin_rows_field}", pin.get(pin_rows_field))
-        if isinstance(body_rows, dict):
-            return body_rows
-        if body_rows != pin_rows:
-            return _bad(pin_rows_field, pin_rows, body_rows)
         if manifest_rows_field not in manifest:
             return _bad(manifest_rows_field, "present", "missing")
         expected_rows = _require_int(manifest_rows_field, manifest[manifest_rows_field])
@@ -429,12 +357,19 @@ def handle_train_kickoff(
             return expected_rows
         if pin_rows != expected_rows:
             return _bad(pin_rows_field, pin_rows, expected_rows)
-        named = paths.get(path_key)
-        if not isinstance(named, str) or not named:
-            return _bad(f"paths.{path_key}", "present", "missing")
-        path = Path(named)
-        if not path.is_file():
-            return _bad(path_key, "present", "missing")
+        path = root / filename
+        try:
+            finfo = os.lstat(path)
+        except FileNotFoundError:
+            return _bad(filename, "present", "missing")
+        except OSError as exc:
+            return _bad(filename, "readable regular file", f"OSError:{exc.errno}")
+        if stat.S_ISLNK(finfo.st_mode):
+            return _bad(filename, "regular file", "symlink")
+        if not stat.S_ISREG(finfo.st_mode):
+            return _bad(filename, "regular file", "non-regular")
+        if os.name == "posix" and finfo.st_mode & 0o222:
+            return _bad(filename, "0400", oct(stat.S_IMODE(finfo.st_mode)))
         counted = _count_rows(path)
         if isinstance(counted, dict):
             return counted
@@ -443,19 +378,33 @@ def handle_train_kickoff(
         try:
             actual = _sha256_file(path)
         except OSError as exc:
-            return _bad(path_key, "readable regular file", f"OSError:{exc.errno}")
-        if actual != req:
-            return _bad(sha_field, req, actual)
+            return _bad(filename, "readable regular file", f"OSError:{exc.errno}")
         if actual != hq_sha:
             return _bad(sha_field, hq_sha, actual)
-        ev_computed = computed.get(sha_field)
-        if ev_computed is not None and actual != ev_computed:
-            return _bad(sha_field, ev_computed, actual)
+        if actual != req:
+            return _bad(sha_field, req, actual)
     launcher = launch_trainer if launch_trainer is not None else default_launch_trainer
     launched = launcher(body)
     if not isinstance(launched, dict) or launched.get("ok") is not True:
         return _bad("trainer", "ok", launched)
-    result = {"ok": True, "pack_id": pack_id, "run_id": run_id, "launched": True}
+    post: dict[str, str] = {}
+    for sha_field, filename, _manifest_rows_field, _pin_rows_field in ARTIFACTS:
+        try:
+            actual = _sha256_file(root / filename)
+        except OSError as exc:
+            return _bad(filename, "readable regular file", f"OSError:{exc.errno}")
+        if actual != hq_pin[sha_field]:
+            return _bad(sha_field, hq_pin[sha_field], actual)
+        post[sha_field] = actual
+    evidence["post_train_shas"] = post
+    result = {
+        "ok": True,
+        "pack_id": pack_id,
+        "run_id": run_id,
+        "launched": True,
+        "post_train_shas": post,
+        "kickoff_pin_fetch": fetched_pin,
+    }
     if launched.get("checkpoint_id"):
         result["checkpoint_id"] = launched["checkpoint_id"]
     return result
@@ -506,7 +455,23 @@ def make_app(*, launch_trainer: LaunchTrainer | None = None):
             length = int(environ.get("CONTENT_LENGTH") or 0)
         except ValueError:
             length = 0
+        if length > MAX_BODY_BYTES:
+            payload = _bad("body", f"<={MAX_BODY_BYTES} bytes", length)
+            blob = json.dumps(payload).encode("utf-8")
+            start_response(
+                "400 Bad Request",
+                [("Content-Type", "application/json"), ("Content-Length", str(len(blob)))],
+            )
+            return [blob]
         raw = environ.get("wsgi.input").read(length) if length else b""
+        if len(raw) > MAX_BODY_BYTES:
+            payload = _bad("body", f"<={MAX_BODY_BYTES} bytes", len(raw))
+            blob = json.dumps(payload).encode("utf-8")
+            start_response(
+                "400 Bad Request",
+                [("Content-Type", "application/json"), ("Content-Length", str(len(blob)))],
+            )
+            return [blob]
         parsed: dict[str, Any] | None
         if not raw:
             parsed = None
