@@ -179,9 +179,23 @@ def mkrepo(tmp: Path, names: list[str]) -> Path:
 
 
 def run_guard(repo: Path, extra_env: dict | None = None, pre: str = "") -> int:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("GIT_") and k != "GITHUB_SHA"
+    }
     env.update({"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"})
     env.update(extra_env or {})
+    if "GITHUB_SHA" not in env:
+        pin = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        if pin.returncode == 0:
+            env["GITHUB_SHA"] = pin.stdout.strip()
     # GitHub's default for run: is `bash -e {0}` (here: -e + the script)
     script = pre + "\n" + guard_block() if pre else guard_block()
     with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as f:

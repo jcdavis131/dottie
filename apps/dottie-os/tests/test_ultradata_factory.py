@@ -4890,7 +4890,7 @@ def _pack_guard_git_env() -> dict[str, str]:
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith("GIT_")
+        if not key.startswith("GIT_") and key != "GITHUB_SHA"
     }
     env.update(
         {
@@ -4983,8 +4983,23 @@ def _commit_pack_guard_tree(repo: Path, env: dict[str, str], message: str) -> No
 
 
 def _run_pack_guard_script(
-    repo: Path, run_script: str, env: dict[str, str]
+    repo: Path,
+    run_script: str,
+    env: dict[str, str],
+    *,
+    pin_github_sha: bool = True,
 ) -> subprocess.CompletedProcess[str]:
+    env = dict(env)
+    if pin_github_sha and "GITHUB_SHA" not in env:
+        pin = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            env=_pack_guard_git_env(),
+            capture_output=True,
+            text=True,
+        )
+        if pin.returncode == 0:
+            env["GITHUB_SHA"] = pin.stdout.strip()
     return subprocess.run(
         ["bash", "-c", run_script],
         cwd=repo,
@@ -5035,6 +5050,12 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         self.assertIn(f"PACK_GUARD_LS_FILES_FLOOR={PACK_GUARD_LS_FILES_FLOOR}", str(step.get("run")))
         self.assertIn("/usr/bin/git", str(step.get("run")))
         self.assertIn("grep -zEi", str(step.get("run")))
+        run_text = str(step.get("run"))
+        self.assertIn(
+            'ls-tree -r -z --full-tree --name-only "$GITHUB_SHA"', run_text
+        )
+        self.assertIn('cat-file -e "$GITHUB_SHA^{commit}"', run_text)
+        self.assertNotIn("ls-tree -r --name-only -z HEAD", run_text)
         stdlib_step = _pack_guard_step_from_text(text)
         self.assertEqual(set(stdlib_step), PACK_GUARD_STEP_KEYS)
         self.assertEqual(stdlib_step.get("name"), step.get("name"))
@@ -5180,6 +5201,137 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             ),
         )
         self.assertIn(PACK_GUARD_ROOT_PACK, proc.stdout)
+
+    def test_pack_guard_github_sha_pack_survives_head_reset(self) -> None:
+        """HEAD moved by reset --hard older; pack still at GITHUB_SHA is red."""
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            _commit_pack_guard_tree(repo, env, "older")
+            older = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            pack = repo / "apps" / "x" / "curated_pack_v2.jsonl"
+            pack.parent.mkdir(parents=True, exist_ok=True)
+            pack.write_text('{"eval_only": true}\n', encoding="utf-8")
+            _commit_pack_guard_tree(repo, env, "with pack")
+            newer = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            subprocess.run(
+                ["git", "reset", "--hard", older],
+                cwd=repo,
+                env=env,
+                check=True,
+                capture_output=True,
+            )
+            env = dict(env)
+            env["GITHUB_SHA"] = newer
+            proc = _run_pack_guard_script(repo, run, env)
+        self.assertNotEqual(
+            proc.returncode,
+            0,
+            msg=(
+                "pack at GITHUB_SHA must trip after reset --hard older; "
+                f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            ),
+        )
+        self.assertIn("curated_pack_v2.jsonl", proc.stdout)
+
+    def test_pack_guard_ls_tree_without_dash_r_misses_nested_pack(self) -> None:
+        """Nested pack unstaged from the index is still red; dropping -r is not."""
+        run = self._run_block()
+        self.assertIn('ls-tree -r -z --full-tree --name-only "$GITHUB_SHA"', run)
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            pack = repo / PACK_GUARD_FIXTURES_PACK
+            pack.parent.mkdir(parents=True, exist_ok=True)
+            pack.write_text('{"eval_only": true}\n', encoding="utf-8")
+            _commit_pack_guard_tree(repo, env, "nested pack")
+            subprocess.run(
+                ["git", "rm", "-q", "--cached", "-r", "--", "apps"],
+                cwd=repo,
+                env=env,
+                check=True,
+                capture_output=True,
+            )
+            proc = _run_pack_guard_script(repo, run, env)
+            self.assertNotEqual(
+                proc.returncode,
+                0,
+                msg=(
+                    "nested pack in GITHUB_SHA tree must trip; "
+                    f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+                ),
+            )
+            weak = run.replace("ls-tree -r -z", "ls-tree -z", 1)
+            self.assertNotEqual(weak, run)
+            weak_proc = _run_pack_guard_script(repo, weak, env)
+        self.assertNotEqual(
+            weak_proc.returncode,
+            0,
+            msg=(
+                "ls-tree without -r must go red (nested ci.yml/pack unseen); "
+                f"stdout={weak_proc.stdout!r} stderr={weak_proc.stderr!r}"
+            ),
+        )
+
+    def test_pack_guard_github_sha_unset_or_bogus_is_red(self) -> None:
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            _commit_pack_guard_tree(repo, env, "clean")
+            unset_env = dict(env)
+            unset_env.pop("GITHUB_SHA", None)
+            unset_proc = _run_pack_guard_script(
+                repo, run, unset_env, pin_github_sha=False
+            )
+            self.assertNotEqual(
+                unset_proc.returncode,
+                0,
+                msg=(
+                    "unset GITHUB_SHA must fail closed; "
+                    f"stdout={unset_proc.stdout!r} stderr={unset_proc.stderr!r}"
+                ),
+            )
+            bogus = dict(env)
+            bogus["GITHUB_SHA"] = "not-a-sha"
+            bogus_proc = _run_pack_guard_script(repo, run, bogus)
+            self.assertNotEqual(
+                bogus_proc.returncode,
+                0,
+                msg=(
+                    "non-hex GITHUB_SHA must fail closed; "
+                    f"stdout={bogus_proc.stdout!r} stderr={bogus_proc.stderr!r}"
+                ),
+            )
+            missing = dict(env)
+            missing["GITHUB_SHA"] = "0" * 40
+            missing_proc = _run_pack_guard_script(repo, run, missing)
+            self.assertNotEqual(
+                missing_proc.returncode,
+                0,
+                msg=(
+                    "GITHUB_SHA that is not a commit must fail closed; "
+                    f"stdout={missing_proc.stdout!r} stderr={missing_proc.stderr!r}"
+                ),
+            )
 
 
 class HelperFtLeakGateSyntheticTests(unittest.TestCase):
