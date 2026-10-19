@@ -588,6 +588,7 @@ def _start_hq_http_mock(owner: unittest.TestCase) -> None:
     owner.hq_pins = {}
     owner.hq_error = None
     owner.hq_http_status = None
+    owner.hq_fail_completion = False
     owner.hq_redirect = None
     owner.hq_requests = []
     owner.hq_posts: list[dict] = []
@@ -605,6 +606,8 @@ def _start_hq_http_mock(owner: unittest.TestCase) -> None:
         owner.hq_tokens_by_url.append((str(url), token))
         owner.assertTrue(str(url).startswith(PINNED_HQ_ORIGIN), url)
         if method == "POST":
+            if owner.hq_fail_completion and str(url).endswith("/completion"):
+                raise urllib.error.URLError("completion down")
             raw = getattr(request, "data", None) or b""
             if isinstance(raw, str):
                 raw = raw.encode("utf-8")
@@ -3408,6 +3411,31 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertFalse(any("evil-hq.example" in u for u, _tok in self.hq_tokens_by_url))
         dumped = json.dumps(kick_post["body"]) + json.dumps(completion_post["body"])
         self.assertNotIn(SWARM_HQ_AGENT_TOKEN_FIXTURE, dumped)
+
+    def test_completion_post_failure_rewrites_match_to_refused(self) -> None:
+        self.hq_fail_completion = True
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, log_path=log_path)
+            rec = json.loads(
+                (log_path.parent / "ckpt-test" / "integrity_evidence.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        self.assertEqual(ctx.exception.field, "hq.event")
+        self.assertEqual(ctx.exception.actual, "hq_post_failed")
+        self.assertEqual(rec["status"], "REFUSED")
+        self.assertEqual(rec["actual"], "hq_post_failed")
+        self.assertNotEqual(rec["status"], "MATCH")
+        kick_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/kick")]
+        done_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/completion")]
+        self.assertEqual(len(kick_posts), 1)
+        self.assertEqual(done_posts, [])
 
     def test_not_for_train_pack_refused_on_production_shaped_kick(self) -> None:
         def kickoff(body: dict) -> dict:

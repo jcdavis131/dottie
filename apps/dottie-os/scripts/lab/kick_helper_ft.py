@@ -2370,7 +2370,21 @@ def _apply_post_train_record(
                 "exit_code": record.get("exit_code", 0),
             }
             completion.update(_entrypoint_event_fields(evidence))
-            _post_hq_event("completion", completion)
+            try:
+                _post_hq_event("completion", completion)
+            except KickRefused as exc:
+                refused = dict(public)
+                refused["status"] = CHECKPOINT_REFUSED
+                refused["match"] = False
+                refused["field"] = "hq.event"
+                refused["expected"] = "posted"
+                refused["actual"] = "hq_post_failed"
+                write_integrity_evidence_held(refused, ckpt_path)
+                evidence["checkpoint_integrity_status"] = CHECKPOINT_REFUSED
+                evidence["result"] = CHECKPOINT_REFUSED
+                evidence["hq_post_failed"] = True
+                evidence["ok"] = False
+                raise KickRefused("hq.event", "posted", "hq_post_failed") from exc
     if record["status"] != CHECKPOINT_MATCH:
         evidence["ok"] = False
         evidence["result"] = CHECKPOINT_REFUSED
