@@ -94,6 +94,9 @@ if not _SEALED_FILE and _LAB not in sys.path:
 import cam_pin_spec
 import content_uuid
 import denied_field_schema
+import row_fields
+
+NEAR_DUP_SCAN_PATHS: tuple[str, ...] = row_fields.READABLE_PATHS
 
 PACK_FILE = "curated_pack_v2.jsonl"
 TRAIN_FILE = "curated_pack_v2_train.jsonl"
@@ -3845,9 +3848,7 @@ def collect_reserved_partition(
                 )
             )
         try:
-            cand_tokens = content_uuid.near_dup_tokens(
-                {key: row[key] for key in content_uuid.CONTENT_UUID_FIELDS if key in row}
-            )
+            cand_tokens = content_uuid.near_dup_tokens(row)
         except content_uuid.ContentUuidError as exc:
             hits.append((exc.field, f"{rid}:{exc}"))
             if len(hits) >= 10:

@@ -183,6 +183,7 @@ CODE_PINS = (
     "apps/dottie-os/scripts/lab/cam_pin_spec.py",
     "apps/dottie-os/scripts/lab/content_uuid.py",
     "apps/dottie-os/scripts/lab/denied_field_schema.py",
+    "apps/dottie-os/scripts/lab/row_fields.py",
     "apps/dottie-os/scripts/lab/neardup_tokens-v1.py",
     "apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json",
     "apps/dottie-os/trust/cam_pin_ed25519.pub",
@@ -198,6 +199,7 @@ CODE_PIN_MODULE_NAMES = {
     "cam_pin_spec": "apps/dottie-os/scripts/lab/cam_pin_spec.py",
     "content_uuid": "apps/dottie-os/scripts/lab/content_uuid.py",
     "denied_field_schema": "apps/dottie-os/scripts/lab/denied_field_schema.py",
+    "row_fields": "apps/dottie-os/scripts/lab/row_fields.py",
     "neardup_tokens_v1": "apps/dottie-os/scripts/lab/neardup_tokens-v1.py",
 }
 ORIGIN_MAIN_REF = "origin/main"

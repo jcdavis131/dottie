@@ -3,34 +3,20 @@
 
 Denied fields can still reach the trainer (labels and questions are the
 supervision targets), but only after this gate. Free text in any denied
-field refuses the whole row. The trainer input is extractor text plus the
-denied fields that passed.
-
-Near-dup (Mill v1) does not read: schema, id, tier, source, labels,
-questions, consent, trajectory_id, record_id, group_key, state.meta.
+field refuses the whole row. The trainer reads ``row_fields.READABLE_PATHS``
+as raw UTF-8 bytes plus the denied fields that passed. Scan paths and the
+deny list live only in ``row_fields``.
 """
 from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
-import content_uuid
+import row_fields
 
-DENIED_TOP_FIELDS: tuple[str, ...] = (
-    "schema",
-    "id",
-    "tier",
-    "source",
-    "labels",
-    "questions",
-    "consent",
-    "trajectory_id",
-    "record_id",
-    "group_key",
-)
-DENIED_NESTED_FIELDS: tuple[str, ...] = ("state.meta",)
-DENIED_FIELDS: tuple[str, ...] = DENIED_TOP_FIELDS + DENIED_NESTED_FIELDS
+DENIED_FIELDS: tuple[str, ...] = row_fields.DENY_KEYS
+TRAINER_READ_PATHS: tuple[str, ...] = row_fields.READABLE_PATHS
 SCHEMA_ENUM = frozenset(
     {
         "jev-decision-schema-1.0.0",
@@ -125,7 +111,6 @@ META_LIST_KEYS = frozenset({"keys"})
 META_NULLABLE = frozenset({"flag"})
 META_STR_MAX = 64
 META_LIST_MAX = 8
-EXTRACTOR_TEXT_KEY = "text"
 
 
 class DeniedFieldError(Exception):
@@ -369,61 +354,54 @@ def _check_meta(value: object) -> None:
         _require_token(field, item, max_len=META_STR_MAX)
 
 
+def _check_id_field(field: str) -> Callable[[object], None]:
+    def check(value: object) -> None:
+        require_id(field, value)
+
+    return check
+
+
+_DENIED_CHECKERS: dict[str, Callable[[object], None]] = {
+    "schema": _check_schema,
+    "id": _check_id_field("id"),
+    "tier": _check_tier,
+    "source": _check_source,
+    "labels": _check_labels,
+    "questions": _check_questions,
+    "consent": _check_consent,
+    "trajectory_id": _check_id_field("trajectory_id"),
+    "record_id": _check_id_field("record_id"),
+    "group_key": _check_id_field("group_key"),
+    "state.meta": _check_meta,
+}
+if frozenset(_DENIED_CHECKERS) != frozenset(row_fields.DENY_KEYS):
+    raise RuntimeError("denied-field checkers must match row_fields.DENY_KEYS")
+
+
 def check_denied_fields(row: object) -> None:
     """Refuse the row if any denied field fails. Missing optional fields skip."""
     if not isinstance(row, Mapping):
         _refuse("row", f"object required, got {type(row).__name__}")
-    if "schema" in row:
-        _check_schema(row.get("schema"))
-    if "id" in row:
-        require_id("id", row.get("id"))
-    if "tier" in row:
-        _check_tier(row.get("tier"))
-    if "source" in row:
-        _check_source(row.get("source"))
-    if "labels" in row:
-        _check_labels(row.get("labels"))
-    if "questions" in row:
-        _check_questions(row.get("questions"))
-    if "consent" in row:
-        _check_consent(row.get("consent"))
-    if "trajectory_id" in row:
-        require_id("trajectory_id", row.get("trajectory_id"))
-    if "record_id" in row:
-        require_id("record_id", row.get("record_id"))
-    if "group_key" in row:
-        require_id("group_key", row.get("group_key"))
-    state = row.get("state")
-    if isinstance(state, Mapping) and "meta" in state:
-        _check_meta(state.get("meta"))
-    elif not isinstance(state, Mapping) and "state" in row:
+    if "state" in row and not isinstance(row.get("state"), Mapping):
         _refuse("state.meta", "state is not an object")
-
-
-def extractor_text(row: Mapping[str, Any]) -> str:
-    """v1 extractor text: tokenizable ``state.message`` str (Mill message_text)."""
-    mill = content_uuid._load_mill_near_dup_tokenizer()
-    state = row.get("state")
-    if not isinstance(state, Mapping) or type(state.get("message")) is not str:
-        _refuse("text", "row has no tokenizable state.message")
-    try:
-        text = mill.message_text(state["message"])
-    except Exception as exc:
-        _refuse("text", f"extractor refused:{type(exc).__name__}")
-        raise AssertionError("unreachable") from exc
-    if type(text) is not str or not text:
-        _refuse("text", "extractor returned no text")
-    return text
+    for path in row_fields.DENY_KEYS:
+        checker = _DENIED_CHECKERS.get(path)
+        if checker is None:
+            _refuse(path, "no schema checker")
+            raise AssertionError("unreachable")
+        value = row_fields.get_by_path(row, path)
+        if value is row_fields.MISSING:
+            continue
+        checker(value)
 
 
 def trainer_input_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
-    """Extractor text plus denied fields that passed the schema check."""
+    """Raw readable-field bytes plus denied fields that passed the schema check."""
     check_denied_fields(row)
-    payload: dict[str, Any] = {EXTRACTOR_TEXT_KEY: extractor_text(row)}
-    for key in DENIED_TOP_FIELDS:
-        if key in row:
-            payload[key] = row[key]
-    state = row.get("state")
-    if isinstance(state, Mapping) and "meta" in state:
-        payload["state.meta"] = state["meta"]
+    payload: dict[str, Any] = dict(row_fields.readable_raw_fields(row))
+    for path in row_fields.DENY_KEYS:
+        value = row_fields.get_by_path(row, path)
+        if value is row_fields.MISSING:
+            continue
+        payload[path] = value
     return payload
