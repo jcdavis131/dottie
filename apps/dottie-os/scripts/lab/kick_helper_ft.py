@@ -45,7 +45,9 @@ import urllib.error
 import urllib.request
 import uuid
 from collections import Counter, defaultdict
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Mapping, NoReturn
 
@@ -1598,6 +1600,17 @@ def _trainer_exit_is_bad(info: Mapping[str, Any]) -> bool:
     return info.get("exit_code") not in (0,)
 
 
+def _trainer_stdout_is_spoofed(text: str) -> bool:
+    """Trainer stdout is never a result source. Flag MATCH-like evidence lines."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(INTEGRITY_EVIDENCE_LINE_PREFIX):
+            return True
+        if stripped.startswith("INTEGRITY_EVIDENCE "):
+            return True
+    return False
+
+
 def combine_trainer_exits(parts: list[Mapping[str, Any]]) -> dict[str, Any]:
     """Prefer the last waited trainer; unobserved or nonzero/signal/timeout is REFUSED."""
     recorded = _empty_trainer_exit()
@@ -2338,6 +2351,10 @@ def _apply_post_train_record(
             public["private_copy_shas"] = dict(evidence["private_copy_shas"])
         if evidence.get("run_private_dir"):
             public["run_private_dir"] = evidence["run_private_dir"]
+        if "stdout_spoof" in evidence:
+            public["stdout_spoof"] = bool(evidence["stdout_spoof"])
+        if "scorable" in evidence:
+            public["scorable"] = bool(evidence["scorable"])
         in_memory_result = (
             record["status"]
             if record.get("status") in (CHECKPOINT_MATCH, CHECKPOINT_REFUSED)
@@ -2580,12 +2597,21 @@ def kick(
         # same process/host, then re-hash the recorded run-dir copy paths.
         exits: list[Mapping[str, Any]] = []
         exits.append(wait_for_training_exit(result if isinstance(result, dict) else None))
-        if start_training is None:
-            started = _authorized_start_training(run_private, evidence, log_path, _gate=_GATE_OK)
-            exits.append(wait_for_training_exit(started if isinstance(started, dict) else None))
-        else:
-            started = start_training(run_private, evidence, log_path)
-            exits.append(wait_for_training_exit(started if isinstance(started, dict) else None))
+        captured = StringIO()
+        with redirect_stdout(captured):
+            if start_training is None:
+                started = _authorized_start_training(run_private, evidence, log_path, _gate=_GATE_OK)
+            else:
+                started = start_training(run_private, evidence, log_path)
+        trainer_stdout = captured.getvalue()
+        if trainer_stdout:
+            sys.stdout.write(trainer_stdout)
+            sys.stdout.flush()
+        spoofed = _trainer_stdout_is_spoofed(trainer_stdout)
+        evidence["stdout_spoof"] = spoofed
+        evidence["scorable"] = (not spoofed) and (not smoke)
+        persist()
+        exits.append(wait_for_training_exit(started if isinstance(started, dict) else None))
         exit_info = combine_trainer_exits(exits)
         _recheck_copies(
             run_private,
