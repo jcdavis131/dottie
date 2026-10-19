@@ -14,22 +14,34 @@ Nested keys inside those objects — including nested ``id`` and
 ``state``/``questions``.
 Excluded at the top level only: ``labels``, ids (``id``, ``uuid``,
 ``trajectory_id``, ``source.uuid``), timestamps, and every other
-top-level key.
+top-level key. A row with neither ``state`` nor ``questions`` is
+``content_uuid.empty``.
 
 Encoding, exactly:
 1. Build a JSON object with the included fields that are present (a missing
    field is omitted, not null).
-2. Recursively canonicalize that object. ``type(v) is bool`` is left as a
-   JSON bool (``true``/``false``) and is checked **before** int/float
-   handling, so bools never collapse with ``0``/``1``. Any finite float
-   ``f`` with ``f.is_integer()`` becomes ``int(f)`` (so ``1.0`` hashes as
-   ``1``, and ``-0.0`` becomes ``0``). Non-integer floats keep their
-   ``json.dumps`` repr. Strings (keys and values) are Unicode NFC.
-   ``NaN`` and ``±Infinity`` anywhere in ``state``/``questions`` are refused.
+2. Recursively canonicalize that object (iterative depth cap 256).
+   ``type(v) is bool`` is left as a JSON bool (``true``/``false``) and is
+   checked **before** int/float handling, so bools never collapse with
+   ``0``/``1``. Numpy scalars fold to Python bool/int/float only when
+   ``numpy`` is already imported; numpy is never imported by this module
+   when absent. Any finite float ``f`` with ``abs(f) <= 2**53`` and
+   ``f.is_integer()`` becomes ``int(f)`` (so ``1.0`` hashes as ``1``, and
+   ``-0.0`` becomes ``0``). Non-integer floats in that range keep their
+   ``json.dumps`` repr. Floats with ``abs(f) > 2**53`` refuse as
+   ``content_uuid.float_precision`` (encoding is not changed; v3 has none).
+   Strings (keys and values) are Unicode NFC. Keys that collide after NFC
+   refuse as ``content_uuid.key_collision``. Non-str keys refuse as
+   ``content_uuid.unsupported_type``. ``NaN`` and ``±Infinity`` refuse as
+   ``content_uuid.non_finite``.
 3. ``json.dumps(..., sort_keys=True, separators=(",", ":"), ensure_ascii=False,
    allow_nan=False)``.
 4. UTF-8 encode those JSON bytes.
 5. ``sha256`` hex digest of those bytes is the content uuid.
+
+Exact-hash report-only (not folded, by design): ``"1"`` vs ``1``; trailing
+or doubled whitespace; case; BOM; zero-width and fullwidth (NFKC-only)
+characters. Near-dup scoring is the control for those.
 
 Because labels are excluded, two rows can share a content uuid. The gate
 must not silently dedupe:
@@ -40,6 +52,8 @@ must not silently dedupe:
   ``content_uuid.duplicate``
 - identical content + **identical** labels **across train and holdout** →
   ``content_uuid.cross_split_duplicate``
+- identical content + **different** labels **across train and holdout** →
+  both ``content_uuid.label_conflict`` and ``content_uuid.cross_split_leak``
 
 Usage (Mill)::
 
@@ -47,6 +61,7 @@ Usage (Mill)::
     python3 content_uuid.py < row.json
     python3 content_uuid.py --jsonl rows.jsonl
     python3 content_uuid.py --check rows.jsonl
+    python3 content_uuid.py --check train.jsonl --holdout holdout.jsonl
 """
 from __future__ import annotations
 
@@ -62,6 +77,10 @@ from typing import Any, Iterable, Mapping
 CONTENT_UUID_FIELDS: tuple[str, ...] = ("state", "questions")
 SHA256_LEN = 64
 _HEX = frozenset("0123456789abcdef")
+MAX_DEPTH = 256
+MAX_INT_DIGITS = 4300
+_MAX_INT = 10 ** MAX_INT_DIGITS
+_FLOAT_ABS_MAX = float(2**53)
 
 
 class ContentUuidError(Exception):
@@ -80,13 +99,63 @@ def _non_finite_label(value: float) -> str:
     return "-Infinity"
 
 
-def _canonicalize_value(value: Any, path: str = "") -> Any:
+def _has_surrogate(text: str) -> bool:
+    return any(0xD800 <= ord(ch) <= 0xDFFF for ch in text)
+
+
+def _fold_numpy_scalar(value: Any) -> Any:
+    """Fold numpy scalars only when numpy is already imported. Never import it."""
+    np = sys.modules.get("numpy")
+    if np is None:
+        return value
+    bool_type = getattr(np, "bool_", None)
+    if bool_type is not None and isinstance(value, bool_type):
+        return bool(value)
+    integer_type = getattr(np, "integer", None)
+    if integer_type is not None and isinstance(value, integer_type):
+        return int(value)
+    floating_type = getattr(np, "floating", None)
+    if floating_type is not None and isinstance(value, floating_type):
+        return float(value)
+    return value
+
+
+def _raise_unsupported(value: Any, path: str) -> None:
+    loc = path or "value"
+    raise ContentUuidError(
+        "content_uuid.unsupported_type",
+        "JSON bool/int/float/str/null/list/object",
+        type(value).__name__,
+        f"unsupported type {type(value).__name__} in {loc}",
+    )
+
+
+def _canonicalize_value(value: Any, path: str = "", depth: int = 0) -> Any:
     """NFC strings; integer-valued floats → int; bools stay bools; refuse NaN/Inf.
 
     ``type(v) is bool`` is checked before int/float handling so ``True``
     does not collapse with ``1``.
     """
+    if depth > MAX_DEPTH:
+        loc = path or "value"
+        raise ContentUuidError(
+            "content_uuid.too_deep",
+            f"depth <= {MAX_DEPTH}",
+            depth,
+            f"nesting deeper than {MAX_DEPTH} at {loc}",
+        )
+    value = _fold_numpy_scalar(value)
     if type(value) is bool:
+        return value
+    if type(value) is int:
+        if value <= -_MAX_INT or value >= _MAX_INT:
+            loc = path or "value"
+            raise ContentUuidError(
+                "content_uuid.int_too_large",
+                f"at most {MAX_INT_DIGITS} digits",
+                "oversized int",
+                f"integer exceeds {MAX_INT_DIGITS} digits in {loc}",
+            )
         return value
     if type(value) is float:
         if math.isnan(value) or math.isinf(value):
@@ -98,25 +167,63 @@ def _canonicalize_value(value: Any, path: str = "") -> Any:
                 label,
                 f"non-finite number ({label}) in {loc}",
             )
+        if abs(value) > _FLOAT_ABS_MAX:
+            loc = path or "value"
+            raise ContentUuidError(
+                "content_uuid.float_precision",
+                f"abs(float) <= 2**53",
+                value,
+                f"float exceeds 2**53 magnitude in {loc}",
+            )
         if value.is_integer():
             return int(value)
         return value
+    if value is None:
+        return None
     if isinstance(value, str):
+        if _has_surrogate(value):
+            loc = path or "value"
+            raise ContentUuidError(
+                "content_uuid.invalid_unicode",
+                "well-formed Unicode",
+                "lone surrogate",
+                f"lone surrogate in {loc}",
+            )
         return unicodedata.normalize("NFC", value)
     if isinstance(value, Mapping):
         payload: dict[str, Any] = {}
         for key, child in value.items():
-            child_path = f"{path}.{key}" if path else str(key)
-            payload[_canonicalize_value(str(key), child_path)] = _canonicalize_value(
-                child, child_path
-            )
+            if type(key) is not str:
+                loc = path or "value"
+                raise ContentUuidError(
+                    "content_uuid.unsupported_type",
+                    "str object key",
+                    type(key).__name__,
+                    f"non-str key {type(key).__name__} in {loc}",
+                )
+            child_path = f"{path}.{key}" if path else key
+            nfc_key = _canonicalize_value(key, child_path, depth + 1)
+            if nfc_key in payload:
+                raise ContentUuidError(
+                    "content_uuid.key_collision",
+                    "NFC-distinct keys",
+                    nfc_key,
+                    f"NFC key collision {nfc_key!r} in {path or 'object'}",
+                )
+            payload[nfc_key] = _canonicalize_value(child, child_path, depth + 1)
         return payload
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list):
         return [
-            _canonicalize_value(child, f"{path}[{idx}]")
+            _canonicalize_value(child, f"{path}[{idx}]", depth + 1)
             for idx, child in enumerate(value)
         ]
-    return value
+    if isinstance(value, tuple):
+        return [
+            _canonicalize_value(child, f"{path}[{idx}]", depth + 1)
+            for idx, child in enumerate(value)
+        ]
+    _raise_unsupported(value, path)
+    raise AssertionError("unreachable")
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -141,7 +248,22 @@ def canonical_json_bytes(value: Any) -> bytes:
             "non-finite",
             f"non-finite number: {exc}",
         ) from exc
-    return unicodedata.normalize("NFC", text).encode("utf-8")
+    except TypeError as exc:
+        raise ContentUuidError(
+            "content_uuid.unsupported_type",
+            "JSON bool/int/float/str/null/list/object",
+            type(payload).__name__,
+            f"unsupported type: {exc}",
+        ) from exc
+    try:
+        return unicodedata.normalize("NFC", text).encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ContentUuidError(
+            "content_uuid.invalid_unicode",
+            "well-formed Unicode",
+            "encode error",
+            f"invalid unicode: {exc}",
+        ) from exc
 
 
 def canonical_content_object(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -149,6 +271,13 @@ def canonical_content_object(row: Mapping[str, Any]) -> dict[str, Any]:
 
     Nested ``id`` / ``timestamp`` keys inside those fields are kept.
     """
+    if "state" not in row and "questions" not in row:
+        raise ContentUuidError(
+            "content_uuid.empty",
+            "state and/or questions",
+            "missing",
+            f"empty content on {row_id(row)}",
+        )
     payload: dict[str, Any] = {}
     for key in CONTENT_UUID_FIELDS:
         if key in row:
@@ -198,13 +327,22 @@ def claimed_content_uuid(row: Mapping[str, Any]) -> str | None:
     """Return ``source.content_uuid`` when it is 64 lowercase hex.
 
     ``source.uuid`` is always a dataset id. It is never read as a content
-    uuid, even when it is 64 hex.
+    uuid, even when it is 64 hex. A present but malformed
+    ``source.content_uuid`` is a forgery.
     """
     source = row.get("source")
     if isinstance(source, Mapping):
         value = source.get("content_uuid")
         if is_sha256_hex(value):
             return str(value)
+        if "content_uuid" in source:
+            raise ContentUuidError(
+                "content_uuid",
+                "64 lowercase hex",
+                value,
+                f"forged content uuid on {row_id(row)}: claimed {value!r} is not 64 lowercase hex",
+            )
+        return None
     return None
 
 
@@ -224,6 +362,7 @@ def verify_content_uuid(row: Mapping[str, Any]) -> str | None:
     """Return the recomputed digest when a claimed content uuid matches.
 
     A claimed 64-hex uuid that does not match is a forgery: callers refuse.
+    A present malformed claim is also a forgery.
     """
     claimed = claimed_content_uuid(row)
     if claimed is None:
@@ -243,10 +382,11 @@ def find_content_uuid_collisions(
     train: Iterable[Mapping[str, Any]],
     holdout: Iterable[Mapping[str, Any]] | None = None,
 ) -> tuple[list[str], list[str], list[str]]:
-    """Return (label_conflicts, within-split duplicates, cross-split duplicates).
+    """Return (label_conflicts, within-split duplicates, cross-split messages).
 
-    Never silently drops. Label conflict wins when labels differ, including
-    across splits. Same labels spanning train and holdout are
+    Never silently drops. Label conflict is always reported when labels
+    differ. Same content across train and holdout with different labels is
+    also ``cross-split leak``. Same labels spanning train and holdout are
     ``cross-split duplicate``, not ``duplicate``.
     """
     by_uuid: dict[str, list[tuple[str, bytes, str]]] = defaultdict(list)
@@ -261,6 +401,7 @@ def find_content_uuid_collisions(
         by_labels: dict[bytes, list[tuple[str, str]]] = defaultdict(list)
         for rid, labels, split in members:
             by_labels[labels].append((rid, split))
+        splits = {split for _rid, _labels, split in members}
         if len(by_labels) > 1:
             groups = list(by_labels.values())
             left, right = groups[0][0][0], groups[1][0][0]
@@ -268,9 +409,15 @@ def find_content_uuid_collisions(
                 f"label conflict: rows {left} and {right} share content uuid "
                 f"{digest} with different labels"
             )
+            if "holdout" in splits and "train" in splits:
+                train_id = next(rid for rid, _labels, split in members if split == "train")
+                hold_id = next(rid for rid, _labels, split in members if split == "holdout")
+                cross.append(
+                    f"cross-split leak: rows {train_id} and {hold_id} share "
+                    f"content uuid {digest} with different labels"
+                )
             continue
         ids_and_splits = next(iter(by_labels.values()))
-        splits = {split for _rid, split in ids_and_splits}
         if "train" in splits and "holdout" in splits:
             train_id = next(rid for rid, split in ids_and_splits if split == "train")
             hold_id = next(rid for rid, split in ids_and_splits if split == "holdout")
@@ -298,6 +445,37 @@ def _index_collision_rows(
         by_uuid[digest].append((row_id(row), canonical_labels_bytes(row), split))
 
 
+def reject_duplicate_pairs(pairs: list[tuple[Any, Any]]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in payload:
+            raise ContentUuidError(
+                "content_uuid.duplicate_json_key",
+                "unique keys",
+                key,
+                f"duplicate JSON key {key!r}",
+            )
+        payload[key] = value
+    return payload
+
+
+def _reject_json_constant(name: str) -> None:
+    raise ContentUuidError(
+        "content_uuid.non_finite",
+        "finite JSON number",
+        name,
+        f"non-finite JSON constant {name}",
+    )
+
+
+def strict_json_loads(text: str) -> Any:
+    return json.loads(
+        text,
+        object_pairs_hook=reject_duplicate_pairs,
+        parse_constant=_reject_json_constant,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -312,38 +490,96 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="scan JSONL for label conflicts and duplicates; exit 1 on either",
     )
+    parser.add_argument(
+        "--holdout",
+        type=str,
+        default=None,
+        help="holdout JSONL for --check (cross-split duplicate and leak)",
+    )
     args = parser.parse_args(argv)
-    if args.check:
-        rows = _load_jsonl(args.check)
-        conflicts, duplicates, cross = find_content_uuid_collisions(rows)
-        for line in conflicts + cross + duplicates:
-            print(line, file=sys.stderr)
-        return 1 if conflicts or duplicates or cross else 0
-    if args.jsonl:
-        for row in _load_jsonl(args.jsonl):
-            print(content_uuid(row))
+    try:
+        if args.check:
+            train = _load_jsonl(args.check)
+            holdout = _load_jsonl(args.holdout) if args.holdout else []
+            conflicts, duplicates, cross = find_content_uuid_collisions(train, holdout)
+            for line in conflicts + cross + duplicates:
+                print(line, file=sys.stderr)
+            return 1 if conflicts or duplicates or cross else 0
+        if args.jsonl:
+            return _print_jsonl_uuids(args.jsonl)
+        raw = sys.stdin.read()
+        if not raw.strip():
+            print("content_uuid: expected a JSON object on stdin", file=sys.stderr)
+            return 2
+        row = strict_json_loads(raw)
+        if not isinstance(row, dict):
+            print("content_uuid: stdin must be a JSON object", file=sys.stderr)
+            return 2
+        print(content_uuid(row))
         return 0
-    raw = sys.stdin.read()
-    if not raw.strip():
-        print("content_uuid: expected a JSON object on stdin", file=sys.stderr)
+    except ContentUuidError as exc:
+        print(str(exc), file=sys.stderr)
         return 2
-    row = json.loads(raw)
-    if not isinstance(row, dict):
-        print("content_uuid: stdin must be a JSON object", file=sys.stderr)
-        return 2
-    print(content_uuid(row))
-    return 0
+
+
+def _print_jsonl_uuids(path: str) -> int:
+    failed = False
+    with open(path, encoding="utf-8") as handle:
+        for lineno, line in enumerate(handle, 1):
+            if not line.strip():
+                continue
+            try:
+                obj = strict_json_loads(line)
+            except ContentUuidError as exc:
+                print(f"line {lineno}: {exc}")
+                failed = True
+                continue
+            except json.JSONDecodeError as exc:
+                print(f"line {lineno}: invalid JSON: {exc}")
+                failed = True
+                continue
+            if not isinstance(obj, dict):
+                print(f"line {lineno}: not a JSON object")
+                failed = True
+                continue
+            try:
+                print(content_uuid(obj))
+            except ContentUuidError as exc:
+                print(f"line {lineno}: {exc}")
+                failed = True
+    return 2 if failed else 0
 
 
 def _load_jsonl(path: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with open(path, encoding="utf-8") as handle:
-        for line in handle:
+        for lineno, line in enumerate(handle, 1):
             if not line.strip():
                 continue
-            obj = json.loads(line)
-            if isinstance(obj, dict):
-                rows.append(obj)
+            try:
+                obj = strict_json_loads(line)
+            except ContentUuidError as exc:
+                raise ContentUuidError(
+                    exc.field,
+                    exc.expected,
+                    exc.actual,
+                    f"line {lineno}: {exc}",
+                ) from exc
+            except json.JSONDecodeError as exc:
+                raise ContentUuidError(
+                    "content_uuid",
+                    "JSON object",
+                    "invalid JSON",
+                    f"line {lineno}: invalid JSON: {exc}",
+                ) from exc
+            if not isinstance(obj, dict):
+                raise ContentUuidError(
+                    "content_uuid",
+                    "JSON object",
+                    type(obj).__name__,
+                    f"line {lineno}: not a JSON object",
+                )
+            rows.append(obj)
     return rows
 
 
