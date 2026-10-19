@@ -169,6 +169,7 @@ class HelperFtTrackioTests(unittest.TestCase):
         self.assertEqual(evidence["ok"], True)
 
     def test_eval_scores_attach(self) -> None:
+        results_sha = "ab" * 32
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
@@ -185,6 +186,7 @@ class HelperFtTrackioTests(unittest.TestCase):
                     "over-halt": 2,
                     "veto_fail": 1,
                 },
+                results_sha,
             )
         self.assertTrue(ok)
         attached = [row["data"] for row in self.fake.logs if row["data"].get("eval_attached") == 1]
@@ -196,7 +198,50 @@ class HelperFtTrackioTests(unittest.TestCase):
         self.assertEqual(attached[0]["over_halt"], 2)
         self.assertEqual(attached[0]["veto_fail"], 1)
         self.assertEqual(attached[0]["run_id"], evidence["run_id"])
+        self.assertEqual(attached[0]["results_sha256"], results_sha)
         self.assertTrue(any(init.get("name") == evidence["run_id"] for init in self.fake.inits))
+
+    def test_eval_scores_require_results_sha256(self) -> None:
+        scores = {"choice": 0.5, "score": 0.4, "noul": 0.3}
+        before = list(self.fake.logs)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            missing = helper_ft_trackio.log_eval_scores("helper-ft-eval-sha", scores)
+            omitted = helper_ft_trackio.log_eval_scores("helper-ft-eval-sha", scores, None)
+            bad = helper_ft_trackio.log_eval_scores("helper-ft-eval-sha", scores, "AB" * 32)
+            short = helper_ft_trackio.log_eval_scores("helper-ft-eval-sha", scores, "abcd")
+            not_hex = helper_ft_trackio.log_eval_scores("helper-ft-eval-sha", scores, "g" * 64)
+            numbered = helper_ft_trackio.log_eval_scores("helper-ft-eval-sha", scores, 123)
+            wrapper_missing = kick_helper_ft.log_eval_scores("helper-ft-eval-sha", scores)
+        self.assertFalse(missing)
+        self.assertFalse(omitted)
+        self.assertFalse(bad)
+        self.assertFalse(short)
+        self.assertFalse(not_hex)
+        self.assertFalse(numbered)
+        self.assertFalse(wrapper_missing)
+        self.assertEqual(self.fake.logs, before)
+        messages = [str(item.message).lower() for item in caught]
+        self.assertTrue(any("results_sha256" in msg and "skipped" in msg for msg in messages))
+        self.assertTrue(any("not stamp-gate evidence" in msg for msg in messages))
+
+    def test_trackio_docs_say_not_stamp_gate_evidence(self) -> None:
+        helper_doc = Path(helper_ft_trackio.__file__).read_text(encoding="utf-8")
+        kick_doc = Path(kick_helper_ft.__file__).read_text(encoding="utf-8")
+        readme = Path(__file__).resolve().parents[1] / "README.md"
+        readme_text = readme.read_text(encoding="utf-8")
+        needle = "never stamp-gate evidence"
+        verdict = "verdicts come only from the sha-pinned results files and the hq events"
+        for text, label in (
+            (helper_ft_trackio.__doc__ or "", "helper module"),
+            (helper_doc, "helper_ft_trackio.py"),
+            (kick_helper_ft.log_eval_scores.__doc__ or "", "kick log_eval_scores"),
+            (kick_doc, "kick_helper_ft.py"),
+            (readme_text, "README.md"),
+        ):
+            lowered = " ".join(text.lower().split())
+            self.assertIn(needle, lowered, label)
+            self.assertIn(verdict, lowered, label)
 
     def test_refused_kick_logs_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
