@@ -57,6 +57,7 @@ import errno
 import fcntl
 import hashlib
 import hmac
+import html
 import json
 import math
 import os
@@ -133,15 +134,18 @@ PINNED_COPY_SPEC_REL = "apps/dottie-os/scripts/lab/cam_pin_spec.py"
 PINNED_COPY_UUID_REL = "apps/dottie-os/scripts/lab/content_uuid.py"
 REPO_TRUST_PUB_REL = "apps/dottie-os/trust/cam_pin_ed25519.pub"
 REPO_TRUST_KEY_ID_REL = "apps/dottie-os/trust/cam_pin_key_id"
+REPO_TRUST_RESERVED_REL = "apps/dottie-os/trust/reserved_content_uuids.jsonl"
 # Server layout. Child and launcher both pin these exact repo-relative paths.
 PINNED_COPY_PUB_REL = REPO_TRUST_PUB_REL
 PINNED_COPY_KEY_ID_REL = REPO_TRUST_KEY_ID_REL
+PINNED_COPY_RESERVED_REL = REPO_TRUST_RESERVED_REL
 REQUIRED_PINS = (
     PINNED_COPY_KICK_REL,
     PINNED_COPY_SPEC_REL,
     PINNED_COPY_UUID_REL,
     PINNED_COPY_PUB_REL,
     PINNED_COPY_KEY_ID_REL,
+    PINNED_COPY_RESERVED_REL,
 )
 PINNED_COPY_REQUIRED_RELS = REQUIRED_PINS
 ENTRYPOINT_PIN_RELS = REQUIRED_PINS
@@ -177,6 +181,10 @@ ULTRADATA_MATH_L1_SHAPE: dict[str, object] = {
         "difficulty": frozenset({"type", "score"}),
         "solvable": frozenset({"type", "noul"}),
     },
+    "labels_types": {"difficulty": "score", "solvable": "noul"},
+    "labels_score_range": (0.0, 1.0),
+    "consent_required": True,
+    "consent_champion": False,
     "consent_keys": frozenset({"capture_training", "public_hf", "champion"}),
     "forbidden_keys": frozenset(
         {
@@ -197,21 +205,33 @@ ULTRADATA_MATH_L1_SHAPE: dict[str, object] = {
         }
     ),
     "forbidden_string_patterns": (
-        r"\$ ",
-        r"bash\s+-c",
-        r"rm\s+-",
-        r"<tool_call>",
-        r'"tool"\s*:',
-        r'"command"\s*:',
-        r"```(?:bash|sh)\b",
+        r"(?m)^\s*\$\s+\S+",
+        r"\$\(",
+        r"`",
+        r"\b(?:ba)?sh\s+-c\b",
+        r"\b(?:curl|wget)\b[\s\S]{0,120}\|\s*(?:ba)?sh\b",
+        r"\bbase64\b[\s\S]{0,120}\|\s*(?:ba)?sh\b",
+        r"<tool_call\s*>",
+        r"['\"]tool['\"]\s*:",
+        r"['\"]command['\"]\s*:",
+        r"(?:```|~~~)\s*(?:ba)?sh\b",
+        r"(?:```|~~~)\s*zsh\b",
+        r"\bpython(?:3)?\s+-c\b",
+        r"\brm\s+-",
         r"\btool\s*=",
     ),
 }
 UUIDLESS_SOURCE_ALLOWLIST: dict[tuple[str, ...], dict[str, object]] = {
     ("openbmb/UltraData-Math", "UltraData-Math-L1"): ULTRADATA_MATH_L1_SHAPE,
 }
-RESERVED_CONTENT_UUIDS_ENV = "HELPER_FT_RESERVED_CONTENT_UUIDS"
-RESERVED_CONTENT_UUIDS_SHA256_ENV = "HELPER_FT_RESERVED_CONTENT_UUIDS_SHA256"
+RESERVED_CONTENT_UUIDS_REL = PINNED_COPY_RESERVED_REL
+RESERVED_CONTENT_UUIDS_NAME = "reserved_content_uuids.jsonl"
+# Gate-owned sha of apps/dottie-os/trust/reserved_content_uuids.jsonl. Not argv/env.
+RESERVED_CONTENT_UUIDS_SHA256 = (
+    "bc8926d5a18adf4105372c528fcbcfd32ca898e6235c1701859b837be435163c"
+)
+_SHAPE_CF_CATS = frozenset({"Cc", "Cf", "Mn", "Me"})
+_UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
 TRAINER_PATH_FILES: dict[str, str] = {
     "pack": PACK_FILE,
     "train": TRAIN_FILE,
@@ -855,6 +875,7 @@ def load_pinned_copy_mode(script: Path | None = None) -> dict[str, Any] | None:
         PINNED_COPY_UUID_REL: uuid_live,
         PINNED_COPY_PUB_REL: (root / PINNED_COPY_PUB_REL).resolve(),
         PINNED_COPY_KEY_ID_REL: (root / PINNED_COPY_KEY_ID_REL).resolve(),
+        PINNED_COPY_RESERVED_REL: (root / PINNED_COPY_RESERVED_REL).resolve(),
     }
     for rel in PINNED_COPY_REQUIRED_RELS:
         if rel not in files:
@@ -883,6 +904,7 @@ def load_pinned_copy_mode(script: Path | None = None) -> dict[str, Any] | None:
         PINNED_COPY_KEY_ID_REL: files[PINNED_COPY_KEY_ID_REL],
         PINNED_COPY_SPEC_REL: files[PINNED_COPY_SPEC_REL],
         PINNED_COPY_UUID_REL: files[PINNED_COPY_UUID_REL],
+        PINNED_COPY_RESERVED_REL: files[PINNED_COPY_RESERVED_REL],
         "HEAD": head,
     }
     return {
@@ -950,7 +972,7 @@ def load_entrypoint_pins(*, git_sha: str | None) -> tuple[dict[str, str], str]:
     ``FORGE_ENTRYPOINT_PINS`` is a JSON object mapping **exact** repo-relative
     paths to sha256 hex. Basename keys are a missing entry. Required keys
     are the pinned-copy rels (kick, cam_pin_spec, content_uuid, trust pub,
-    trust key id). ``FORGE_PINS_SOURCE_COMMIT`` is the 40-hex commit those
+    trust key id, reserved content-uuid list). ``FORGE_PINS_SOURCE_COMMIT`` is the 40-hex commit those
     pins were hashed from and, when ``git_sha`` is present, must equal it.
     A missing ``script_git_sha`` (private verified copy) is accepted only
     when both env vars are present and well formed. Missing or malformed
@@ -1815,22 +1837,32 @@ def _is_not_for_train_value(value: object) -> bool:
 
 def _iter_jsonl_objects(path: Path, field: str):
     try:
-        with path.open(encoding="utf-8") as handle:
-            for line in handle:
-                if not line.strip():
-                    continue
-                try:
-                    obj = content_uuid.strict_json_loads(line)
-                except content_uuid.ContentUuidError as exc:
-                    _refuse(exc.field, exc.expected, f"{field}: {exc}")
-                except ValueError:
-                    _refuse(field, "jsonl row", "invalid JSON")
-                if isinstance(obj, dict):
-                    yield obj
-    except UnicodeDecodeError:
-        _refuse(field, "utf-8 text", "invalid encoding")
+        buf = path.read_bytes()
     except OSError as exc:
         _refuse(field, "readable text file", f"OSError:{exc.errno}")
+    try:
+        text = content_uuid.decode_json_bytes(buf)
+    except content_uuid.ContentUuidError as exc:
+        _refuse(exc.field, exc.expected, f"{field}: {exc}")
+    except RecursionError:
+        _refuse("content_uuid.too_deep", f"depth <= {content_uuid.MAX_DEPTH}", f"{field}: RecursionError")
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            obj = content_uuid.strict_json_loads(line)
+        except content_uuid.ContentUuidError as exc:
+            _refuse(exc.field, exc.expected, f"{field}: {exc}")
+        except RecursionError:
+            _refuse(
+                "content_uuid.too_deep",
+                f"depth <= {content_uuid.MAX_DEPTH}",
+                f"{field}: RecursionError",
+            )
+        except ValueError:
+            _refuse(field, "jsonl row", "invalid JSON")
+        if isinstance(obj, dict):
+            yield obj
 
 
 def _row_id(obj: Mapping[str, Any]) -> str:
@@ -2489,14 +2521,15 @@ def collect_forged_content_uuids(recorded_paths: Mapping[str, str]) -> list[str]
     return hits
 
 
-def _resolve_optional(value: object, env_name: str) -> object:
-    if value is _UNSET:
-        return os.environ.get(env_name)
-    return value
+def reserved_content_uuids_path() -> Path:
+    """Gate-owned reserved list. Never argv or env."""
+    if cam_pin_spec.PINNED_COPY_ROOT is not None:
+        return Path(cam_pin_spec.PINNED_COPY_ROOT) / RESERVED_CONTENT_UUIDS_REL
+    return Path(__file__).resolve().parents[2] / "trust" / RESERVED_CONTENT_UUIDS_NAME
 
 
 def load_reserved_content_uuids(path: object, expected_sha256: object) -> set[str]:
-    """Load the pinned reserved content-uuid list. Missing file or sha mismatch refuses."""
+    """Load the pinned reserved content-uuid list. Missing file, empty, or sha mismatch refuses."""
     if path is None or path is _UNSET or (type(path) is str and not path):
         _refuse("reserved_content_uuids", "path", "missing")
     pin = _require_sha256_hex("reserved_content_uuids.sha256", expected_sha256)
@@ -2510,9 +2543,35 @@ def load_reserved_content_uuids(path: object, expected_sha256: object) -> set[st
         _refuse("reserved_content_uuids", "utf-8 text", "invalid encoding")
     shas: set[str] = set()
     for idx, line in enumerate(text.splitlines()):
-        if not line.strip():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        shas.add(_require_sha256_hex(f"reserved_content_uuids[{idx}]", line.strip()))
+        if stripped.startswith("{"):
+            try:
+                obj = content_uuid.strict_json_loads(stripped)
+            except content_uuid.ContentUuidError as exc:
+                _refuse(exc.field, exc.expected, f"reserved_content_uuids[{idx}]: {exc}")
+            except RecursionError:
+                _refuse(
+                    "content_uuid.too_deep",
+                    f"depth <= {content_uuid.MAX_DEPTH}",
+                    f"reserved_content_uuids[{idx}]: RecursionError",
+                )
+            if not isinstance(obj, dict):
+                _refuse(
+                    f"reserved_content_uuids[{idx}]",
+                    "JSON object or sha256 hex",
+                    type(obj).__name__,
+                )
+            try:
+                digest = content_uuid.content_uuid(obj)
+            except content_uuid.ContentUuidError as exc:
+                _refuse(exc.field, exc.expected, f"reserved_content_uuids[{idx}]: {exc}")
+            shas.add(digest)
+            continue
+        shas.add(_require_sha256_hex(f"reserved_content_uuids[{idx}]", stripped))
+    if not shas:
+        _refuse("reserved_content_uuids", "non-empty list", "empty")
     return shas
 
 
@@ -2529,6 +2588,10 @@ def _reserved_partition_cfg(
         return {"n": modulus, "residues": residues, "content_shas": content_shas}
     if not isinstance(extra, Mapping):
         _refuse("reserved_eval_partition", "object", type(extra).__name__)
+    if "n" in extra or "modulus" in extra:
+        claimed_n = extra["n"] if "n" in extra else extra.get("modulus")
+        if claimed_n != modulus:
+            _refuse("reserved_eval_partition.n", modulus, claimed_n)
     raw_residues = extra.get("residues")
     if raw_residues is None:
         raw_residues = []
@@ -2610,6 +2673,76 @@ def _mapping_keys(value: object) -> set[object] | None:
     return set(value)
 
 
+def _shape_scan_text(text: str) -> str:
+    """NFKC, strip Cf/zero-width, decode \\uXXXX and HTML entities, casefold, collapse ws."""
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) not in _SHAPE_CF_CATS)
+
+    def _unescape_hex(match: re.Match[str]) -> str:
+        return chr(int(match.group(1), 16))
+
+    text = _UNICODE_ESCAPE_RE.sub(_unescape_hex, text)
+    text = html.unescape(text)
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) not in _SHAPE_CF_CATS)
+    text = text.casefold()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _labels_value_mismatch(
+    labels: Mapping[str, Any], spec: Mapping[str, object]
+) -> str | None:
+    labels_types = spec.get("labels_types")
+    if not isinstance(labels_types, Mapping):
+        return None
+    score_range = spec.get("labels_score_range", (0.0, 1.0))
+    lo, hi = 0.0, 1.0
+    if isinstance(score_range, tuple) and len(score_range) == 2:
+        lo, hi = float(score_range[0]), float(score_range[1])
+    for name, expected_type in labels_types.items():
+        child = labels.get(name)
+        if not isinstance(child, Mapping):
+            return f"labels.{name} not object"
+        if child.get("type") != expected_type:
+            return f"labels.{name}.type mismatch"
+        if expected_type == "score":
+            score = child.get("score")
+            if type(score) not in (int, float) or isinstance(score, bool):
+                return f"labels.{name}.score type"
+            if not (lo <= float(score) <= hi):
+                return f"labels.{name}.score range"
+            continue
+        if expected_type == "noul":
+            noul = child.get("noul")
+            if type(noul) is bool:
+                continue
+            if type(noul) in (int, float) and not isinstance(noul, bool):
+                if not (0.0 <= float(noul) <= 1.0):
+                    return f"labels.{name}.noul range"
+                continue
+            return f"labels.{name}.noul type"
+    return None
+
+
+def _consent_value_mismatch(
+    row: Mapping[str, Any], spec: Mapping[str, object]
+) -> str | None:
+    if spec.get("consent_required") and "consent" not in row:
+        return "missing consent"
+    if "consent" not in row:
+        return None
+    consent = row.get("consent")
+    if not isinstance(consent, Mapping):
+        return "consent not object"
+    if "champion" in spec.get("consent_keys", frozenset()) or "champion" in consent:
+        if consent.get("champion") is not False:
+            return "consent.champion must be false"
+    for key in ("capture_training", "public_hf"):
+        if key in consent and type(consent.get(key)) is not bool:
+            return f"consent.{key} not bool"
+    return None
+
+
 def _uuidless_shape_mismatch(
     row: Mapping[str, Any], spec: Mapping[str, object]
 ) -> str | None:
@@ -2649,6 +2782,9 @@ def _uuidless_shape_mismatch(
         return "labels not object"
     if labels_keys != spec["labels_keys"]:
         return "labels keys mismatch"
+    consent_mismatch = _consent_value_mismatch(row, spec)
+    if consent_mismatch:
+        return consent_mismatch
     if "consent" in row:
         consent_keys = _mapping_keys(row.get("consent"))
         if consent_keys is None:
@@ -2692,6 +2828,9 @@ def _uuidless_shape_mismatch(
             return f"labels.{name} not object"
         if child_keys != allowed:
             return f"labels.{name} keys mismatch"
+    labels_mismatch = _labels_value_mismatch(labels, spec)
+    if labels_mismatch:
+        return labels_mismatch
     forbidden = spec["forbidden_keys"]
     if not isinstance(forbidden, frozenset):
         return "forbidden_keys spec invalid"
@@ -2707,14 +2846,20 @@ def _uuidless_shape_mismatch(
             for key, child in cur.items():
                 if _forbidden_key_name(key, forbidden):
                     return f"forbidden key {key!r}"
+                if type(key) is str:
+                    scanned_key = _shape_scan_text(key)
+                    for regex in string_res:
+                        if regex.search(key) or regex.search(scanned_key):
+                            return "forbidden string marker"
                 stack.append(child)
             continue
         if isinstance(cur, list):
             stack.extend(cur)
             continue
         if type(cur) is str:
+            scanned = _shape_scan_text(cur)
             for regex in string_res:
-                if regex.search(cur):
+                if regex.search(cur) or regex.search(scanned):
                     return "forbidden string marker"
     return None
 
@@ -2761,20 +2906,22 @@ def collect_reserved_partition(
 ) -> list[tuple[str, str]]:
     """Refuse training rows in Mill's reserved eval partition N.
 
-    N is ``int(sha256(source.uuid.encode()).hexdigest(), 16) % 10 in {0, 5}``
-    over the raw UltraData trajectory uuid. The modulus and residues live in
-    ``RESERVED_EVAL_PARTITION``; a pack MANIFEST cannot remove them. Content
-    membership uses the pinned reserved-content-uuid list plus any extra
-    MANIFEST shas.
+    Partition membership is always derived from ``content_uuid`` as
+    ``int(content_uuid, 16) % 10 in {0, 5}``. When ``source.uuid`` is present,
+    Mill's trajectory formula ``sha256(source.uuid) % 10`` is also applied.
+    A missing ``source.uuid`` is not a bypass. The modulus and residues live
+    in ``RESERVED_EVAL_PARTITION``; a pack MANIFEST cannot remove them or
+    disagree on ``n``/``modulus``. Content membership uses the gate-pinned
+    reserved-content-uuid list plus extra MANIFEST shas. Near-dups of N
+    (token Jaccard >= 0.5 after NFKC/Cf/casefold/whitespace/scalar fold)
+    are ``reserved_eval_partition.near_dup``.
 
     Uuid-less rows are ``reserved_eval_partition.uuid_missing`` unless
     ``(source.hf, source.config)`` exactly matches ``UUIDLESS_SOURCE_ALLOWLIST``
-    (and ``source.revision`` when that entry pins one). ``source.hf`` alone
-    is not enough. An allowlisted uuid-less row must also match that entry's
-    shape spec or it is ``reserved_eval_partition.uuid_missing.shape_mismatch``.
-    The spec is a gate constant; MANIFEST cannot change it. Allowlisted
-    uuid-less rows skip the modulo check, still require a verified
-    ``source.content_uuid``, and still run the content-uuid membership check.
+    (and ``source.revision`` when that entry pins one). An allowlisted
+    uuid-less row must match that entry's shape spec, require a verified
+    ``source.content_uuid``, require a non-empty reserved list, and still
+    run uuid_mod on the derived content uuid.
     """
     cfg = _reserved_partition_cfg(manifest, pinned_content_shas)
     hits: list[tuple[str, str]] = []
@@ -2830,6 +2977,16 @@ def collect_reserved_partition(
                 if len(hits) >= 10:
                     return hits
                 continue
+            if not reserved:
+                hits.append(
+                    (
+                        "reserved_content_uuids",
+                        f"{rid}:reserved list required for uuid-less allowlisted row",
+                    )
+                )
+                if len(hits) >= 10:
+                    return hits
+                continue
         else:
             digest = hashlib.sha256(uuid_text.encode()).hexdigest()
             residue = int(digest, 16) % modulus
@@ -2840,7 +2997,22 @@ def collect_reserved_partition(
                         f"{rid}:uuid_mod=={residue}",
                     )
                 )
-        content_sha = content_uuid.content_uuid(row)
+        try:
+            content_sha = content_uuid.content_uuid(row)
+        except content_uuid.ContentUuidError as exc:
+            hits.append((exc.field, str(exc)))
+            if len(hits) >= 10:
+                return hits
+            continue
+        if uuid_text is None:
+            cuuid_residue = int(content_sha, 16) % modulus
+            if cuuid_residue in residues:
+                hits.append(
+                    (
+                        "reserved_eval_partition.uuid_mod",
+                        f"{rid}:content_uuid_mod=={cuuid_residue}",
+                    )
+                )
         if content_sha in reserved:
             hits.append(
                 (
@@ -2848,6 +3020,29 @@ def collect_reserved_partition(
                     f"{rid}:reserved content sha {content_sha}",
                 )
             )
+        cand_tokens = content_uuid.near_dup_tokens(
+            {key: row[key] for key in content_uuid.CONTENT_UUID_FIELDS if key in row}
+        )
+        if cand_tokens:
+            for reserved_sha in reserved:
+                indexed = content_uuid.lookup_near_dup_fingerprint(reserved_sha)
+                if indexed is None:
+                    continue
+                n_id, n_tokens = indexed
+                if not n_tokens:
+                    continue
+                union = cand_tokens | n_tokens
+                if not union:
+                    continue
+                jaccard = len(cand_tokens & n_tokens) / len(union)
+                if jaccard >= 0.5:
+                    hits.append(
+                        (
+                            "reserved_eval_partition.near_dup",
+                            f"{rid}:near_dup of {n_id}",
+                        )
+                    )
+                    break
         if len(hits) >= 10:
             return hits
     return hits
@@ -2859,8 +3054,6 @@ def enforce_pack_gates(
     *,
     smoke: bool = False,
     pack_dir: Path | str | None = None,
-    reserved_content_uuids: object = _UNSET,
-    reserved_content_uuids_sha256: object = _UNSET,
 ) -> None:
     hits = collect_not_for_train(manifest, recorded_paths)
     if hits and not smoke:
@@ -2876,8 +3069,8 @@ def enforce_pack_gates(
     if forged:
         _refuse("content_uuid", "recomputed digest", forged[:10])
     pinned_shas = load_reserved_content_uuids(
-        _resolve_optional(reserved_content_uuids, RESERVED_CONTENT_UUIDS_ENV),
-        _resolve_optional(reserved_content_uuids_sha256, RESERVED_CONTENT_UUIDS_SHA256_ENV),
+        reserved_content_uuids_path(),
+        RESERVED_CONTENT_UUIDS_SHA256,
     )
     if not (smoke and manifest.get("not_for_train") is True):
         reserved = collect_reserved_partition(manifest, recorded_paths, pinned_shas)
@@ -3377,8 +3570,6 @@ def verify_and_stage(
     pin_record: Mapping[str, Any],
     run_id: str,
     smoke: bool = False,
-    reserved_content_uuids: object = _UNSET,
-    reserved_content_uuids_sha256: object = _UNSET,
 ) -> dict[str, Any]:
     """Copy-hash pack/train/holdout and check them against the staged v2 pin.
 
@@ -3436,6 +3627,14 @@ def verify_and_stage(
         if manifest.get("champion_touched") is not False:
             _refuse("champion_touched", False, manifest.get("champion_touched"))
         pin = _require_cam_pin(pin_record, pack_id, run_id=run_id)
+        claimed_reserved = pin.get("reserved_content_uuids_sha256")
+        if claimed_reserved is not None:
+            if claimed_reserved != RESERVED_CONTENT_UUIDS_SHA256:
+                _refuse(
+                    "cam-pin.reserved_content_uuids_sha256",
+                    RESERVED_CONTENT_UUIDS_SHA256,
+                    claimed_reserved,
+                )
 
         computed_shas: dict[str, str] = {}
         manifest_shas: dict[str, str] = {}
@@ -3487,8 +3686,6 @@ def verify_and_stage(
             trainer_paths,
             smoke=smoke,
             pack_dir=run_private,
-            reserved_content_uuids=reserved_content_uuids,
-            reserved_content_uuids_sha256=reserved_content_uuids_sha256,
         )
         _verify_manifest_copy(run_private, manifest_sha)
 
@@ -4020,8 +4217,6 @@ def kick(
     kickoff: KickoffFn | None = None,
     kickoff_url: str = DEFAULT_KICKOFF_URL,
     smoke: bool = False,
-    reserved_content_uuids: object = _UNSET,
-    reserved_content_uuids_sha256: object = _UNSET,
 ) -> dict[str, Any]:
     """Verify the staged v2 pin, stage private copies, POST kickoff, re-check shas.
 
@@ -4105,8 +4300,6 @@ def kick(
             pin_record=pin_record,
             run_id=run_id,
             smoke=smoke,
-            reserved_content_uuids=reserved_content_uuids,
-            reserved_content_uuids_sha256=reserved_content_uuids_sha256,
         )
         evidence.update(staged)
         evidence["run_id"] = run_id
@@ -4313,6 +4506,30 @@ def kick(
         except OSError:
             pass
         raise
+    except content_uuid.ContentUuidError as exc:
+        evidence["ok"] = False
+        evidence["field"] = exc.field
+        evidence["expected"] = exc.expected
+        evidence["actual"] = exc.actual
+        try:
+            persist()
+        except OSError:
+            pass
+        _refuse(exc.field, exc.expected, exc.actual)
+    except RecursionError as exc:
+        evidence["ok"] = False
+        evidence["field"] = "content_uuid.too_deep"
+        evidence["expected"] = f"depth <= {content_uuid.MAX_DEPTH}"
+        evidence["actual"] = f"RecursionError: {exc}"
+        try:
+            persist()
+        except OSError:
+            pass
+        _refuse(
+            "content_uuid.too_deep",
+            f"depth <= {content_uuid.MAX_DEPTH}",
+            f"RecursionError: {exc}",
+        )
     except Exception as exc:
         evidence["ok"] = False
         evidence["field"] = "kickoff"
@@ -4369,17 +4586,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="explicit smoke mode: never post HQ events, unscorable, delete copies/inbox",
     )
-    parser.add_argument(
-        "--reserved-content-uuids",
-        type=Path,
-        default=None,
-        help="pinned reserved content-uuid list (one 64-hex digest per line)",
-    )
-    parser.add_argument(
-        "--reserved-content-uuids-sha256",
-        default=None,
-        help="sha256 of the reserved content-uuid list file",
-    )
     return parser
 
 
@@ -4396,14 +4602,6 @@ def main(argv: list[str] | None = None) -> int:
             log_path=args.log,
             kickoff_url=args.kickoff_url,
             smoke=bool(args.smoke),
-            reserved_content_uuids=(
-                args.reserved_content_uuids if args.reserved_content_uuids is not None else _UNSET
-            ),
-            reserved_content_uuids_sha256=(
-                args.reserved_content_uuids_sha256
-                if args.reserved_content_uuids_sha256 is not None
-                else _UNSET
-            ),
         )
     except KickRefused as exc:
         print(str(exc), file=sys.stderr, flush=True)

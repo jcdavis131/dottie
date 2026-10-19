@@ -42,7 +42,7 @@ plus the JSON object with **sorted keys, no whitespace** (`json.dumps(..., separ
 
 `pack_id`, `sha256_pack`, `sha256_train`, `sha256_holdout`, `rows_total`, `rows_train`, `rows_holdout`, `recordedAt`
 
-`kid` is **not** in the signed bytes. The pin JSON also carries `cam_sig` (base64 Ed25519 signature of those bytes) and `cam_key_id`. Verify only against `apps/dottie-os/trust/cam_pin_ed25519.pub`. `stampVerified` and `pack_matches` are advisory and never sufficient.
+`kid` is **not** in the signed bytes. The pin JSON also carries `cam_sig` (base64 Ed25519 signature of those bytes) and `cam_key_id`. Verify only against `apps/dottie-os/trust/cam_pin_ed25519.pub`. `stampVerified` and `pack_matches` are advisory and never sufficient. The reserved eval-partition content-uuid list is the gate-owned file `apps/dottie-os/trust/reserved_content_uuids.jsonl` (sha pinned in `REQUIRED_PINS` / `RESERVED_CONTENT_UUIDS_SHA256`). Path and sha are never taken from argv or env. An empty list is refused. A v2 pin may optionally bind `reserved_content_uuids_sha256` to that same digest.
 
 Kicks use `swarm-hq-pin-v2` (Ed25519, `key_id`, binding `{pack_id, run_id, lease_owner}`, RFC 3339 `issued_at`/`not_before`/`not_after` with a 24 h cap and 120 s start-side skew only, nonce, sha256 pack/train/holdout). `swarm-hq-pin-v1` is verify-only history: a valid v1 signature can never authorize a kick in the child or the launcher.
 

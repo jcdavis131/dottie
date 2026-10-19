@@ -136,6 +136,7 @@ TRUST_DIR_REL = "apps/dottie-os/trust"
 TRUST_RELPATHS = (
     "apps/dottie-os/trust/cam_pin_ed25519.pub",
     "apps/dottie-os/trust/cam_pin_key_id",
+    "apps/dottie-os/trust/reserved_content_uuids.jsonl",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py",
     "apps/dottie-os/scripts/lab/content_uuid.py",
 )
@@ -195,6 +196,7 @@ V2_PIN_ALLOWED_KEYS = frozenset(
         "run_id",
         "lease_owner",
         "source",
+        "reserved_content_uuids_sha256",
     )
 )
 
@@ -474,6 +476,11 @@ def parse_v2_pin_payload(
         record["pack_matches"] = payload["pack_matches"]
     if "recordedAt" in payload:
         record["recordedAt"] = payload["recordedAt"]
+    if "reserved_content_uuids_sha256" in payload:
+        record["reserved_content_uuids_sha256"] = require_sha256_hex(
+            "cam-pin.reserved_content_uuids_sha256",
+            payload.get("reserved_content_uuids_sha256"),
+        )
     verify_cam_sig_v2(record)
     if run_id is not None:
         if type(run_id) is not str or not run_id:

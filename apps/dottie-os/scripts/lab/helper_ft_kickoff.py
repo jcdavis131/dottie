@@ -267,8 +267,6 @@ def build_command(
     log_path: Path | str | None = None,
     kickoff_url: str | None = None,
     smoke: bool = False,
-    reserved_content_uuids: Path | str | None = None,
-    reserved_content_uuids_sha256: str | None = None,
     python: str | None = None,
 ) -> list[str]:
     """Launcher argv for the HELPER FT child. Always includes ``--run-id`` and ``--pin``."""
@@ -292,10 +290,6 @@ def build_command(
         cmd.extend(["--kickoff-url", str(kickoff_url)])
     if smoke:
         cmd.append("--smoke")
-    if reserved_content_uuids is not None:
-        cmd.extend(["--reserved-content-uuids", str(reserved_content_uuids)])
-    if reserved_content_uuids_sha256:
-        cmd.extend(["--reserved-content-uuids-sha256", str(reserved_content_uuids_sha256)])
     return cmd
 
 

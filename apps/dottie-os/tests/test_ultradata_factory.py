@@ -110,16 +110,6 @@ content_uuid = _load("content_uuid", LAB / "content_uuid.py")
 labeled_data_guard = _load("labeled_data_guard", SCRIPTS / "labeled_data_guard.py")
 cam_pin_spec = kick_helper_ft.cam_pin_spec
 
-_RESERVED_CONTENT_UUIDS_PATH = TESTS / "fixtures" / "reserved_content_uuids.txt"
-_RESERVED_CONTENT_UUIDS_SHA256 = hashlib.sha256(
-    _RESERVED_CONTENT_UUIDS_PATH.read_bytes()
-).hexdigest()
-os.environ.setdefault(
-    kick_helper_ft.RESERVED_CONTENT_UUIDS_ENV, str(_RESERVED_CONTENT_UUIDS_PATH)
-)
-os.environ.setdefault(
-    kick_helper_ft.RESERVED_CONTENT_UUIDS_SHA256_ENV, _RESERVED_CONTENT_UUIDS_SHA256
-)
 ULTRADATA_MATH_HF = "openbmb/UltraData-Math"
 ULTRADATA_MATH_CONFIG = "UltraData-Math-L1"
 
@@ -482,6 +472,7 @@ HQ_VECTOR_SHA256 = "81bca25c743054c5d8f63e28468ac490195dc3008a3529a673278693b335
 _TEST_TRUST_BLOBS = {
     "apps/dottie-os/trust/cam_pin_ed25519.pub": "test-pub-blob",
     "apps/dottie-os/trust/cam_pin_key_id": "test-key-id-blob",
+    "apps/dottie-os/trust/reserved_content_uuids.jsonl": "test-reserved-blob",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py": "test-spec-blob",
     "apps/dottie-os/scripts/lab/content_uuid.py": "test-uuid-blob",
     "HEAD": "test-head-sha",
@@ -2055,6 +2046,10 @@ def _stage_pinned_copy(root: Path, *, omit: str | None = None) -> dict:
         shutil.copy2(src, lab_dst / src.name)
     shutil.copy2(APP / "trust" / "cam_pin_ed25519.pub", trust_dst / "cam_pin_ed25519.pub")
     shutil.copy2(APP / "trust" / "cam_pin_key_id", trust_dst / "cam_pin_key_id")
+    shutil.copy2(
+        APP / "trust" / "reserved_content_uuids.jsonl",
+        trust_dst / "reserved_content_uuids.jsonl",
+    )
     files: dict[str, str] = {}
     for py in sorted(lab_dst.glob("*.py")):
         rel = f"apps/dottie-os/scripts/lab/{py.name}"
@@ -2064,6 +2059,9 @@ def _stage_pinned_copy(root: Path, *, omit: str | None = None) -> dict:
     )
     files[kick_helper_ft.PINNED_COPY_KEY_ID_REL] = kick_helper_ft.sha256_file(
         trust_dst / "cam_pin_key_id"
+    )
+    files[kick_helper_ft.PINNED_COPY_RESERVED_REL] = kick_helper_ft.sha256_file(
+        trust_dst / "reserved_content_uuids.jsonl"
     )
     if omit is not None:
         files.pop(omit, None)
@@ -6293,6 +6291,45 @@ class HelperFtContentUuidTests(unittest.TestCase):
         self.assertEqual(ctx.exception.field, "content_uuid")
         self.assertIn("forged", str(ctx.exception))
 
+    def test_non_mapping_row_is_content_uuid_error(self) -> None:
+        for bad in ([1], "abc", None, 1):
+            with self.subTest(bad=bad):
+                with self.assertRaises(content_uuid.ContentUuidError):
+                    content_uuid.content_uuid(bad)  # type: ignore[arg-type]
+
+    def test_strict_json_loads_refuses_deep_bom_and_huge_int(self) -> None:
+        deep = '{"state":' + "[" * 400 + "]" * 400 + "}"
+        with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+            content_uuid.strict_json_loads(deep)
+        self.assertEqual(ctx.exception.field, "content_uuid.too_deep")
+        with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+            content_uuid.strict_json_loads("\ufeff{\"state\":1}")
+        self.assertIn("BOM", str(ctx.exception))
+        huge = '{"state":1' + "0" * 4300 + "}"
+        with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+            content_uuid.strict_json_loads(huge)
+        self.assertIn(ctx.exception.field, ("content_uuid.int_too_large", "content_uuid"))
+
+    def test_cli_bom_and_invalid_json_exit_2_without_traceback(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(LAB / "content_uuid.py")],
+            input="\ufeff{\"state\":1}",
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertNotIn("Traceback", proc.stderr)
+        proc = subprocess.run(
+            [sys.executable, str(LAB / "content_uuid.py")],
+            input='{"state":',
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertNotIn("Traceback", proc.stderr)
+
     def test_cross_split_label_conflict_is_also_leak(self) -> None:
         questions = {"action": {"type": "choice"}}
         train = {
@@ -6482,15 +6519,18 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
         return _refresh_hashes(dest)
 
     def _kick_with_list(self, dest: Path, lines: list[str], **kick_kw: object) -> dict:
-        listed = dest / "reserved_content_uuids.txt"
-        listed.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
-        digest = hashlib.sha256(listed.read_bytes()).hexdigest()
-        return kick_helper_ft.kick(
-            dest,
-            reserved_content_uuids=listed,
-            reserved_content_uuids_sha256=digest,
-            **kick_kw,
+        payload = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
+        extra = payload.get("reserved_eval_partition")
+        if not isinstance(extra, dict):
+            extra = {}
+        extra["content_shas"] = list(lines)
+        payload["reserved_eval_partition"] = extra
+        (dest / "MANIFEST.json").write_text(
+            json.dumps(payload, indent=2) + "\n", encoding="utf-8"
         )
+        manifest = _refresh_hashes(dest)
+        self._pin(manifest)
+        return kick_helper_ft.kick(dest, **kick_kw)
 
     def test_manifest_omitted_still_refuses_residue_0(self) -> None:
         a = _row(rid="r0-hit", action="execute")
@@ -6548,7 +6588,7 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
             self._pin(manifest)
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
-        self.assertEqual(ctx.exception.field, "reserved_eval_partition.uuid_mod")
+        self.assertEqual(ctx.exception.field, "reserved_eval_partition.n")
 
     def test_residues_1_to_4_and_6_to_9_pass(self) -> None:
         train = []
@@ -6761,7 +6801,7 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
 
     def test_uuidless_allowlisted_missing_content_uuid_refused(self) -> None:
         a = _math_uuidless(rid="math-nocu", action="execute")
-        b = _math_uuidless(rid="math-hold", action="halt")
+        b = _math_uuidless(rid="math-b", action="halt")
         b["source"]["content_uuid"] = content_uuid.content_uuid(b)
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -6775,7 +6815,7 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
 
     def test_uuidless_allowlisted_forged_content_uuid_refused(self) -> None:
         a = _math_uuidless(rid="math-forge", action="execute")
-        b = _math_uuidless(rid="math-ok2", action="halt")
+        b = _math_uuidless(rid="math-b", action="halt")
         a["source"]["content_uuid"] = "a" * 64
         b["source"]["content_uuid"] = content_uuid.content_uuid(b)
         with tempfile.TemporaryDirectory() as tmp:
@@ -6796,10 +6836,8 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
             manifest = self._write(dest, [a, b], pack_id="part-miss-file")
             self._pin(manifest)
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.kick(
-                    dest,
-                    reserved_content_uuids=dest / "no-such-list.txt",
-                    reserved_content_uuids_sha256="a" * 64,
+                kick_helper_ft.load_reserved_content_uuids(
+                    dest / "no-such-list.txt", "a" * 64
                 )
         self.assertEqual(ctx.exception.field, "reserved_content_uuids")
 
@@ -6810,15 +6848,11 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             listed = dest / "reserved_content_uuids.txt"
-            listed.write_text("", encoding="utf-8")
+            listed.write_text("placeholder\n", encoding="utf-8")
             manifest = self._write(dest, [a, b], pack_id="part-badsha")
             self._pin(manifest)
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.kick(
-                    dest,
-                    reserved_content_uuids=listed,
-                    reserved_content_uuids_sha256="a" * 64,
-                )
+                kick_helper_ft.load_reserved_content_uuids(listed, "a" * 64)
         self.assertEqual(ctx.exception.field, "reserved_content_uuids.sha256")
 
     def test_whitespace_source_uuid_refused_malformed(self) -> None:
@@ -6878,6 +6912,96 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
             self._pin(manifest)
             evidence = kick_helper_ft.kick(dest)
         self.assertEqual(evidence["result"], "MATCH")
+
+    def test_empty_reserved_list_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "empty.txt"
+            empty.write_text("", encoding="utf-8")
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.load_reserved_content_uuids(
+                    empty, hashlib.sha256(b"").hexdigest()
+                )
+        self.assertEqual(ctx.exception.field, "reserved_content_uuids")
+
+    def test_uuidless_allowlisted_content_uuid_mod_refused(self) -> None:
+        row = None
+        for idx in range(200):
+            candidate = _math_uuidless(rid=f"mod-{idx}")
+            digest = content_uuid.content_uuid(candidate)
+            if int(digest, 16) % 10 in (0, 5):
+                candidate["source"]["content_uuid"] = digest
+                row = candidate
+                break
+        self.assertIsNotNone(row)
+        partner = _math_uuidless(rid="math-a")
+        partner["source"]["content_uuid"] = content_uuid.content_uuid(partner)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(dest, [row, partner], pack_id="part-cuuid-mod")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "reserved_eval_partition.uuid_mod")
+
+    def test_near_dup_of_reserved_row_refused(self) -> None:
+        held = _math_uuidless(rid="math-a")
+        held["source"]["content_uuid"] = content_uuid.content_uuid(held)
+        variant = _math_uuidless(rid="math-a-dup")
+        variant["state"]["message"] = held["state"]["message"] + " "
+        variant["source"]["content_uuid"] = content_uuid.content_uuid(variant)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            train = dest / "curated_pack_v2_train.jsonl"
+            train.write_text(json.dumps(variant) + "\n", encoding="utf-8")
+            hits = kick_helper_ft.collect_reserved_partition(
+                {},
+                {"train": str(train)},
+                {held["source"]["content_uuid"]},
+            )
+        self.assertTrue(hits)
+        self.assertTrue(
+            any(field == "reserved_eval_partition.near_dup" for field, _msg in hits),
+            hits,
+        )
+
+    def test_shape_scan_refuses_normalized_evasions(self) -> None:
+        base = _math_uuidless(rid="math-a")
+        base["source"]["content_uuid"] = content_uuid.content_uuid(base)
+        payload = "r\u200bm -rf /"
+        smuggled = json.loads(json.dumps(base))
+        smuggled["state"]["message"] = payload
+        mismatch = kick_helper_ft._uuidless_shape_mismatch(
+            smuggled, kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
+        )
+        self.assertIsNotNone(mismatch)
+        latex = json.loads(json.dumps(base))
+        latex["state"]["message"] = "Let $ x $ be real."
+        self.assertIsNone(
+            kick_helper_ft._uuidless_shape_mismatch(
+                latex, kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
+            )
+        )
+        prompt = json.loads(json.dumps(base))
+        prompt["state"]["message"] = "$ rm -rf /tmp"
+        self.assertIsNotNone(
+            kick_helper_ft._uuidless_shape_mismatch(
+                prompt, kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
+            )
+        )
+
+    def test_cli_and_kickoff_do_not_take_reserved_list_argv(self) -> None:
+        parser = kick_helper_ft.build_parser()
+        flags = {action.option_strings[0] for action in parser._actions if action.option_strings}
+        self.assertNotIn("--reserved-content-uuids", flags)
+        self.assertNotIn("--reserved-content-uuids-sha256", flags)
+        cmd = helper_ft_kickoff.build_command(
+            pack="/inbox/pack",
+            run_id="run-from-launcher",
+            pin_path="/run/forge-runner/private/cam-pin-v2.json",
+        )
+        self.assertNotIn("--reserved-content-uuids", cmd)
 
 
 class HelperFtK1PinV2Tests(unittest.TestCase):
@@ -7113,8 +7237,13 @@ class HelperFtK1PinV2Tests(unittest.TestCase):
         self.assertEqual(kick_helper_ft.PINNED_COPY_PUB_REL, cam_pin_spec.TRUST_RELPATHS[0])
         self.assertEqual(kick_helper_ft.PINNED_COPY_KEY_ID_REL, cam_pin_spec.TRUST_RELPATHS[1])
         self.assertIn(kick_helper_ft.PINNED_COPY_UUID_REL, kick_helper_ft.REQUIRED_PINS)
+        self.assertIn(kick_helper_ft.PINNED_COPY_RESERVED_REL, kick_helper_ft.REQUIRED_PINS)
         self.assertIn(
             "apps/dottie-os/scripts/lab/content_uuid.py", cam_pin_spec.TRUST_RELPATHS
+        )
+        self.assertIn(
+            "apps/dottie-os/trust/reserved_content_uuids.jsonl",
+            cam_pin_spec.TRUST_RELPATHS,
         )
         self.assertEqual(kick_helper_ft.REQUIRED_PINS, kick_helper_ft.ENTRYPOINT_PIN_RELS)
         self.assertEqual(kick_helper_ft.REQUIRED_PINS, kick_helper_ft.PINNED_COPY_REQUIRED_RELS)
