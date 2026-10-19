@@ -52,7 +52,13 @@ def main(argv: list[str] | None = None) -> int:
         print("pin must be a JSON object", file=sys.stderr)
         return 1
     message = cam_pin_spec.canonical_pin_bytes(payload)
+    cam_pin_spec.require_ed25519_point(
+        cam_pin_spec.raw_public_from_private(private), field="cam_pin.pubkey"
+    )
     signature = cam_pin_spec.sign_pin_bytes(message, private)
+    cam_pin_spec.require_ed25519_signature(
+        base64.b64decode(signature, validate=True), field="cam-pin.cam_sig"
+    )
     sys.stdout.write(signature + "\n")
     sys.stdout.flush()
     return 0

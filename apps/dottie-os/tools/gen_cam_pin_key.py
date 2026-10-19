@@ -18,6 +18,7 @@ LAB = Path(__file__).resolve().parents[1] / "scripts" / "lab"
 if str(LAB) not in sys.path:
     sys.path.insert(0, str(LAB))
 
+import cam_pin_spec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
 
@@ -44,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     private = Ed25519PrivateKey.generate()
     raw_priv = private.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
     raw_pub = private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    cam_pin_spec.require_ed25519_point(raw_pub, field="cam_pin.pubkey")
     fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         os.write(fd, raw_priv)

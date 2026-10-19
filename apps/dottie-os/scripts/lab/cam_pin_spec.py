@@ -97,6 +97,13 @@ TRUST_RELPATHS = (
     "apps/dottie-os/scripts/lab/cam_pin_spec.py",
 )
 ORIGIN_MAIN_REF = "origin/main"
+# Twisted Edwards Ed25519 (RFC 8032). Cofactor and canonical checks run in
+# this module before cryptography's verify. Not a hardcoded encoding list.
+ED25519_P = 2**255 - 19
+ED25519_L = 2**252 + 27742317777372353535851937790883648493
+ED25519_D = (-121665 * pow(121666, -1, ED25519_P)) % ED25519_P
+ED25519_I = pow(2, (ED25519_P - 1) // 4, ED25519_P)
+ED25519_IDENTITY = (0, 1)
 
 HQ_PIN_REQUIRED_KEYS = (
     "pack_id",
@@ -198,11 +205,72 @@ def canonical_pin_bytes(fields: dict[str, Any]) -> bytes:
     return CANONICAL_PREFIX + packed.encode("utf-8")
 
 
+def _ed25519_decode_point(raw: bytes, *, field: str) -> tuple[int, int]:
+    """RFC 8032 decompression. Refuses non-canonical y (>= p) and off-curve."""
+    if len(raw) != 32:
+        _refuse(field, "32-byte compressed point", f"len {len(raw)}")
+    y = int.from_bytes(raw, "little")
+    sign = y >> 255
+    y &= (1 << 255) - 1
+    if y >= ED25519_P:
+        _refuse(field, "canonical Ed25519 point of order > 8", "non-canonical y >= p")
+    y2 = (y * y) % ED25519_P
+    u = (y2 - 1) % ED25519_P
+    v = (ED25519_D * y2 + 1) % ED25519_P
+    x2 = (u * pow(v, -1, ED25519_P)) % ED25519_P
+    x = pow(x2, (ED25519_P + 3) // 8, ED25519_P)
+    if (x * x - x2) % ED25519_P != 0:
+        x = (x * ED25519_I) % ED25519_P
+    if (x * x - x2) % ED25519_P != 0:
+        _refuse(field, "canonical Ed25519 point of order > 8", "not on curve")
+    if x == 0 and sign:
+        _refuse(field, "canonical Ed25519 point of order > 8", "non-canonical sign")
+    if (x & 1) != sign:
+        x = ED25519_P - x
+    return x, y
+
+
+def _ed25519_add(p1: tuple[int, int], p2: tuple[int, int]) -> tuple[int, int]:
+    x1, y1 = p1
+    x2, y2 = p2
+    t = (ED25519_D * x1 * x2 * y1 * y2) % ED25519_P
+    x3 = ((x1 * y2 + x2 * y1) * pow(1 + t, -1, ED25519_P)) % ED25519_P
+    y3 = ((y1 * y2 + x1 * x2) * pow(1 - t, -1, ED25519_P)) % ED25519_P
+    return x3, y3
+
+
+def _ed25519_mul8(point: tuple[int, int]) -> tuple[int, int]:
+    doubled = _ed25519_add(point, point)
+    doubled = _ed25519_add(doubled, doubled)
+    return _ed25519_add(doubled, doubled)
+
+
+def require_ed25519_point(raw: bytes, *, field: str) -> tuple[int, int]:
+    """Refuse non-canonical encodings and points with [8]A == identity."""
+    point = _ed25519_decode_point(raw, field=field)
+    if _ed25519_mul8(point) == ED25519_IDENTITY:
+        _refuse(field, "canonical Ed25519 point of order > 8", "small-order ([8]A == identity)")
+    return point
+
+
+def require_ed25519_signature(signature: bytes, *, field: str = "cam-pin.cam_sig") -> None:
+    """Refuse small-order R, non-canonical R, and S >= L."""
+    if len(signature) != 64:
+        _refuse(field, "64-byte signature", f"len {len(signature)}")
+    require_ed25519_point(signature[:32], field=f"{field}.R")
+    scalar = int.from_bytes(signature[32:], "little")
+    if scalar >= ED25519_L:
+        _refuse(f"{field}.S", "S < L", scalar)
+
+
 def sign_pin_bytes(message: bytes, raw_private: bytes) -> str:
     if len(raw_private) != 32:
         _refuse("cam_sig", "32-byte Ed25519 seed", f"len {len(raw_private)}")
     key = Ed25519PrivateKey.from_private_bytes(raw_private)
-    return base64.b64encode(key.sign(message)).decode("ascii")
+    require_ed25519_point(raw_public_from_private(raw_private), field="cam_pin.pubkey")
+    signature = key.sign(message)
+    require_ed25519_signature(signature, field="cam-pin.cam_sig")
+    return base64.b64encode(signature).decode("ascii")
 
 
 def raw_public_from_private(raw_private: bytes) -> bytes:
@@ -232,6 +300,7 @@ def _parse_pub_file(text: str) -> tuple[str, bytes]:
     encoded = base64.b64encode(raw).decode("ascii")
     if encoded in DENIED_PUBLIC_KEYS_B64:
         _refuse("cam_pin.pubkey", "Cam production key", "denied test key")
+    require_ed25519_point(raw, field="cam_pin.pubkey")
     return key_id, raw
 
 
@@ -269,6 +338,7 @@ def load_cam_public_key() -> tuple[str, Ed25519PublicKey]:
     committed_id = load_cam_key_id()
     if key_id != committed_id:
         _refuse("cam_pin.key_id", committed_id, key_id)
+    require_ed25519_point(raw, field="cam_pin.pubkey")
     return key_id, Ed25519PublicKey.from_public_bytes(raw)
 
 
@@ -279,6 +349,8 @@ def verify_ed25519(message: bytes, signature: bytes, public_raw: bytes) -> None:
     encoded = base64.b64encode(public_raw).decode("ascii")
     if encoded in DENIED_PUBLIC_KEYS_B64:
         _refuse("cam_pin.pubkey", "Cam production key", "denied test key")
+    require_ed25519_point(public_raw, field="cam_pin.pubkey")
+    require_ed25519_signature(signature, field="cam-pin.cam_sig")
     public = Ed25519PublicKey.from_public_bytes(public_raw)
     try:
         public.verify(signature, message)
@@ -342,7 +414,12 @@ def _hash_object(path: Path) -> str:
 
 
 def _head_is_on_main(root: Path) -> tuple[bool, str]:
-    """True when HEAD is origin/main or an ancestor of it."""
+    """Local-ref hint: HEAD is origin/main or an ancestor of that local ref.
+
+    Not a hard gate. ``git update-ref`` can spoof origin/main without a
+    network fetch. Branch protection plus CODEOWNERS are the authoritative
+    boundary. The check is kept as a recorded local hint.
+    """
     head_proc = _git(root, ["rev-parse", "HEAD"])
     head = head_proc.stdout.strip()
     if head_proc.returncode != 0 or not head:
@@ -352,10 +429,13 @@ def _head_is_on_main(root: Path) -> tuple[bool, str]:
 
 
 def require_committed_trust() -> dict[str, str]:
-    """Refuse dirty trust files and a HEAD that is not on origin/main.
+    """Refuse dirty trust files. Record a local origin/main ancestry hint.
 
     Compares ``git hash-object`` of each trust path to ``git ls-tree HEAD``.
-    Records those blob shas and the HEAD sha for evidence.
+    Records those blob shas and the HEAD sha for evidence. The ancestry
+    check is a local-ref hint, not a substitute for GitHub branch protection
+    plus CODEOWNERS (``git update-ref`` can spoof ``origin/main`` without a
+    network fetch).
     """
     root = repo_root()
     blobs: dict[str, str] = {}
@@ -370,7 +450,7 @@ def require_committed_trust() -> dict[str, str]:
         blobs[relpath] = committed
     on_main, head = _head_is_on_main(root)
     if not on_main:
-        _refuse("HEAD", f"ancestor of {ORIGIN_MAIN_REF}", head)
+        _refuse("HEAD", f"hint: ancestor of {ORIGIN_MAIN_REF}", head)
     blobs["HEAD"] = head
     return blobs
 

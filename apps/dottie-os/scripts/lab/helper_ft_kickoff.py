@@ -9,13 +9,16 @@ A pin carried only in the request body is not provenance.
 
 ``inbox: latest`` and every other HELPER FT start route are refused.
 ``default_launch_trainer`` refuses unless a real launcher is wired.
-Does not promote, does not touch serve, :8770, or champion files.
+The trainer is passed only run-dir copy paths. After the launcher
+returns (this process waits), those recorded paths are re-hashed on
+this host. Does not promote, does not touch serve, :8770, or champion files.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import socket
 import stat
 import sys
 from datetime import datetime, timezone
@@ -29,6 +32,7 @@ if _LAB not in sys.path:
     sys.path.insert(0, _LAB)
 
 import cam_pin_spec
+import kick_helper_ft
 
 CHUNK = 1 << 20
 SHA256_LEN = 64
@@ -346,6 +350,22 @@ def handle_train_kickoff(
         return _bad("pack_id", pack_id, manifest.get("pack_id"))
     fetched_pin = {"ok": True, "pin": hq_pin, "source": PIN_SOURCE}
     evidence["kickoff_pin_fetch"] = fetched_pin
+    trainer_paths = kick_helper_ft.trainer_input_paths(root)
+    claimed_paths = body.get("paths")
+    if isinstance(claimed_paths, dict):
+        pack_dir_claim = claimed_paths.get("pack_dir")
+        if pack_dir_claim:
+            claimed_dir = str(Path(str(pack_dir_claim)).resolve())
+            if claimed_dir != str(root.resolve()):
+                return _bad("paths.pack_dir", "absent (run-dir copies only)", pack_dir_claim)
+        for key, expected in trainer_paths.items():
+            got = claimed_paths.get(key)
+            if type(got) is not str:
+                return _bad(f"paths.{key}", expected, "missing")
+            if str(Path(got).resolve()) != expected:
+                return _bad(f"paths.{key}", expected, got)
+    recorded_paths = dict(trainer_paths)
+    manifest_shas: dict[str, str] = {}
     for sha_field, filename, manifest_rows_field, pin_rows_field in ARTIFACTS:
         req = _require_sha(sha_field, body.get(sha_field))
         if isinstance(req, dict):
@@ -361,7 +381,14 @@ def handle_train_kickoff(
             return expected_rows
         if pin_rows != expected_rows:
             return _bad(pin_rows_field, pin_rows, expected_rows)
-        path = root / filename
+        man_sha = _require_sha(f"manifest.{sha_field}", manifest.get(sha_field))
+        if isinstance(man_sha, dict):
+            return man_sha
+        if man_sha != hq_sha:
+            return _bad(sha_field, hq_sha, man_sha)
+        manifest_shas[sha_field] = man_sha
+        path_key = kick_helper_ft.PATH_KEY_BY_SHA[sha_field]
+        path = Path(recorded_paths[path_key])
         try:
             finfo = os.lstat(path)
         except FileNotFoundError:
@@ -387,34 +414,68 @@ def handle_train_kickoff(
             return _bad(sha_field, hq_sha, actual)
         if actual != req:
             return _bad(sha_field, req, actual)
+    host = socket.gethostname()
+    trainer_config = {"host": host, "paths": recorded_paths}
+    trainer_argv = kick_helper_ft.build_trainer_argv(recorded_paths)
+    launch_body = dict(body)
+    launch_body["paths"] = recorded_paths
+    launch_body["trainer_config"] = trainer_config
+    launch_body["trainer_argv"] = trainer_argv
+    ev_paths = evidence.get("paths") if isinstance(evidence.get("paths"), dict) else {}
+    launch_evidence = dict(evidence)
+    launch_evidence["paths"] = recorded_paths
+    launch_evidence["run_private_dir"] = str(root.resolve())
+    if isinstance(ev_paths, dict) and ev_paths.get("pack_dir"):
+        return _bad("paths.pack_dir", "absent (run-dir copies only)", ev_paths.get("pack_dir"))
+    launch_body["evidence"] = launch_evidence
     launcher = launch_trainer if launch_trainer is not None else default_launch_trainer
-    launched = launcher(body)
+    launched = launcher(launch_body)
     if not isinstance(launched, dict) or launched.get("ok") is not True:
         return _bad("trainer", "ok", launched)
-    post: dict[str, str] = {}
-    for sha_field, filename, _manifest_rows_field, _pin_rows_field in ARTIFACTS:
+    kick_helper_ft.wait_for_training_exit(launched)
+    record = kick_helper_ft.rehash_recorded_trainer_paths(
+        recorded_paths,
+        pin=hq_pin,
+        manifest_shas=manifest_shas,
+        host=host,
+    )
+    ckpt_id = launched.get("checkpoint_id")
+    run_dir = Path(evidence_path).parent if isinstance(evidence_path, str) and evidence_path else root.parent
+    if ckpt_id:
         try:
-            actual = _sha256_file(root / filename)
-        except OSError as exc:
-            return _bad(filename, "readable regular file", f"OSError:{exc.errno}")
-        if actual != hq_pin[sha_field]:
-            return _bad(sha_field, hq_pin[sha_field], actual)
-        post[sha_field] = actual
-    evidence["post_train_shas"] = post
+            ckpt_dir = kick_helper_ft.checkpoint_dir_for(run_dir, ckpt_id)
+        except kick_helper_ft.KickRefused as exc:
+            return _bad(exc.field, exc.expected, exc.actual)
+        if ckpt_dir is not None:
+            kick_helper_ft.write_evidence(
+                kick_helper_ft._public_integrity_record(record),
+                ckpt_dir / kick_helper_ft.INTEGRITY_EVIDENCE_NAME,
+            )
+    evidence["post_train_shas"] = record["computed_shas"]
+    evidence["post_train_host"] = record["host"]
+    evidence["post_train_paths"] = record["paths"]
     evidence["trust_blobs"] = blobs
     evidence["head_sha"] = blobs.get("HEAD")
+    if record["status"] != kick_helper_ft.CHECKPOINT_MATCH:
+        return _bad(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
     result = {
         "ok": True,
         "pack_id": pack_id,
         "run_id": run_id,
         "launched": True,
-        "post_train_shas": post,
+        "host": host,
+        "paths": recorded_paths,
+        "trainer_config": trainer_config,
+        "trainer_argv": trainer_argv,
+        "post_train_shas": record["computed_shas"],
+        "post_train_host": record["host"],
+        "post_train_paths": record["paths"],
         "kickoff_pin_fetch": fetched_pin,
         "trust_blobs": blobs,
         "head_sha": blobs.get("HEAD"),
     }
-    if launched.get("checkpoint_id"):
-        result["checkpoint_id"] = launched["checkpoint_id"]
+    if ckpt_id:
+        result["checkpoint_id"] = ckpt_id
     return result
 
 

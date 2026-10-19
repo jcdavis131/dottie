@@ -13,8 +13,10 @@ This process hashes and counts the run-private copies itself and compares
 those to the signed pin and MANIFEST. ``--cam-pin``, a pin env var, and a
 local pin file are refused before hashing or kickoff. After the gate
 passes, this script POSTs ``/train/kickoff``; ``inbox: latest`` is never
-sent. Copies are 0400 in a 0700 directory. Post-train re-hash runs after
-training finishes.
+sent. Copies are 0400 in a 0700 directory. The trainer is passed only those
+run-dir copy paths (no source-pack fallback). The same process on the
+training host waits for the trainer to exit, then re-hashes those recorded
+paths.
 
 There is no skip flag or skip env var. Does not promote, does not touch serve,
 :8770, champion files, or the LIVE gate.
@@ -59,6 +61,21 @@ CHUNK = 1 << 20
 SHA256_LEN = 64
 _HEX = frozenset("0123456789abcdef")
 _GATE_OK = object()
+TRAINER_PATH_FILES: dict[str, str] = {
+    "pack": PACK_FILE,
+    "train": TRAIN_FILE,
+    "holdout": HOLDOUT_FILE,
+    "manifest": MANIFEST_FILE,
+}
+PATH_KEY_BY_SHA = {
+    "sha256_pack": "pack",
+    "sha256_train": "train",
+    "sha256_holdout": "holdout",
+}
+INTEGRITY_EVIDENCE_NAME = "integrity_evidence.json"
+CHECKPOINT_MATCH = "MATCH"
+CHECKPOINT_REFUSED = "REFUSED"
+CHECKPOINT_UNSCORED = "unscored"
 
 # (manifest sha field, on-disk file, MANIFEST row field, pin row field)
 ARTIFACTS: tuple[tuple[str, str, str, str], ...] = (
@@ -443,6 +460,139 @@ def _split_soundness(run_private: Path, computed_shas: Mapping[str, str]) -> Non
         _refuse("split", "pack == train ∪ holdout", "row-set mismatch")
 
 
+def trainer_input_paths(run_private: Path) -> dict[str, str]:
+    """Resolved absolute run-dir copy paths. These are the trainer inputs."""
+    root = Path(run_private).resolve()
+    return {key: str((root / name).resolve()) for key, name in TRAINER_PATH_FILES.items()}
+
+
+def build_trainer_argv(paths: Mapping[str, str]) -> list[str]:
+    return [
+        "--pack",
+        paths["pack"],
+        "--train",
+        paths["train"],
+        "--holdout",
+        paths["holdout"],
+        "--manifest",
+        paths["manifest"],
+    ]
+
+
+def wait_for_training_exit(launched: Mapping[str, Any] | None) -> None:
+    """Block until the trainer the launcher started has exited.
+
+    Launchers that already wait (return after the process exits) are a no-op
+    here. A pid or Popen-like ``process`` is waited in this same process.
+    """
+    if not isinstance(launched, Mapping):
+        return
+    proc = launched.get("process")
+    if proc is not None and hasattr(proc, "wait"):
+        proc.wait()
+        return
+    pid = launched.get("pid") if launched.get("pid") is not None else launched.get("trainer_pid")
+    if pid is None:
+        return
+    try:
+        os.waitpid(int(pid), 0)
+    except ChildProcessError:
+        return
+    except (TypeError, ValueError, OverflowError, OSError) as exc:
+        _refuse("trainer.pid", "waitable pid", f"{type(exc).__name__}:{exc}")
+
+
+def checkpoint_dir_for(run_dir: Path, checkpoint_id: object) -> Path | None:
+    if checkpoint_id is None or checkpoint_id is False:
+        return None
+    text = str(checkpoint_id).strip()
+    if not text or text in {".", ".."} or "/" in text or "\\" in text:
+        _refuse("checkpoint_id", "single path segment", checkpoint_id)
+    return Path(run_dir) / text
+
+
+def checkpoint_integrity_status(checkpoint_dir: Path) -> str:
+    path = Path(checkpoint_dir) / INTEGRITY_EVIDENCE_NAME
+    if not path.is_file():
+        return CHECKPOINT_UNSCORED
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return CHECKPOINT_UNSCORED
+    if not isinstance(data, dict):
+        return CHECKPOINT_UNSCORED
+    status = data.get("status")
+    if status in (CHECKPOINT_MATCH, CHECKPOINT_REFUSED):
+        return str(status)
+    return CHECKPOINT_UNSCORED
+
+
+def _require_mode_0400(path: Path, field: str) -> None:
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        _refuse(field, "present", "missing")
+    except OSError as exc:
+        _refuse(field, "readable regular file", f"OSError:{exc.errno}")
+    if stat.S_ISLNK(info.st_mode):
+        _refuse(field, "regular file", "symlink")
+    if not stat.S_ISREG(info.st_mode):
+        _refuse(field, "regular file", "non-regular")
+    if os.name == "posix" and stat.S_IMODE(info.st_mode) != 0o400:
+        _refuse(field, "0400", oct(stat.S_IMODE(info.st_mode)))
+
+
+def rehash_recorded_trainer_paths(
+    recorded_paths: Mapping[str, str],
+    *,
+    pin: Mapping[str, Any],
+    manifest_shas: Mapping[str, str],
+    host: str,
+) -> dict[str, Any]:
+    """Re-hash the exact files the trainer read. Same host/process as launch."""
+    post: dict[str, str] = {}
+    record: dict[str, Any] = {
+        "status": CHECKPOINT_MATCH,
+        "host": host,
+        "paths": {key: recorded_paths[key] for key in TRAINER_PATH_FILES},
+        "computed_shas": post,
+        "pin_shas": {
+            "sha256_pack": pin["sha256_pack"],
+            "sha256_train": pin["sha256_train"],
+            "sha256_holdout": pin["sha256_holdout"],
+        },
+        "manifest_shas": dict(manifest_shas),
+        "checked_at": _utc_now(),
+        "match": True,
+    }
+    try:
+        for sha_field, path_key in PATH_KEY_BY_SHA.items():
+            path = Path(recorded_paths[path_key])
+            _require_mode_0400(path, sha_field)
+            actual = sha256_file(path)
+            post[sha_field] = actual
+            pin_sha = pin[sha_field]
+            man_sha = manifest_shas[sha_field]
+            if actual != pin_sha:
+                _refuse(sha_field, pin_sha, actual)
+            if actual != man_sha:
+                _refuse(sha_field, man_sha, actual)
+        _require_mode_0400(Path(recorded_paths["manifest"]), MANIFEST_FILE)
+    except KickRefused as exc:
+        record["status"] = CHECKPOINT_REFUSED
+        record["match"] = False
+        record["field"] = exc.field
+        record["expected"] = exc.expected
+        record["actual"] = exc.actual
+    record["computed_shas"] = post
+    record["checked_at"] = _utc_now()
+    return record
+
+
+def _public_integrity_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in record.items() if not str(key).startswith("_")}
+
+
 def verify_and_stage(
     pack_dir: Path,
     *,
@@ -507,14 +657,7 @@ def verify_and_stage(
         manifest_shas[sha_field] = manifest_sha
         row_counts[filename] = {"expected": expected_rows, "actual": actual_rows}
 
-    abs_paths = {
-        "pack": str((run_private / PACK_FILE).resolve()),
-        "train": str((run_private / TRAIN_FILE).resolve()),
-        "holdout": str((run_private / HOLDOUT_FILE).resolve()),
-        "manifest": str((run_private / MANIFEST_FILE).resolve()),
-        "run_private_dir": str(run_private.resolve()),
-        "pack_dir": str(pack_root),
-    }
+    trainer_paths = trainer_input_paths(run_private)
     _split_soundness(run_private, computed_shas)
 
     return {
@@ -530,8 +673,9 @@ def verify_and_stage(
         },
         "manifest_shas": manifest_shas,
         "row_counts": row_counts,
-        "paths": abs_paths,
+        "paths": trainer_paths,
         "run_private_dir": str(run_private.resolve()),
+        "source_pack_dir": str(pack_root),
         "checked_at": _utc_now(),
         "ok": True,
     }
@@ -607,17 +751,40 @@ def post_kickoff(body: dict[str, Any], url: str = DEFAULT_KICKOFF_URL) -> dict[s
     return result
 
 
-def _recheck_copies(run_private: Path, evidence: dict[str, Any]) -> None:
-    post: dict[str, str] = {}
-    for sha_field, filename, _rows, _pin_rows in ARTIFACTS:
-        actual = sha256_file(run_private / filename)
-        post[sha_field] = actual
-        expected = evidence["computed_shas"][sha_field]
-        if actual != expected:
-            evidence["ok"] = False
-            evidence["post_train_shas"] = post
-            _refuse(sha_field, expected, actual)
-    evidence["post_train_shas"] = post
+def _apply_post_train_record(
+    evidence: dict[str, Any],
+    record: Mapping[str, Any],
+    *,
+    run_dir: Path,
+) -> None:
+    evidence["post_train_shas"] = dict(record.get("computed_shas") or {})
+    evidence["post_train_host"] = record["host"]
+    evidence["post_train_paths"] = dict(record["paths"])
+    evidence["post_train_checked_at"] = record["checked_at"]
+    ckpt_dir = checkpoint_dir_for(run_dir, evidence.get("checkpoint_id"))
+    if ckpt_dir is not None:
+        ckpt_path = ckpt_dir / INTEGRITY_EVIDENCE_NAME
+        write_evidence(_public_integrity_record(record), ckpt_path)
+        evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
+        evidence["checkpoint_integrity_status"] = record["status"]
+    if record["status"] != CHECKPOINT_MATCH:
+        evidence["ok"] = False
+
+
+def _recheck_copies(run_private: Path, evidence: dict[str, Any], *, run_dir: Path) -> None:
+    recorded = evidence.get("paths")
+    if not isinstance(recorded, dict):
+        recorded = trainer_input_paths(run_private)
+    host = socket.gethostname()
+    record = rehash_recorded_trainer_paths(
+        recorded,
+        pin=evidence["pin"],
+        manifest_shas=evidence["manifest_shas"],
+        host=host,
+    )
+    _apply_post_train_record(evidence, record, run_dir=run_dir)
+    if record["status"] != CHECKPOINT_MATCH:
+        _refuse(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
 
 
 def kick(
@@ -687,6 +854,13 @@ def kick(
         evidence["trust_blobs"] = trust_blobs
         evidence["head_sha"] = trust_blobs.get("HEAD")
         persist()
+        trainer_paths = trainer_input_paths(run_private)
+        evidence["paths"] = trainer_paths
+        trainer_config = {"host": evidence["host"], "paths": trainer_paths}
+        trainer_argv = build_trainer_argv(trainer_paths)
+        evidence["trainer_config"] = trainer_config
+        evidence["trainer_argv"] = trainer_argv
+        persist()
         body = {
             "mode": "helper-ft",
             "pack_id": evidence["pack_id"],
@@ -696,7 +870,9 @@ def kick(
             "expected_shas": dict(evidence["expected_shas"]),
             "pin": dict(evidence["pin"]),
             "run_private_dir": evidence["run_private_dir"],
-            "paths": evidence["paths"],
+            "paths": trainer_paths,
+            "trainer_config": trainer_config,
+            "trainer_argv": trainer_argv,
             "evidence": dict(evidence),
             "evidence_path": evidence["evidence_path"],
             "run_id": run_id,
@@ -709,14 +885,16 @@ def kick(
         if isinstance(result, dict) and result.get("checkpoint_id"):
             evidence["checkpoint_id"] = result["checkpoint_id"]
             persist()
-        # Training must finish before the end-of-training re-hash. kickoff's
-        # launcher is expected to block until the trainer returns; the CLI
-        # start_training hook (tests) also runs to completion first.
+        # Training must finish before the end-of-training re-hash. Wait in this
+        # same process/host, then re-hash the recorded run-dir copy paths.
+        wait_for_training_exit(result if isinstance(result, dict) else None)
         if start_training is None:
-            _authorized_start_training(run_private, evidence, log_path, _gate=_GATE_OK)
+            started = _authorized_start_training(run_private, evidence, log_path, _gate=_GATE_OK)
+            wait_for_training_exit(started if isinstance(started, dict) else None)
         else:
-            start_training(run_private, evidence, log_path)
-        _recheck_copies(run_private, evidence)
+            started = start_training(run_private, evidence, log_path)
+            wait_for_training_exit(started if isinstance(started, dict) else None)
+        _recheck_copies(run_private, evidence, run_dir=run_dir)
         persist()
         return evidence
     except KickRefused as exc:
