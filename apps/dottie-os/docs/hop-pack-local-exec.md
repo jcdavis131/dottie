@@ -13,9 +13,9 @@ No SSH required. Agent (or Cam) runs both machine sides; box is the ferry.
 2. Agent: `CopyToBox` the zip from jcd to `/workspace/uploads/hops/<pack_id>.zip`
 3. Agent: `CopyFromBox` the zip to `C:\Users\jcdav\Projects\factory-trainer\runs\inbox\<pack_id>.zip`
 4. On **nugatron**: `powershell -ExecutionPolicy Bypass -File C:\Users\jcdav\Projects\factory-trainer\jobs\receive-hop.ps1 -ZipPath ...`
-5. On nugatron, point-of-use integrity then HELPER kick (no override, no auto-promote):
-   `python C:\Users\jcdav\workspace\dottie-os\scripts\lab\kick_helper_ft.py --pack C:\Users\jcdav\Projects\factory-trainer\runs\inbox\<pack_id> --log C:\Users\jcdav\Projects\factory-trainer\runs\<pack_id>\helper_ft.log`
-   Re-hashes pack/train/holdout vs `MANIFEST.json` (`sha256_pack`, `sha256_train`, `sha256_holdout`). Mismatch or missing field exits non-zero. Evidence JSON is written next to the run log.
+5. On nugatron, point-of-use integrity then HELPER kick (no override, no auto-promote). Hashes come from the Mill-signed Swarm HQ pack record or the ticket, not from the host MANIFEST alone:
+   `python C:\Users\jcdav\workspace\dottie-os\scripts\lab\kick_helper_ft.py --pack C:\Users\jcdav\Projects\factory-trainer\runs\inbox\<pack_id> --log C:\Users\jcdav\Projects\factory-trainer\runs\<pack_id>\helper_ft.log --expected-sha256-pack <ticket> --expected-sha256-train <ticket> --expected-sha256-holdout <ticket> --anchor-source ticket`
+   Re-hashes pack/train/holdout while copying into a 0700 run-private dir. CLI anchors must match both `MANIFEST.json` and the copied bytes. Mismatch, missing field, symlink, or missing anchor exits non-zero. Evidence JSON (including `anchor_source`) is written next to the run log. The train hook sees only the copies.
 6. Optional GPU: `POST :8765/train/kickoff` only after the gate exits 0. `{"mode":"inbox-validate","inbox":"latest"}` stays validate-only (no GPU train while gated).
 
 ## Lifecycle after pack is used (Cam)

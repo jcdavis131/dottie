@@ -53,7 +53,7 @@ console app). Do not swap those trees.
 | `scripts/apply_and_run_pack_v2.ps1` | Copy + patch + run + smoke on nugatron. No FT. |
 | `scripts/lab/run_ultradata_harvest.py` | Lean harvest (agent 40 / code 40 / math 30) |
 | `scripts/lab/finalize_manifest.py` | Rewrite `MANIFEST.json` to the pack-hop schema |
-| `scripts/lab/kick_helper_ft.py` | Stage-5 HELPER FT kick: re-hash pack/train/holdout vs MANIFEST, write evidence, then train may start. No override, no auto-promote. |
+| `scripts/lab/kick_helper_ft.py` | Stage-5 HELPER FT kick: CLI trust anchors + re-hash pack/train/holdout vs MANIFEST, copy into a 0700 run dir, write evidence, then train may start. No override, no auto-promote. |
 | `scripts/lab/stage-hop.ps1` | Zip jcd-pc outbox pack |
 | `scripts/lab/receive-hop.ps1` | Unpack zip into nugatron trainer inbox |
 | `docs/` | Pack v2 handoff, hop interface, local-exec notes |
@@ -75,8 +75,9 @@ python3 -m unittest discover -s apps/dottie-os/tests -v
 
 No torch, no Hugging Face download, no `--go`, no GPU FT. Tests exercise
 classification heuristics, holdout pairing, the pack smoke against a tiny
-in-memory fixture, manifest hashing, the HELPER FT integrity gate (match /
-one-byte mismatch / missing field), and the idempotent factory patch.
+in-memory fixture, manifest hashing, the HELPER FT integrity gate (match,
+one-byte mismatch, missing field, rewritten pack+MANIFEST, post-check swap,
+symlink, missing CLI anchor), and the idempotent factory patch.
 
 ## Host apply (nugatron only, not CI)
 
