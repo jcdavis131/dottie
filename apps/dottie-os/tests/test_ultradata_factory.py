@@ -2438,11 +2438,49 @@ class HelperFtCritic3dacTests(unittest.TestCase):
                 "recordedAt": "2026-10-19T00:00:00.000Z",
             }
         )
-        with self.assertRaises(cam_pin_spec.CamPinError) as ctx:
-            cam_pin_spec.verify_ed25519(message, b"\x00" * 64, raw)
-        self.assertEqual(ctx.exception.field, "cam_pin.pubkey")
-        self.assertEqual(ctx.exception.actual, "denied test key")
-        self.assertIn(DENIED_VECTOR_PUB_B64, cam_pin_spec.DENIED_PUBLIC_KEYS_B64)
+        for name, spec in (
+            ("cli", kick_helper_ft.cam_pin_spec),
+            ("handler", helper_ft_kickoff.cam_pin_spec),
+        ):
+            with self.subTest(name=name):
+                with self.assertRaises(cam_pin_spec.CamPinError) as ctx:
+                    spec.verify_ed25519(message, b"\x00" * 64, raw)
+                self.assertEqual(ctx.exception.field, "cam_pin.pubkey")
+                self.assertEqual(ctx.exception.actual, "denied test key")
+                self.assertIn(DENIED_VECTOR_PUB_B64, spec.DENIED_PUBLIC_KEYS_B64)
+
+    def test_cli_and_8765_hard_refuse_vector_test_key_even_if_loaded(self) -> None:
+        """Production fetch must deny the HQ vector key even if load_cam_public_key returned it."""
+        vector = json.loads(HQ_VECTOR_PATH.read_text(encoding="utf-8"))
+        denied_pub = Ed25519PublicKey.from_public_bytes(
+            base64.b64decode(vector["public_key_b64"], validate=True)
+        )
+        pin = dict(vector["pin"])
+        pin["cam_sig"] = vector["cam_sig"]
+        pin["cam_key_id"] = vector["cam_key_id"]
+        pin["kid"] = "cam-stamp-kid-1"
+        pin["stampVerified"] = True
+        pin["pack_matches"] = True
+        self.hq_pins[pin["pack_id"]] = pin
+        self._key_patcher.stop()
+        try:
+            with patch.object(
+                cam_pin_spec, "load_cam_public_key", return_value=(vector["cam_key_id"], denied_pub)
+            ):
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.fetch_cam_pin(pin["pack_id"])
+                self.assertEqual(ctx.exception.actual, "denied test key")
+                result = helper_ft_kickoff.fetch_cam_pin(pin["pack_id"])
+                self.assertFalse(result.get("ok"))
+                self.assertEqual(result["actual"], "denied test key")
+        finally:
+            test_pub = Ed25519PublicKey.from_public_bytes(
+                cam_pin_spec.raw_public_from_private(TEST_CAM_PRIVATE)
+            )
+            self._key_patcher = patch.object(
+                cam_pin_spec, "load_cam_public_key", return_value=(TEST_CAM_KEY_ID, test_pub)
+            )
+            self._key_patcher.start()
 
     def test_cam_key_id_mismatch_refused_cli_and_8765(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
