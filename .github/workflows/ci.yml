@@ -635,11 +635,11 @@ jobs:
           }
           grep_pack() {
             /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-              /usr/bin/grep -zEi '(^|[^A-Za-z0-9])curated[-_. /]*packs?([^A-Za-z]|$)|(^|/)ultradata[-_. /]*harvest' "$1"
+              /usr/bin/python3 -I -c "import sys,unicodedata;A={'apps/dottie-os/scripts/lab/run_ultradata_harvest.py','apps/x/uncurated_package.py','docs/curated-packing-notes.md','scripts/run_ultradata_harvest.py'};N=('curatedpack', 'ultradataharvest');C=str.maketrans({'\u0430':'a','\u0435':'e','\u043e':'o','\u0440':'p','\u0441':'c','\u0445':'x','\u0443':'y','\u0456':'i','\u0458':'j','\u0455':'s','\u0501':'d','\u03bf':'o','\u039f':'o','\u0410':'a','\u0415':'e','\u041e':'o','\u0420':'p','\u0421':'c','\u0425':'x','\u0423':'y','\u0406':'i'});nrm=lambda s:''.join(ch for ch in unicodedata.normalize('NFKC',s).translate(C).casefold() if ch.isalnum());hit=lambda s:(lambda segs:any(n in x for x in segs for n in N) or any(n in ''.join(segs) for n in N) or any(ord(c)>127 for c in s))([nrm(y) for y in s.split('/')]);hits=[s for p in open(sys.argv[1],'rb').read().split(bytes([0])) if p for s in [p.decode('utf-8','surrogateescape')] if s not in A and hit(s)];[sys.stdout.write(s.encode('utf-8','backslashreplace').decode()+chr(10)) for s in hits];sys.exit(0 if hits else 1)" "$1"
           }
           show_pack_hits() {
             /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-              /usr/bin/python3 -I -c "import sys,re; pat=re.compile(br'(^|[^A-Za-z0-9])curated[-_. /]*packs?([^A-Za-z]|$)|(^|/)ultradata[-_. /]*harvest',re.I); [sys.stdout.write(p.decode('utf-8','backslashreplace')+chr(10)) for p in open(sys.argv[1],'rb').read().split(bytes([0])) if p and pat.search(p)]" "$1"
+              /usr/bin/python3 -I -c "import sys,unicodedata;A={'apps/dottie-os/scripts/lab/run_ultradata_harvest.py','apps/x/uncurated_package.py','docs/curated-packing-notes.md','scripts/run_ultradata_harvest.py'};N=('curatedpack', 'ultradataharvest');C=str.maketrans({'\u0430':'a','\u0435':'e','\u043e':'o','\u0440':'p','\u0441':'c','\u0445':'x','\u0443':'y','\u0456':'i','\u0458':'j','\u0455':'s','\u0501':'d','\u03bf':'o','\u039f':'o','\u0410':'a','\u0415':'e','\u041e':'o','\u0420':'p','\u0421':'c','\u0425':'x','\u0423':'y','\u0406':'i'});nrm=lambda s:''.join(ch for ch in unicodedata.normalize('NFKC',s).translate(C).casefold() if ch.isalnum());hit=lambda s:(lambda segs:any(n in x for x in segs for n in N) or any(n in ''.join(segs) for n in N) or any(ord(c)>127 for c in s))([nrm(y) for y in s.split('/')]);hits=[s for p in open(sys.argv[1],'rb').read().split(bytes([0])) if p for s in [p.decode('utf-8','surrogateescape')] if s not in A and hit(s)];[sys.stdout.write(s.encode('utf-8','backslashreplace').decode()+chr(10)) for s in hits];sys.exit(0 if hits else 1)" "$1"
           }
           toplevel=$(git_scrub rev-parse --show-toplevel) || {
             \builtin echo "FAIL: git rev-parse --show-toplevel failed"
@@ -729,11 +729,6 @@ jobs:
             \builtin echo "FAIL: grep ls-tree rc=${rc}"
             \builtin exit 1
           fi
-          /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-            /usr/bin/python3 -I -c "import sys,unicodedata,re; C=str.maketrans({'\u0430':'a','\u0435':'e','\u043e':'o','\u0440':'p','\u0441':'c','\u0445':'x','\u0443':'y','\u0456':'i','\u0458':'j','\u0455':'s','\u0501':'d','\u03bf':'o','\u039f':'o','\u0410':'a','\u0415':'e','\u041e':'o','\u0420':'p','\u0421':'c','\u0425':'x','\u0423':'y','\u0406':'i','\u2013':'-','\u2014':'-','\u2212':'-'}); P=re.compile(r'(^|[^A-Za-z0-9])curated[-_. /]*packs?([^A-Za-z]|$)|(^|/)ultradata[-_. /]*harvest',re.I); fold=lambda s: ''.join(ch for ch in unicodedata.normalize('NFKC',s).translate(C) if unicodedata.category(ch)!='Cf').casefold(); [(sys.exit('FAIL: non-ascii path') if any(b>127 for b in p) else sys.exit('FAIL: lookalike pack path') if P.search(fold(p.decode('utf-8','surrogateescape'))) else None) for f in sys.argv[1:] for p in open(f,'rb').read().split(bytes([0])) if p]" "$index_list" "$tree_list" || {
-            \builtin echo "FAIL: lookalike/non-ascii pack path check"
-            \builtin exit 1
-          }
           \builtin echo "No pack artifacts tracked"
         shell: "/usr/bin/bash --noprofile --norc -p -euo pipefail {0}"
 
