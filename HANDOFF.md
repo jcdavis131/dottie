@@ -18,9 +18,9 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-10-13 (supersedes every block below)
 
-**Stamped 2026-10-13 at HEAD `86b07bf`** (`scout/dottie-lint-i001`, the ruff
-I001 fix on top of `207b5ea`). Measured with `git rev-parse --short HEAD` +
-`scripts/check_handoff_fresh.py --check`.
+**Stamped 2026-10-13 at HEAD `43f4189`** (`main`, the squash merge of PR #83;
+the earlier stamp named a pre-squash branch commit that is not on `main`). Measured with
+`git rev-parse --short HEAD` + `scripts/check_handoff_fresh.py --check`.
 
 **Why this block exists:** `lint-and-test` on main has been red since the
 clean-room merge. Live `TODO.md` is a 3-line pointer (`076646e`); the
