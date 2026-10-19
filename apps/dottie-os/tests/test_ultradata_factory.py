@@ -7129,26 +7129,18 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
         self.assertEqual(evidence["result"], "MATCH")
 
     def test_v3_math_shape_without_trajectory_id_passes(self) -> None:
+        spec = kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
+        self.assertEqual(spec["schema"], "dottie-os-decision-schema-1.0.0")
+        self.assertIn("trajectoryid", spec["forbidden_keys"])
         row = _v3_math_row()
-        self.assertIsNone(
-            kick_helper_ft._uuidless_shape_mismatch(
-                row, kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
-            )
-        )
+        self.assertEqual(row["schema"], "dottie-os-decision-schema-1.0.0")
+        self.assertNotIn("trajectory_id", row)
+        self.assertIsNone(kick_helper_ft._uuidless_shape_mismatch(row, spec))
         with_tid = json.loads(json.dumps(row))
         with_tid["trajectory_id"] = "openbmb/UltraData-Math:row-0"
-        self.assertIsNotNone(
-            kick_helper_ft._uuidless_shape_mismatch(
-                with_tid, kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
-            )
-        )
-        jev = json.loads(json.dumps(row))
-        jev["schema"] = SCHEMA
-        self.assertIsNotNone(
-            kick_helper_ft._uuidless_shape_mismatch(
-                jev, kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
-            )
-        )
+        mismatch = kick_helper_ft._uuidless_shape_mismatch(with_tid, spec)
+        self.assertIsNotNone(mismatch)
+        self.assertIn("trajectory", str(mismatch).lower())
 
     def test_math_latex_rows_pass_and_critic_evasions_refuse(self) -> None:
         latex_messages = (
