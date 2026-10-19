@@ -893,9 +893,14 @@ def _recheck_copies(
         _refuse(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
 
 
-def log_eval_scores(run_id: str, scores: dict) -> bool:
-    """Attach Critic eval scores to the HELPER FT Trackio run. Fail-open."""
-    return helper_ft_trackio.log_eval_scores(run_id, scores)
+def log_eval_scores(run_id: str, scores: dict, results_sha256: object = None) -> bool:
+    """Attach Critic eval scores to the HELPER FT Trackio run. Fail-open.
+
+    ``results_sha256`` is required (64-char lowercase hex) and is logged with
+    every score. Trackio is a dashboard, never stamp-gate evidence. Verdicts
+    come only from the sha-pinned results files and the HQ events.
+    """
+    return helper_ft_trackio.log_eval_scores(run_id, scores, results_sha256)
 
 
 def _track_integrity(session: helper_ft_trackio.RunSession, evidence: Mapping[str, Any]) -> None:

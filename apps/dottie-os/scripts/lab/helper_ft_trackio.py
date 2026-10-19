@@ -6,6 +6,9 @@ Optional: ``pip install trackio``. API is wandb-compatible
 and any tracker exception log a warning and leave the integrity gate
 unchanged. A REFUSED gate still refuses.
 
+Trackio is a dashboard, never stamp-gate evidence. Logged values are not a
+verdict. Verdicts come only from the sha-pinned results files and the HQ events.
+
 Local only: never passes ``space_id`` / ``server_url`` / tokens, never calls
 ``sync`` or ``show``, never writes under ``trust/`` or dataset/factory data
 paths. Storage defaults to ``<run_dir>/trackio`` and is overridden by
@@ -30,6 +33,8 @@ PROJECT = "dottie-helper-ft"
 DIR_ENV = "DOTTIE_HELPER_FT_TRACKIO_DIR"
 ENABLE_ENV = "DOTTIE_HELPER_FT_TRACKIO"
 TRACKIO_DIR_ENV = "TRACKIO_DIR"
+SHA256_LEN = 64
+_HEX = frozenset("0123456789abcdef")
 # Hub / remote knobs we strip so a inherited env cannot sync.
 _HUB_ENV = (
     "TRACKIO_SPACE_ID",
@@ -284,6 +289,23 @@ def _parse_mapping_line(line: str) -> dict[str, Any] | None:
     return out or None
 
 
+def validate_results_sha256(value: object) -> str | None:
+    """Require 64-char lowercase hex. Missing/malformed → warn and skip."""
+    if type(value) is not str or not value:
+        _warn(
+            "HELPER FT trackio log_eval_scores missing results_sha256; "
+            "skipped (Trackio is not stamp-gate evidence)"
+        )
+        return None
+    if len(value) != SHA256_LEN or any(ch not in _HEX for ch in value):
+        _warn(
+            "HELPER FT trackio log_eval_scores results_sha256 must be "
+            "64-char lowercase hex; skipped (Trackio is not stamp-gate evidence)"
+        )
+        return None
+    return value
+
+
 def normalize_eval_scores(scores: Mapping[str, Any]) -> dict[str, Any]:
     """Canonical Choice/Score/Noul + halt/veto counts for Critic eval."""
     out: dict[str, Any] = {}
@@ -417,11 +439,15 @@ class RunSession:
             return False
         return self.log(payload)
 
-    def log_eval_scores(self, scores: Mapping[str, Any]) -> bool:
+    def log_eval_scores(self, scores: Mapping[str, Any], results_sha256: object) -> bool:
+        digest = validate_results_sha256(results_sha256)
+        if digest is None:
+            return False
         payload = normalize_eval_scores(scores)
         if not payload:
             return False
         payload["eval_attached"] = 1
+        payload["results_sha256"] = digest
         if self.run_id:
             payload.setdefault("run_id", self.run_id)
         return self.log(payload)
@@ -474,19 +500,33 @@ def log_metrics(run_id: str, metrics: Mapping[str, Any], step: int | None = None
     return _session_for(run_id).log(metrics, step=step)
 
 
-def log_eval_scores(run_id: str, scores: dict) -> bool:
+def log_eval_scores(run_id: str, scores: dict, results_sha256: object = None) -> bool:
     """Attach Critic eval scores (Choice/Score/Noul, halt, veto) to ``run_id``.
+
+    ``results_sha256`` is required: 64-char lowercase hex of the sha-pinned
+    results file. It is logged with every score. Missing or malformed values
+    skip logging and warn; this function never raises.
+
+    Trackio is a dashboard, never stamp-gate evidence. Verdicts come only
+    from the sha-pinned results files and the HQ events.
 
     Fail-open. Safe to call after the trainer finishes; resumes the same run
     name when the kick session already finished.
     """
-    if type(run_id) is not str or not run_id:
-        _warn("HELPER FT trackio log_eval_scores missing run_id; skipped")
+    try:
+        if type(run_id) is not str or not run_id:
+            _warn("HELPER FT trackio log_eval_scores missing run_id; skipped")
+            return False
+        if not isinstance(scores, Mapping):
+            _warn("HELPER FT trackio log_eval_scores expected a dict; skipped")
+            return False
+        return _session_for(run_id).log_eval_scores(scores, results_sha256)
+    except Exception as exc:
+        _warn(
+            f"HELPER FT trackio log_eval_scores failed ({type(exc).__name__}: {exc}); "
+            "skipped (Trackio is not stamp-gate evidence)"
+        )
         return False
-    if not isinstance(scores, Mapping):
-        _warn("HELPER FT trackio log_eval_scores expected a dict; skipped")
-        return False
-    return _session_for(run_id).log_eval_scores(scores)
 
 
 def log_refused(
