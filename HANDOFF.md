@@ -16,6 +16,19 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-10-19 (supersedes every block below)
+
+**Stamped 2026-10-19 at HEAD `ac43c57`** (`cursor/serve-deterministic-veto-9952`,
+on top of `main` `43f4189`). Measured with `git rev-parse --short HEAD` +
+`scripts/check_handoff_fresh.py --check`.
+
+**Why this block exists:** `lint-and-test` failed because the 2026-10-13 stamp
+named `86b07bf` (`scout/dottie-lint-i001`), which is not an ancestor of this
+branch after that work squash-merged as `43f4189`. Merging current `main` does
+not bring `86b07bf` into history, so the recorded SHA has to be one that is.
+
+---
+
 ## 📌 Session continuation — 2026-10-13 (supersedes every block below)
 
 **Stamped 2026-10-13 at HEAD `86b07bf`** (`scout/dottie-lint-i001`, the ruff
