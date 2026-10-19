@@ -21,15 +21,18 @@ Halt classes: pipe a download into a shell interpreter (`curl`/`wget`/`fetch`
 into `sh`/`bash`/`zsh`/`python`, including `sh -c "$(curl …)"` and
 `source <(curl …)`), fork bomb, serve control-plane URL (`/reload` and other
 admin paths on `:8770`/`:8765`/`:8769`, loopback, `nugatron`, tailnet — after
-percent-decode and `.`/`..` path normalize; search tools and non-serve ports
-such as `localhost:3000/admin` do not match), `rm -rf` (any path, flag
-reorderings, including `./build`), `mkfs*` and block-device wipes
-(`dd of=/dev/sd*|xvd|mapper|md`, `tee`/`cp` onto those devices, `wipefs`,
-`shred` of a device — not `shred file.txt`), extra download-to-interp pipes
-(`node`/`ruby`/`php`, `curl > f; bash f`), and credential reads
-(`~/.ssh/id_*`, `~/.aws/credentials`, `.env` / token files via
-`cat`/`less`/`cp`/`scp`/`base64`/`python -c open`). Relative `find . -delete`
-and `dd if=/dev/sdX of=file` (read) do not halt.
+percent-decode and `.`/`..` path normalize; search tools (`rg`/`grep` of
+reload or promote URL strings) and non-serve ports such as
+`curl localhost:3000/admin` do not match), `rm -rf` (any path, flag
+reorderings, including `./build`), `find … -delete` and `find … -exec rm`
+(any path, relative included), `mkfs*` and block-device wipes
+(`dd of=` or `dd if=` of `/dev/sd*|nvme*|xvd*|mapper/*|md*|disk*`,
+`tee`/`cp` onto those devices, `wipefs`, `shred` of any file or flags),
+fork bombs (`:(){ :|:& };:`, renamed functions, `fork while`,
+`while true; do … & done` — not a single `perl -e 'print fork'`), extra
+download-to-interp pipes (`node`/`ruby`/`php`, `curl > f; bash f`), and
+credential reads (`~/.ssh/id_*`, `~/.aws/credentials`, `.env` / token files
+via `cat`/`less`/`cp`/`scp`/`base64`/`python -c open`).
 
 The in-tree dottie-core serve (`packages/dottie-core/dottie_core/serving/server.py`)
 runs the veto on the raw `/decide` body before the model. Request bodies over

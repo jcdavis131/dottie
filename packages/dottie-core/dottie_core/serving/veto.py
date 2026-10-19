@@ -938,12 +938,16 @@ def _is_mkfs_words(words: list[str]) -> bool:
     if not words:
         return False
     head = words[0].lower()
-    if head == "mkfs" or head.startswith("mkfs.") or head in {"mke2fs", "mkswap", "wipefs"}:
+    if head == "mkfs" or head.startswith("mkfs.") or head in {"mke2fs", "mkswap", "wipefs", "shred"}:
         return True
-    if head == "shred":
-        return any(_is_block_dev(tok) for tok in words[1:] if not tok.startswith("-"))
     if head == "dd":
-        return any(tok.lower().startswith("of=") and _is_block_dev(tok[3:]) for tok in words[1:])
+        for tok in words[1:]:
+            low = tok.lower()
+            if low.startswith("if=") and _is_block_dev(low[3:]):
+                return True
+            if low.startswith("of=") and _is_block_dev(low[3:]):
+                return True
+        return False
     return False
 
 
@@ -965,14 +969,7 @@ def _is_find_delete(words: list[str]) -> bool:
     if not words or words[0].lower() != "find":
         return False
     if "-delete" in words:
-        # Absolute / ~ / $HOME trees halt; relative trees (./build, .) do not.
-        stop = words.index("-delete")
-        for tok in words[1:stop]:
-            if tok.startswith("-"):
-                continue
-            if tok in {"/", "~", "*", "$HOME", "${HOME}"} or tok.startswith("/") or tok.startswith("~") or tok.startswith("$"):
-                return True
-        return False
+        return True
     if "-exec" in words:
         try:
             rest = words[words.index("-exec") + 1:]
@@ -1151,7 +1148,7 @@ def _fork_bomb_tokens(tokens: list[tuple[str, str]], compact: str) -> bool:
                     return True
         except (ValueError, IndexError):
             pass
-    # classic function syntax name() { ... }
+    # classic function syntax name() { ... } including renamed bombs
     raw = "".join(v if k == "word" else v for k, v in tokens)
     raw_compact = re.sub(r"\s+", "", raw.lower())
     brace = raw_compact.find("(){")
@@ -1172,6 +1169,18 @@ def _fork_bomb_tokens(tokens: list[tuple[str, str]], compact: str) -> bool:
         low = value.lower()
         if "fork while" in low or ("while" in low and "os.fork" in low):
             return True
+    # while true; do … & done  — background spawn inside a loop
+    state = "start"
+    for kind, value in tokens:
+        low = value.lower() if kind == "word" else value
+        if low == "while":
+            state = "while"
+        elif state == "while" and low == "do":
+            state = "do"
+        elif state == "do" and kind == "op" and value == "&":
+            return True
+        elif state in {"while", "do"} and low == "done":
+            state = "start"
     _ = compact_ops
     return False
 
@@ -1701,13 +1710,21 @@ REQUIRED_PIPE_VARIANTS: tuple[str, ...] = (
 EXTRA_HALT_CASES: tuple[tuple[str, str], ...] = (
     ("find / -delete", RM_RF),
     ("find /tmp -exec rm -rf {} +", RM_RF),
+    ("find . -delete", RM_RF),
+    ("find ./build -delete", RM_RF),
+    ("find . -exec rm {} +", RM_RF),
     ("bash -c 'rm -rf /'", RM_RF),
     ("dd of=/dev/sda", MKFS),
+    ("dd if=/dev/sda of=backup.img", MKFS),
     ("wipefs /dev/sda", MKFS),
     ("shred /dev/sda", MKFS),
+    ("shred notes.txt", MKFS),
+    ("shred -u -z -n 3 file.txt", MKFS),
     ("function f { f | f & }; f", FORK_BOMB),
     ("perl -e 'fork while 1'", FORK_BOMB),
+    ("perl -e 'fork while fork'", FORK_BOMB),
     ("python -c 'while 1: os.fork()'", FORK_BOMB),
+    ("while true; do : & done", FORK_BOMB),
     ("tee /dev/sda", MKFS),
     ("cp file /dev/nvme0n1", MKFS),
     ("cat x > /dev/xvda", MKFS),
@@ -1765,15 +1782,18 @@ NEGATIVE_CASES: tuple[str, ...] = (
     "echo ~/.ssh/id_rsa",
     "cat .env.example",
     "cat ~/.ssh/id_rsa.pub",
-    "shred notes.txt",
-    "find . -delete",
-    "find ./build -delete",
-    "dd if=/dev/sda of=backup.img",
     "localhost:3000/admin",
+    "curl localhost:3000/admin",
     "curl http://localhost:3000/admin",
     "rg ':8770/reload'",
+    "grep ':8770/reload'",
+    "rg 'http://127.0.0.1:8770/reload'",
+    "grep 'http://nugatron:8770/reload'",
+    "rg 'http://127.0.0.1:8770/promote'",
+    "grep promote log.txt",
     "perl -e 'print fork'",
     "perl -e 'print(fork)'",
+    "perl -e 'fork'",
 )
 
 
