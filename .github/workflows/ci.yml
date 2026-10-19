@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
@@ -22,6 +25,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
+          persist-credentials: false  # do not persist GITHUB_TOKEN
       - name: Install uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
@@ -570,18 +574,14 @@ jobs:
   # Measured what the __path__ merge would buy, with a throwaway conftest probe appended,
   # the suite re-run, and the probe reverted (tree verified clean afterwards):
   #     1 failed, 286 passed, 3 skipped, 0 errors
-  # So the merge clears 35 failures and all 3 collection errors. The single survivor is
-  # test_climb.py::test_cli_climb_smoke_and_report, which shells out to `python -m dottie
-  # climb`; a conftest patch cannot reach a subprocess, so that one needs the fix to live
-  # in the package rather than in test setup — which is itself an argument about WHICH of
-  # the three options is right.
-  #
   # Still an operator call, and still not a CI tweak. But it is no longer an abstract
   # three-way preference: option B is worth 35 tests, and doing nothing costs them.
   dottie-factory-smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false  # do not persist GITHUB_TOKEN
       - name: Setup Python 3.11
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
@@ -635,11 +635,11 @@ jobs:
           }
           grep_pack() {
             /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-              /usr/bin/grep -zEi 'curated[-_]?pack|ultradata[-_]?harvest[-_]' "$1"
+              /usr/bin/grep -zEi '(^|[^A-Za-z0-9])curated[-_. /]*packs?([^A-Za-z]|$)|(^|/)ultradata[-_. /]*harvest' "$1"
           }
           show_pack_hits() {
             /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-              /usr/bin/python3 -I -c "import sys,re; pat=re.compile(br'curated[-_]?pack|ultradata[-_]?harvest[-_]',re.I); [sys.stdout.write(p.decode('utf-8','backslashreplace')+chr(10)) for p in open(sys.argv[1],'rb').read().split(bytes([0])) if p and pat.search(p)]" "$1"
+              /usr/bin/python3 -I -c "import sys,re; pat=re.compile(br'(^|[^A-Za-z0-9])curated[-_. /]*packs?([^A-Za-z]|$)|(^|/)ultradata[-_. /]*harvest',re.I); [sys.stdout.write(p.decode('utf-8','backslashreplace')+chr(10)) for p in open(sys.argv[1],'rb').read().split(bytes([0])) if p and pat.search(p)]" "$1"
           }
           toplevel=$(git_scrub rev-parse --show-toplevel) || {
             \builtin echo "FAIL: git rev-parse --show-toplevel failed"
@@ -730,7 +730,7 @@ jobs:
             \builtin exit 1
           fi
           /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-            /usr/bin/python3 -I -c "import sys,unicodedata,re; C=str.maketrans({'\u0430':'a','\u0435':'e','\u043e':'o','\u0440':'p','\u0441':'c','\u0445':'x','\u0443':'y','\u0456':'i','\u0458':'j','\u0455':'s','\u0501':'d','\u03bf':'o','\u039f':'o','\u0410':'a','\u0415':'e','\u041e':'o','\u0420':'p','\u0421':'c','\u0425':'x','\u0423':'y','\u0406':'i'}); P=re.compile(r'curated[-_]?pack|ultradata[-_]?harvest[-_]',re.I); fold=lambda s: ''.join(ch for ch in unicodedata.normalize('NFKC',s).translate(C) if unicodedata.category(ch)!='Cf').casefold(); [(sys.exit('FAIL: non-ascii path') if any(b>127 for b in p) else sys.exit('FAIL: lookalike pack path') if P.search(fold(p.decode('utf-8','surrogateescape'))) else None) for f in sys.argv[1:] for p in open(f,'rb').read().split(bytes([0])) if p]" "$index_list" "$tree_list" || {
+            /usr/bin/python3 -I -c "import sys,unicodedata,re; C=str.maketrans({'\u0430':'a','\u0435':'e','\u043e':'o','\u0440':'p','\u0441':'c','\u0445':'x','\u0443':'y','\u0456':'i','\u0458':'j','\u0455':'s','\u0501':'d','\u03bf':'o','\u039f':'o','\u0410':'a','\u0415':'e','\u041e':'o','\u0420':'p','\u0421':'c','\u0425':'x','\u0423':'y','\u0406':'i','\u2013':'-','\u2014':'-','\u2212':'-'}); P=re.compile(r'(^|[^A-Za-z0-9])curated[-_. /]*packs?([^A-Za-z]|$)|(^|/)ultradata[-_. /]*harvest',re.I); fold=lambda s: ''.join(ch for ch in unicodedata.normalize('NFKC',s).translate(C) if unicodedata.category(ch)!='Cf').casefold(); [(sys.exit('FAIL: non-ascii path') if any(b>127 for b in p) else sys.exit('FAIL: lookalike pack path') if P.search(fold(p.decode('utf-8','surrogateescape'))) else None) for f in sys.argv[1:] for p in open(f,'rb').read().split(bytes([0])) if p]" "$index_list" "$tree_list" || {
             \builtin echo "FAIL: lookalike/non-ascii pack path check"
             \builtin exit 1
           }
@@ -750,6 +750,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
       - name: Setup Python 3.11
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
@@ -757,6 +759,8 @@ jobs:
       - name: Install cryptography (Ed25519 pack-pin verify)
         run: pip install "cryptography>=41,<46"
       - name: Stdlib UltraData factory smoke (no HF, no FT)
+        env:
+          WT: ${{ github.workspace }}
         run: |
           set -euo pipefail
           python3 -m unittest discover -s apps/dottie-os/tests -v 2>&1 | tee /tmp/dottie-os.txt
@@ -783,6 +787,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
       - name: Setup Python 3.11
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
@@ -814,6 +820,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
       - name: Twin contract suite (pure parsers)
         run: node apps/bluehenre/public/js/twin.contract.test.mjs
       - name: Hub registry exporter parser regression
@@ -904,6 +912,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
           enable-cache: true

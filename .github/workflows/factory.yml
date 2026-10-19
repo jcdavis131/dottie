@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: dottie
+          persist-credentials: false
       # factory/ and scripts/dag_next.py are stdlib-only, so no uv sync: the report
       # must stay cheap enough to never be the thing that gets switched off.
       - uses: actions/setup-python@v5

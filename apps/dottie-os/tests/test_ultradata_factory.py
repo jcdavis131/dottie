@@ -3509,6 +3509,7 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertIn("apps/dottie-os/scripts/lab/kick_helper_ft.py", text)
         self.assertIn("apps/dottie-os/tests/cam_pin_vector_helper.py", text)
         self.assertIn("/.github/", text)
+        self.assertIn("/apps/dottie-os/tests/", text)
         self.assertIn(".github/workflows/ci.yml", text)
         self.assertIn("@jcdavis131", text)
         self.assertIn("required code-owner review", text)
@@ -4124,12 +4125,16 @@ PACK_GUARD_USES_PIN_RE = re.compile(
 # timeout-minutes, if, continue-on-error, defaults, env, container, services.
 PACK_GUARD_JOB_KEYS = frozenset({"runs-on", "steps"})
 PACK_GUARD_JOB_FORBIDDEN_KEYS = frozenset(
-    {"if", "continue-on-error", "needs", "strategy", "name"}
+    {"if", "continue-on-error", "needs", "strategy", "name", "permissions"}
 )
 PACK_GUARD_RUNS_ON = "ubuntu-latest"
 PACK_GUARD_LOOKALIKE_RE = re.compile(r"pack[-_ ]?guard")
-PACK_GUARD_PATH_RE = r"curated[-_]?pack|ultradata[-_]?harvest"
-PACK_GUARD_GREP_RE = r"curated[-_]?pack|ultradata[-_]?harvest[-_]"
+# Single source for grep -zEi and the Python fold pass (S21).
+PACK_GUARD_PATH_RE = (
+    r"(^|[^A-Za-z0-9])curated[-_. /]*packs?([^A-Za-z]|$)"
+    r"|(^|/)ultradata[-_. /]*harvest"
+)
+PACK_GUARD_GREP_RE = PACK_GUARD_PATH_RE
 PACK_GUARD_ENV_PATH = "/usr/bin:/bin"
 PACK_GUARD_ENV_HOME = "/nonexistent"
 PACK_GUARD_ENV_LC_ALL = "C"
@@ -4141,6 +4146,7 @@ PACK_GUARD_ENV_INLINE = (
     f"LC_ALL={PACK_GUARD_ENV_LC_ALL}"
 )
 PACK_GUARD_CODEOWNERS_GITHUB = "/.github/"
+PACK_GUARD_CODEOWNERS_TESTS = "/apps/dottie-os/tests/"
 PACK_GUARD_CODEOWNERS_FACTORY = (
     "apps/dottie-os/tests/test_ultradata_factory.py"
 )
@@ -4151,14 +4157,15 @@ PACK_GUARD_CHECKOUT_USES_RE = re.compile(
 )
 PACK_GUARD_SHELL_EUO = "-euo pipefail"
 # S6: ci.yml top-level keys and the trigger block on main (a3872eab).
-PACK_GUARD_WORKFLOW_KEYS = frozenset({"name", "on", "jobs"})
+PACK_GUARD_WORKFLOW_KEYS = frozenset({"name", "on", "permissions", "jobs"})
 PACK_GUARD_ON_BLOCK = (
     "on:\n"
     "  push:\n"
     "    branches: [main]\n"
-    "  pull_request:\n"
+  "  pull_request:\n"
     "    branches: [main]\n"
 )
+PACK_GUARD_PERMISSIONS_BLOCK = "permissions:\n  contents: read\n"
 # Half of 2561 tracked files when the floor was set, rounded down.
 PACK_GUARD_LS_FILES_FLOOR = 1280
 PACK_GUARD_EARLIER_BAN_RE = re.compile(
@@ -4171,13 +4178,16 @@ PACK_GUARD_GIT_ENV_KEYS = frozenset(
     {"GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE"}
 )
 CRITIC_91_MUTATIONS_SHA256 = (
-    "0cbbaa78bc4de52a32ccf64a9e5ecb622a670fde381a018c4d185a6c71e355ad"
+    "039fc431010be21b1ef5fab8d8d0c1c32311321a3bd4b474a5fe14152176471f"
 )
 CRITIC_91_136F_SHA256 = (
-    "5bf36a2c791a9bde61e239ec4652ac32ae4c4d51cf483088a48846fe88724dd6"
+    "f8edfd4ddd0ba6405870cacdc642a0413a50e68aca4e62d4db2e7e3eff31b282"
 )
 CRITIC_91_AF2D_SHA256 = (
-    "f251c6c9b34b5add838b6f45e93fb538ccb61b0704b5652428440033a0ecfbc5"
+    "7f8ca3fec9e50dd45e2e53b4a86bb7ce575c5e1600d9e1f11335f57405bbb510"
+)
+CRITIC_91_50D2_SHA256 = (
+    "2ecab3264a01b2c97d2eb060a1816a723f4b2a719afe372805e2b72a12c32c91"
 )
 LEAKGATE_TRACKED_NAMES = frozenset(
     {
@@ -4605,24 +4615,122 @@ def _yaml_parse_fail(message: str) -> None:
     raise AssertionError(f"workflow YAML parse failed: {message}")
 
 
-def _yaml_parse_quoted(s: str, i: int) -> tuple[str, int]:
+def _yaml_hex_escape(s: str, i: int, width: int) -> tuple[str, int]:
+    end = i + width
+    if end > len(s):
+        _yaml_parse_fail("truncated YAML hex escape")
+    digits = s[i:end]
+    try:
+        return chr(int(digits, 16)), end
+    except (ValueError, OverflowError) as exc:
+        raise AssertionError(
+            f"workflow YAML parse failed: bad hex escape {digits!r}"
+        ) from exc
+
+
+def _yaml_read_quoted(s: str, i: int) -> tuple[str, int, bool]:
+    """YAML 1.2 quoted scalar. Third flag is True when an escape was decoded."""
     quote = s[i]
     i += 1
     out: list[str] = []
+    had_escape = False
+    if quote == "'":
+        while i < len(s):
+            ch = s[i]
+            if ch == "'":
+                if i + 1 < len(s) and s[i + 1] == "'":
+                    out.append("'")
+                    i += 2
+                    continue
+                return "".join(out), i + 1, had_escape
+            out.append(ch)
+            i += 1
+        _yaml_parse_fail("unterminated quoted string")
+    if quote != '"':
+        _yaml_parse_fail("quoted scalar missing quotes")
+    simple = {
+        "0": "\0",
+        "a": "\a",
+        "b": "\b",
+        "t": "\t",
+        "n": "\n",
+        "v": "\v",
+        "f": "\f",
+        "r": "\r",
+        "e": "\x1b",
+        " ": " ",
+        '"': '"',
+        "/": "/",
+        "\\": "\\",
+        "N": "\u0085",
+        "_": "\u00a0",
+        "L": "\u2028",
+        "P": "\u2029",
+    }
     while i < len(s):
         ch = s[i]
-        if ch == quote:
-            return "".join(out), i + 1
-        if ch == "\\" and quote == '"' and i + 1 < len(s):
-            nxt = s[i + 1]
-            esc = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"'}
-            out.append(esc.get(nxt, nxt))
-            i += 2
+        if ch == '"':
+            return "".join(out), i + 1, had_escape
+        if ch == "\\":
+            had_escape = True
+            i += 1
+            if i >= len(s):
+                _yaml_parse_fail("truncated YAML escape")
+            nxt = s[i]
+            if nxt == "x":
+                ch, i = _yaml_hex_escape(s, i + 1, 2)
+                out.append(ch)
+                continue
+            if nxt == "u":
+                ch, i = _yaml_hex_escape(s, i + 1, 4)
+                out.append(ch)
+                continue
+            if nxt == "U":
+                ch, i = _yaml_hex_escape(s, i + 1, 8)
+                out.append(ch)
+                continue
+            if nxt == "\n":
+                i += 1
+                continue
+            if nxt not in simple:
+                _yaml_parse_fail(f"unknown YAML escape \\{nxt}")
+            out.append(simple[nxt])
+            i += 1
             continue
         out.append(ch)
         i += 1
     _yaml_parse_fail("unterminated quoted string")
     raise AssertionError("unreachable")
+
+
+def _yaml_parse_quoted(s: str, i: int) -> tuple[str, int]:
+    value, end, _had = _yaml_read_quoted(s, i)
+    return value, end
+
+
+def _yaml_refuse_anchor_alias_merge(raw: str, *, what: str) -> None:
+    stripped = raw.strip()
+    if stripped.startswith("&") or stripped.startswith("*"):
+        _yaml_parse_fail(f"{what} uses YAML anchor/alias")
+    if stripped.startswith("!!"):
+        _yaml_parse_fail(f"{what} uses YAML tag")
+    if stripped == "<<" or stripped.startswith("<<"):
+        _yaml_parse_fail(f"{what} uses YAML merge key")
+
+
+def _yaml_parse_key(raw: str) -> str:
+    stripped = raw.strip()
+    if stripped.startswith("?"):
+        _yaml_parse_fail("complex YAML key")
+    _yaml_refuse_anchor_alias_merge(stripped, what="workflow key")
+    if stripped.startswith(("'", '"')):
+        decoded, end, had = _yaml_read_quoted(stripped, 0)
+        if end != len(stripped):
+            _yaml_parse_fail(f"trailing junk on quoted key {stripped!r}")
+        if had:
+            _yaml_parse_fail(f"escape sequence in workflow key {decoded!r}")
+        return decoded
+    return stripped
 
 
 def _yaml_skip_flow_space(s: str, i: int) -> int:
@@ -4642,6 +4750,7 @@ def _yaml_parse_plain_flow(s: str, i: int) -> tuple[object, int]:
             break
         i += 1
     raw = s[start:i].strip()
+    _yaml_refuse_anchor_alias_merge(raw, what="flow scalar")
     return _parse_yaml_scalar(raw), i
 
 
@@ -4659,22 +4768,27 @@ def _yaml_parse_flow(s: str, i: int) -> tuple[object, int]:
         while True:
             i = _yaml_skip_flow_space(s, i)
             if i < len(s) and s[i] in "'\"":
-                key, i = _yaml_parse_quoted(s, i)
+                key, i, had = _yaml_read_quoted(s, i)
+                if had:
+                    _yaml_parse_fail(f"escape sequence in workflow key {key!r}")
+                _yaml_refuse_anchor_alias_merge(key, what="flow key")
             else:
                 start = i
                 while i < len(s) and s[i] not in ",]}#\n\r":
                     if s[i] == ":" and (i + 1 >= len(s) or s[i + 1] in " ,]}"):
                         break
                     i += 1
-                key = s[start:i].strip()
+                key = _yaml_parse_key(s[start:i])
             i = _yaml_skip_flow_space(s, i)
             if i >= len(s) or s[i] != ":":
                 _yaml_parse_fail("flow mapping missing ':'")
             i += 1
             value, i = _yaml_parse_flow(s, i)
+            if key == "name" and isinstance(value, str):
+                _yaml_refuse_anchor_alias_merge(value, what="job/step name")
             if key in mapping:
                 _yaml_parse_fail(f"duplicate YAML key {key!r}")
-            mapping[key] = value
+            mapping[str(key)] = value
             i = _yaml_skip_flow_space(s, i)
             if i < len(s) and s[i] == ",":
                 i += 1
@@ -4710,7 +4824,7 @@ def _yaml_strip_comment(line: str) -> str:
     for idx, ch in enumerate(line):
         if ch == "'" and not in_double:
             in_single = not in_single
-        elif ch == '"' and not in_double and not in_single:
+        elif ch == '"' and not in_single:
             in_double = not in_double
         elif ch == "#" and not in_single and not in_double:
             if idx == 0 or line[idx - 1] in " \t":
@@ -4798,10 +4912,7 @@ def _yaml_parse_map(
             idx += 1
             break
         key_part, rest = stripped.split(":", 1)
-        if key_part.startswith("'") or key_part.startswith('"'):
-            key, _ = _yaml_parse_quoted(key_part, 0)
-        else:
-            key = key_part.strip()
+        key = _yaml_parse_key(key_part)
         rest = rest.strip()
         if key in mapping:
             _yaml_parse_fail(f"duplicate YAML key {key!r}")
@@ -4823,7 +4934,7 @@ def _yaml_parse_map(
             mapping[key] = None
             idx += 1
             continue
-        mapping[key] = _parse_yaml_scalar(rest)
+        mapping[key] = _parse_yaml_scalar(rest, as_name=(key == "name"))
         idx += 1
     return mapping, idx
 
@@ -4876,6 +4987,8 @@ def _yaml_parse_seq(
 
 
 def _minimal_yaml_load(text: str) -> object:
+    if text.startswith("\ufeff"):
+        text = text[1:]
     lines = [line.replace("\t", "  ").rstrip() for line in text.splitlines()]
     idx = 0
     saw_doc = False
@@ -4911,19 +5024,17 @@ def _minimal_yaml_load(text: str) -> object:
 
 
 def _load_workflow_yaml(text: str) -> object:
-    """PyYAML safe_load when present; vendored loader otherwise. Fail closed."""
-    if yaml is not None:
-        try:
-            loaded = yaml.safe_load(text)
-        except Exception as exc:
-            raise AssertionError(f"workflow YAML parse failed: {exc}") from exc
-        return {} if loaded is None else loaded
+    """Vendored YAML 1.2 loader (dottie-os-smoke has no PyYAML). Fail closed."""
+    if text.startswith("\ufeff"):
+        text = text[1:]
     try:
         return _minimal_yaml_load(text)
     except AssertionError:
         raise
-    except Exception as exc:
-        raise AssertionError(f"workflow YAML parse failed: {exc}") from exc
+    except Exception as extra:
+        raise AssertionError(
+            f"workflow YAML parse failed: {extra}"
+        ) from extra
 
 
 def _pack_guard_lookalike_token(value: object) -> bool:
@@ -4953,14 +5064,22 @@ def _iter_parsed_jobs(doc: object) -> list[tuple[str, object | None]]:
     return found
 
 
-def _parse_yaml_scalar(raw: str) -> object:
-    value = raw.strip()
+def _parse_yaml_scalar(raw: str, *, as_name: bool = False) -> object:
+    value = _yaml_strip_comment(raw).strip()
+    _yaml_refuse_anchor_alias_merge(value, what="job/step name" if as_name else "YAML scalar")
     if value in ("true", "True", "yes", "Yes", "on"):
         return True
     if value in ("false", "False", "no", "No", "off"):
         return False
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
-        return value[1:-1]
+    if value.startswith(("'", '"')):
+        decoded, end, had = _yaml_read_quoted(value, 0)
+        if end != len(value):
+            _yaml_parse_fail(f"trailing junk on quoted scalar {value!r}")
+        if as_name and had:
+            _yaml_parse_fail(f"escape sequence in job/step name {decoded!r}")
+        if as_name:
+            _yaml_refuse_anchor_alias_merge(decoded, what="job/step name")
+        return decoded
     return value
 
 
@@ -5039,7 +5158,9 @@ def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
                         raise AssertionError(
                             f"duplicate YAML key {nested_key!r} under {key!r}"
                         )
-                    nested[nested_key] = _parse_yaml_scalar(nested_raw)
+                    nested[nested_key] = _parse_yaml_scalar(
+                        _yaml_strip_comment(nested_raw)
+                    )
                 idx += 1
             _record_step_key(step, key, nested)
             continue
@@ -5294,10 +5415,21 @@ def _assert_pack_guard_check_name_unique(
     ci_rel = str(Path(".github") / "workflows" / "ci.yml")
     allowed: tuple[str, str] | None = None
     spoofs: list[str] = []
-    for path in _workflow_yaml_paths(root):
+    wf_dir = root / ".github" / "workflows"
+    paths = (
+        sorted(
+            path
+            for path in wf_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in {".yml", ".yaml"}
+        )
+        if wf_dir.is_dir()
+        else []
+    )
+    for path in paths:
         rel = str(path.relative_to(root))
         body = text if rel == ci_rel else path.read_text(encoding="utf-8")
         doc = _load_workflow_yaml(body)
+        jobs_map = doc.get("jobs") if isinstance(doc, dict) else None
         for job_id, name in _iter_parsed_jobs(doc):
             id_hit = _pack_guard_lookalike_token(job_id)
             name_hit = name is not None and _pack_guard_lookalike_token(name)
@@ -5312,6 +5444,24 @@ def _assert_pack_guard_check_name_unique(
                     spoofs.append(f"{rel} job id {job_id!r}")
             if name_hit:
                 spoofs.append(f"{rel} job {job_id!r} name {name!r}")
+        if isinstance(jobs_map, dict):
+            for job_id, job_body in jobs_map.items():
+                if not isinstance(job_body, dict):
+                    continue
+                steps = job_body.get("steps")
+                if not isinstance(steps, list):
+                    continue
+                for step in steps:
+                    if not isinstance(step, dict) or "name" not in step:
+                        continue
+                    step_name = step.get("name")
+                    if step_name is not None and (
+                        _pack_guard_lookalike_token(step_name)
+                        or "${{" in str(step_name)
+                    ):
+                        spoofs.append(
+                            f"{rel} job {job_id!r} step name {step_name!r}"
+                        )
     if allowed is None:
         raise AssertionError(
             f"missing the single ci.yml job id {PACK_GUARD_JOB!r}"
@@ -5441,11 +5591,107 @@ def _assert_smoke_job_has_no_hollowing_steps(text: str) -> None:
                 f"{sorted(bad_env)} in env"
             )
         uses = str(step.get("uses") or "")
-        if uses.startswith("actions/checkout") and "with" in step:
+        if uses.startswith("actions/checkout"):
+            with_ = step.get("with")
+            if not isinstance(with_, dict):
+                raise AssertionError(
+                    "dottie-os-smoke actions/checkout must set "
+                    "persist-credentials: false"
+                )
+            if with_.get("persist-credentials") is not False:
+                raise AssertionError(
+                    "dottie-os-smoke actions/checkout must set "
+                    "persist-credentials: false"
+                )
+            banned = {"ref", "path", "sparse-checkout"} & set(with_)
+            if banned:
+                raise AssertionError(
+                    "dottie-os-smoke actions/checkout must not set "
+                    f"{sorted(banned)}"
+                )
+
+
+def _workflow_permissions_block(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    start: int | None = None
+    for idx, line in enumerate(lines):
+        if line[:1] in " \t#" or ":" not in line:
+            continue
+        if line.split(":", 1)[0].strip() == "permissions":
+            start = idx
+            break
+    if start is None:
+        raise AssertionError("workflow has no top-level permissions:")
+    end = len(lines)
+    for idx in range(start + 1, len(lines)):
+        line = lines[idx]
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line[0] not in " \t":
+            end = idx
+            break
+    return "".join(lines[start:end]).rstrip("\n") + "\n"
+
+
+def _permissions_has_write(value: object) -> bool:
+    if isinstance(value, str):
+        return "write" in value.casefold()
+    if isinstance(value, dict):
+        return any(
+            "write" in str(item).casefold() for item in value.values()
+        )
+    return False
+
+
+def _assert_read_only_token_and_checkouts(
+    text: str, repo_root: Path | None = None
+) -> None:
+    """B4b: contents: read at workflow scope; no job write; drop GITHUB_TOKEN."""
+    root = REPO_ROOT if repo_root is None else repo_root
+    if _workflow_permissions_block(text) != PACK_GUARD_PERMISSIONS_BLOCK:
+        raise AssertionError(
+            "ci.yml top-level permissions: must be exactly "
+            f"{PACK_GUARD_PERMISSIONS_BLOCK!r}"
+        )
+    for path in _workflow_yaml_paths(root):
+        body = text if path.name == "ci.yml" and path.parent.name == "workflows" else path.read_text(encoding="utf-8")
+        doc = _load_workflow_yaml(body)
+        if not isinstance(doc, dict):
+            raise AssertionError(f"{path.name} is not a YAML mapping")
+        top_perm = doc.get("permissions")
+        if top_perm is None or _permissions_has_write(top_perm):
             raise AssertionError(
-                "dottie-os-smoke actions/checkout must not set with: "
-                "(ref/path/sparse-checkout would change the tree)"
+                f"{path.name} must set read-only top-level permissions"
             )
+        jobs = doc.get("jobs")
+        if not isinstance(jobs, dict):
+            continue
+        for job_id, job in jobs.items():
+            if not isinstance(job, dict):
+                continue
+            if "permissions" in job and _permissions_has_write(
+                job.get("permissions")
+            ):
+                raise AssertionError(
+                    f"{path.name} job {job_id!r} widens permissions"
+                )
+            steps = job.get("steps")
+            if not isinstance(steps, list):
+                continue
+            for step in steps:
+                if not isinstance(step, dict):
+                    continue
+                uses = str(step.get("uses") or "")
+                if "actions/checkout@" not in uses:
+                    continue
+                with_ = step.get("with")
+                if not isinstance(with_, dict) or with_.get(
+                    "persist-credentials"
+                ) is not False:
+                    raise AssertionError(
+                        f"{path.name} job {job_id!r} checkout must set "
+                        "persist-credentials: false"
+                    )
 
 
 def _assert_pack_guard_context(text: str) -> dict[str, object]:
@@ -5462,6 +5708,7 @@ def _assert_pack_guard_context(text: str) -> dict[str, object]:
             "workflow on: must equal main's trigger block; "
             f"got {on_block!r}"
         )
+    _assert_read_only_token_and_checkouts(text)
     _assert_pack_guard_names_unique()
     _assert_pack_guard_check_name_unique(text)
     _assert_uses_pinned_and_allowlisted(text)
@@ -5809,10 +6056,12 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             if line.strip() and not line.startswith("#")
         ]
         self.assertIn(PACK_GUARD_CODEOWNERS_GITHUB, owned)
+        self.assertIn(PACK_GUARD_CODEOWNERS_TESTS, owned)
         self.assertIn(PACK_GUARD_CODEOWNERS_FACTORY, raw)
         self.assertIn(PACK_GUARD_CODEOWNERS_CRITIC, raw)
         for required in (
             PACK_GUARD_CODEOWNERS_GITHUB,
+            PACK_GUARD_CODEOWNERS_TESTS,
             PACK_GUARD_CODEOWNERS_FACTORY,
             PACK_GUARD_CODEOWNERS_CRITIC,
         ):
@@ -5892,6 +6141,134 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             _assert_pack_guard_check_name_unique(mutated)
 
+    def test_vendored_loader_refuses_escape_and_alias_spoofs(self) -> None:
+        """B4a: 7 GitHub-resolved pack-guard forms are red on the CI loader."""
+        hdr = "name: x\non:\n  pull_request:\n    branches: [main]\njobs:\n"
+        steps = "    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
+        spoofs = {
+            "alias_from_workflow_name": (
+                "name: &n pack-guard\non: [pull_request]\njobs:\n  b:\n"
+                "    name: *n\n" + steps
+            ),
+            "alias_from_env_block": (
+                "name: x\nenv:\n  N: &n pack-guard\non: [pull_request]\n"
+                "jobs:\n  b:\n    name: *n\n" + steps
+            ),
+            "dq_hex_escape_name": hdr + '  b:\n    name: "pack\\x2dguard"\n' + steps,
+            "dq_u4_escape_name": hdr + '  b:\n    name: "\\u0070ack-guard"\n' + steps,
+            "dq_U8_escape_name": hdr
+            + '  b:\n    name: "pack\\U0000002dguard"\n'
+            + steps,
+            "dq_hex_escape_job_id": hdr + '  "pack\\x2dguard":\n' + steps,
+            "dq_u4_escape_job_id": hdr + '  "\\u0070ack-guard":\n' + steps,
+        }
+        self.assertEqual(len(spoofs), 7)
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+        global yaml
+        saved_yaml = yaml
+        try:
+            yaml = None
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                wf = root / ".github" / "workflows"
+                wf.mkdir(parents=True)
+                (wf / "ci.yml").write_text(text, encoding="utf-8")
+                for cid, body in spoofs.items():
+                    path = wf / "zz-spoof.yml"
+                    path.write_text(body, encoding="utf-8")
+                    with self.subTest(case=cid):
+                        with self.assertRaises(AssertionError):
+                            _assert_pack_guard_check_name_unique(text, root)
+                    path.unlink()
+        finally:
+            globals()["yaml"] = saved_yaml
+
+    def test_ci_permissions_and_checkout_token_are_pinned(self) -> None:
+        """B4b: contents: read; every checkout drops credentials."""
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+        self.assertEqual(
+            _workflow_permissions_block(text), PACK_GUARD_PERMISSIONS_BLOCK
+        )
+        _assert_read_only_token_and_checkouts(text)
+        widened = text.replace(
+            PACK_GUARD_PERMISSIONS_BLOCK,
+            "permissions:\n  contents: read\n  checks: write\n",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            _assert_read_only_token_and_checkouts(widened)
+        dropped = text.replace(
+            "          persist-credentials: false\n",
+            "",
+            1,
+        )
+        self.assertNotEqual(dropped, text)
+        with self.assertRaises(AssertionError):
+            _assert_read_only_token_and_checkouts(dropped)
+        job_widen = text.replace(
+            "  lint-and-test:\n    runs-on: ubuntu-latest\n",
+            "  lint-and-test:\n    permissions:\n"
+            "      checks: write\n      statuses: write\n"
+            "    runs-on: ubuntu-latest\n",
+            1,
+        )
+        self.assertNotEqual(job_widen, text)
+        with self.assertRaises(AssertionError):
+            _assert_read_only_token_and_checkouts(job_widen)
+
+    def test_pack_guard_path_pattern_refuses_fourteen_allows_three(self) -> None:
+        """S21: one shared pattern, 14 refused + 3 allowed."""
+        run = self._run_block()
+        must_catch = [
+            "apps/x/curatedpack.jsonl",
+            "apps/x/CURATED_PACK_v2.jsonl",
+            "apps/x/Curated-Packs.JSONL",
+            "curated_pack/rows.jsonl",
+            "a/b/c/d/e/f/curated-pack.jsonl",
+            "apps/x/curated\u2013pack.jsonl",
+            "apps/x/\uff43urated_pack.jsonl",
+            "apps/x/ultradata_harvest_v1.jsonl",
+            "apps/x/curated.pack.jsonl",
+            "apps/x/curated pack.jsonl",
+            "apps/x/curated__pack.jsonl",
+            "apps/x/ultradata_harvest.jsonl",
+            "apps/x/ultradata-harvest.jsonl",
+            "apps/x/curated/pack.jsonl",
+        ]
+        must_pass = [
+            "docs/curated-packing-notes.md",
+            "apps/x/uncurated_package.py",
+            "scripts/run_ultradata_harvest.py",
+        ]
+        self.assertEqual(len(must_catch), 14)
+        self.assertEqual(len(must_pass), 3)
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            for name in must_catch:
+                repo = base / hashlib.sha256(name.encode()).hexdigest()[:12]
+                env = _init_pack_guard_repo(repo)
+                _seed_pack_guard_floor(repo)
+                path = repo / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("{}\n", encoding="utf-8")
+                _commit_pack_guard_tree(repo, env, "pack")
+                proc = _run_pack_guard_script(repo, run, env)
+                self.assertNotEqual(proc.returncode, 0, msg=name)
+            for name in must_pass:
+                repo = base / ("ok-" + hashlib.sha256(name.encode()).hexdigest()[:12])
+                env = _init_pack_guard_repo(repo)
+                _seed_pack_guard_floor(repo)
+                path = repo / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("ok\n", encoding="utf-8")
+                _commit_pack_guard_tree(repo, env, "ok")
+                proc = _run_pack_guard_script(repo, run, env)
+                self.assertEqual(
+                    proc.returncode,
+                    0,
+                    msg=f"{name} stdout={proc.stdout!r}",
+                )
+
     def test_donewhen_mutations_go_red(self) -> None:
         """Critic done-when: shell -euo, unique pack-guard name, checkout with:."""
         text = CI_WORKFLOW.read_text(encoding="utf-8")
@@ -5921,9 +6298,13 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             (
                 "checkout_with_ref",
                 text.replace(
-                    "          persist-credentials: false\n",
+                    "        with:\n"
                     "          persist-credentials: false\n"
-                    "          ref: main\n",
+                    "      - name: Refuse tracked pack artifacts\n",
+                    "        with:\n"
+                    "          persist-credentials: false\n"
+                    "          ref: main\n"
+                    "      - name: Refuse tracked pack artifacts\n",
                     1,
                 ),
             ),
@@ -5938,30 +6319,33 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         path = TESTS / "test_critic_91_mutations.py"
         self.assertTrue(path.is_file())
         self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
             CRITIC_91_MUTATIONS_SHA256,
-            "0cbbaa78bc4de52a32ccf64a9e5ecb622a670fde381a018c4d185a6c71e355ad",
-        )
-        self.assertIn(
-            CRITIC_91_MUTATIONS_SHA256, path.read_text(encoding="utf-8")
         )
 
     def test_critic_91_136f_suite_is_vendored(self) -> None:
         path = TESTS / "test_critic_91_136f.py"
         self.assertTrue(path.is_file())
         self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
             CRITIC_91_136F_SHA256,
-            "5bf36a2c791a9bde61e239ec4652ac32ae4c4d51cf483088a48846fe88724dd6",
         )
-        self.assertIn(CRITIC_91_136F_SHA256, path.read_text(encoding="utf-8"))
 
     def test_critic_91_af2d_suite_is_vendored(self) -> None:
         path = TESTS / "test_critic_91_af2d.py"
         self.assertTrue(path.is_file())
         self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
             CRITIC_91_AF2D_SHA256,
-            "f251c6c9b34b5add838b6f45e93fb538ccb61b0704b5652428440033a0ecfbc5",
         )
-        self.assertIn(CRITIC_91_AF2D_SHA256, path.read_text(encoding="utf-8"))
+
+    def test_critic_91_50d2_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_50d2.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_50D2_SHA256,
+        )
 
     def test_ci_pack_guard_run_block_trips_on_tracked_packs(self) -> None:
         run = self._run_block()
