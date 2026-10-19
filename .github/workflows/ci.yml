@@ -98,7 +98,8 @@ jobs:
       # re-measure it, never carry it forward.
       # WHY 1022 -> 983 (re-measured 2026-09-11): apps/scout-cli 802 -> 763; 002226b (harden real platform end to end) rewrote six scout-cli test files (conftest, harness_correct, harness_vector, inbox/infer/secrets focused) and closed 39 findings there; personal-graphify 141 and ava-open-harness 79 unchanged (79+141+763 = 983).
       # WHY 983 -> 970 (re-measured 2026-09-23): apps/scout-cli 763 -> 750; the MoMA-lite classifier and the learned-router inference moved out of plugins/harness (cli.py, learned_router.py) into packages/dottie-loop (the router, a HARD-gated package at 0), taking their findings with them; the new plugins/router is clean. personal-graphify 141 and ava-open-harness 79 unchanged (79+141+750 = 970).
-      - name: Ruff lint (non-blocking — 970 known findings, see comment)
+      # WHY 970 -> 971 (re-measured 2026-10-13): apps/scout-cli 750 -> 751; personal-graphify 141 and ava-open-harness 79 unchanged (79+141+751 = 971). This check had not run on main since 207b5ea because test_task_eval_slice crashed first; the +1 is pre-existing scout-cli debt, not a new finding from the eval-slice repair.
+      - name: Ruff lint (non-blocking — 971 known findings, see comment)
         run: uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
       # A RATCHET, not a lint. Fails only on a gate-shaped defect (fail-open dispatch,
       # mode-conditional escape, suppressed check) that is NOT already in the baseline;
@@ -147,7 +148,7 @@ jobs:
       # Verified under `uv run` (this workflow's env), not just ambient python:
       #   test_gate_audit                  53 passed
       #   test_retrieval_eval              35 passed
-      #   test_task_eval_slice            134 passed
+      #   test_task_eval_slice            139 passed
       #   test_check_declared_capabilities  19 passed  (new, guards the ratchet above)
       #   test_store_symmetry_audit         19 passed  (new, guards the audit below)
       #

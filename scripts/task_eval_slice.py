@@ -88,10 +88,66 @@ def _load_retrieval_eval():
 
 RE_EVAL = _load_retrieval_eval()
 
-TODO_PATH = ROOT / "TODO.md"
+# 076646e replaced live TODO.md with a 3-line pointer. The eval slice's floors were
+# measured against the 528KB checkbox list, which still ships in the CI checkout at
+# this archive path. Mining the stub yields 0 items, trips the floors, then divides
+# by zero; skipping the real: checks would be fail-open. Point the miner at the
+# archive when the live file has no checkboxes, and prune it from the scored index
+# because it holds every query verbatim.
+ARCHIVED_TODO_REL = "archive/2026-10-07-cleanup/TODO-2026-07-26-graveyard.md"
+ARCHIVED_TODO_PATH = ROOT / ARCHIVED_TODO_REL
+LIVE_TODO_PATH = ROOT / "TODO.md"
+
+
+def _checkbox_item_count(path: Path) -> int:
+    """Presence check for corpus selection, not the miner (the miner uses iter_todo_items)."""
+    if not path.is_file():
+        return 0
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    n = 0
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith(("- [ ]", "- [x]", "- [X]")):
+            n += 1
+    return n
+
+
+def resolve_todo_path() -> Path:
+    """Live TODO.md if it still has checkboxes; otherwise the archived corpus."""
+    if _checkbox_item_count(LIVE_TODO_PATH) > 0:
+        return LIVE_TODO_PATH
+    if _checkbox_item_count(ARCHIVED_TODO_PATH) > 0:
+        return ARCHIVED_TODO_PATH
+    return LIVE_TODO_PATH
+
+
+TODO_PATH = resolve_todo_path()
+
+
+def todo_corpus_marker() -> str:
+    """Grep-able CI line: which file the real: checks mine, and why."""
+    rel = TODO_PATH.relative_to(ROOT).as_posix()
+    n = _checkbox_item_count(TODO_PATH)
+    if n == 0:
+        return (
+            f"REAL_TASK_SLICE_MISSING: {rel} has 0 checkbox items; "
+            "floors will fail rather than skip"
+        )
+    if TODO_PATH.resolve() != LIVE_TODO_PATH.resolve():
+        return (
+            f"REAL_TASK_SLICE_CORPUS: live TODO.md has no checkbox items; "
+            f"mining {rel} ({n} checkboxes)"
+        )
+    return f"REAL_TASK_SLICE_CORPUS: mining {rel} ({n} checkboxes)"
+
 
 # These documents contain the queries verbatim. Indexed, they are the answer key.
-QUERY_SOURCE_DOCS = ("TODO.md", "tasks/todo.md")
+# The archive is included even when the live file is the miner input: after 076646e
+# it is the only copy of the queries.
+QUERY_SOURCE_DOCS = ("TODO.md", "tasks/todo.md", ARCHIVED_TODO_REL)
 
 # TODO.md's own extraction rule ("the checkbox line plus up to two continuation lines").
 MAX_CONTINUATION_LINES = 2
@@ -323,6 +379,18 @@ def accounting_balances(stats) -> bool:
 # ---------------------------------------------------------------------------
 # Query shape — the claimed mechanism, measured
 # ---------------------------------------------------------------------------
+def ndcg_inflation(unstripped_ndcg: float, stripped_ndcg: float) -> float:
+    """Relative NDCG lift from leaving paths in the query. 0.0 if stripped is 0.
+
+    A 0 stripped score must not ZeroDivisionError (CI job 115143351553) and must
+    not become a huge ratio that would pass a floor. Callers still have to fail
+    the floor when stripped NDCG is 0; this only makes the division defined.
+    """
+    if stripped_ndcg > 0:
+        return (unstripped_ndcg - stripped_ndcg) / stripped_ndcg
+    return 0.0
+
+
 def query_shape(queries):
     """Length and snake_case density over the retriever's own tokenisation."""
     if not queries:
@@ -393,6 +461,7 @@ def main() -> int:
     ap.add_argument("--out", help="write the task-shaped slice as JSONL")
     args = ap.parse_args()
 
+    print(todo_corpus_marker(), file=sys.stderr)
     text = TODO_PATH.read_text(encoding="utf-8")
 
     con = sqlite3.connect(":memory:")
@@ -488,7 +557,7 @@ def main() -> int:
         return 0
 
     s, c, t = stats, summary["commit_slice"], summary["task_slice"]
-    print("TASK-SHAPED SLICE (mined from TODO.md)")
+    print(f"TASK-SHAPED SLICE (mined from {TODO_PATH.relative_to(ROOT).as_posix()})")
     print(f"  checkbox items        : {s['items_total']}  "
           f"(open {s['items_open']} / done {s['items_done']})")
     print(f"  yielded a pair        : {s['kept']}")
@@ -531,7 +600,7 @@ def main() -> int:
     print(f"  {'paths left in':36}{u['all']['ndcg']:>9.3f}{u['all']['mrr']:>9.3f}"
           f"{u['all']['recall']:>11.3f}{u['n']:>6}")
     print("  => leaving them in inflates NDCG@10 by "
-          f"{(u['all']['ndcg'] - ts['all']['ndcg']) / max(ts['all']['ndcg'], 1e-9):+.1%}"
+          f"{ndcg_inflation(u['all']['ndcg'], ts['all']['ndcg']):+.1%}"
           f", and the imported leak control flags {u['n'] - u['n_leak_free']} of {u['n']}"
           f" queries instead of {ts['n'] - ts['n_leak_free']}")
     print()
