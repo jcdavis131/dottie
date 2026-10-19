@@ -67,7 +67,11 @@ HQ_PIN_REQUIRED_KEYS = cam_pin_spec.HQ_PIN_REQUIRED_KEYS
 HQ_PIN_ALLOWED_KEYS = cam_pin_spec.HQ_PIN_ALLOWED_KEYS
 CHUNK = 1 << 20
 SHA256_LEN = 64
+GIT_SHA_LEN = 40
 _HEX = frozenset("0123456789abcdef")
+FORGE_ENTRYPOINT_PINS_ENV = "FORGE_ENTRYPOINT_PINS"
+FORGE_PINS_SOURCE_COMMIT_ENV = "FORGE_PINS_SOURCE_COMMIT"
+ENTRYPOINT_PIN_BASENAMES = ("kick_helper_ft.py", "cam_pin_spec.py")
 _GATE_OK = object()
 TRAINER_PATH_FILES: dict[str, str] = {
     "pack": PACK_FILE,
@@ -194,6 +198,95 @@ def _script_git_sha() -> str | None:
 
 def _script_sha256() -> str:
     return sha256_file(Path(__file__).resolve())
+
+
+def _require_git_commit_hex(field: str, value: object) -> str:
+    if type(value) is not str or len(value) != GIT_SHA_LEN or any(ch not in _HEX for ch in value):
+        _refuse(field, "40-char lowercase hex", value)
+    return value
+
+
+def _require_relative_pin_path(field: str, value: object) -> str:
+    if type(value) is not str or not value or value.startswith("/") or "\\" in value:
+        _refuse(field, "relative POSIX path", value)
+    parts = value.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        _refuse(field, "relative POSIX path", value)
+    return value
+
+
+def _entrypoint_live_files() -> dict[str, Path]:
+    return {
+        "kick_helper_ft.py": Path(__file__).resolve(),
+        "cam_pin_spec.py": Path(cam_pin_spec.__file__).resolve(),
+    }
+
+
+def load_entrypoint_pins(*, git_sha: str | None) -> tuple[dict[str, str], str]:
+    """Load runner pin map + source commit. Null git sha is allowed only here.
+
+    ``FORGE_ENTRYPOINT_PINS`` is a JSON object mapping relative paths to
+    sha256 hex, and must cover ``kick_helper_ft.py`` and ``cam_pin_spec.py``.
+    ``FORGE_PINS_SOURCE_COMMIT`` is the 40-hex commit those pins were hashed
+    from. A missing ``script_git_sha`` (private verified copy) is accepted
+    only when both env vars are present and well formed. Missing or
+    malformed pins refuse even when ``git_sha`` is present.
+    """
+    if git_sha is not None and (
+        type(git_sha) is not str
+        or len(git_sha) != GIT_SHA_LEN
+        or any(ch not in _HEX for ch in git_sha)
+    ):
+        _refuse("script_git_sha", "40-char lowercase hex or null", git_sha)
+    pins_raw = os.environ.get(FORGE_ENTRYPOINT_PINS_ENV)
+    commit_raw = os.environ.get(FORGE_PINS_SOURCE_COMMIT_ENV)
+    if not pins_raw:
+        _refuse("entrypoint_pins", "JSON map from FORGE_ENTRYPOINT_PINS", "missing")
+    if not commit_raw:
+        _refuse(
+            "pins_source_commit",
+            "40-char lowercase hex from FORGE_PINS_SOURCE_COMMIT",
+            "missing",
+        )
+    commit = _require_git_commit_hex("pins_source_commit", commit_raw)
+    try:
+        parsed = json.loads(pins_raw)
+    except ValueError:
+        _refuse("entrypoint_pins", "JSON object", "invalid JSON")
+    if not isinstance(parsed, dict) or not parsed:
+        _refuse(
+            "entrypoint_pins",
+            "JSON object",
+            type(parsed).__name__ if not isinstance(parsed, dict) else "empty",
+        )
+    pins: dict[str, str] = {}
+    by_base: dict[str, str] = {}
+    for key, value in parsed.items():
+        rel = _require_relative_pin_path("entrypoint_pins", key)
+        digest = _require_sha256_hex(f"entrypoint_pins.{rel}", value)
+        pins[rel] = digest
+        base = Path(rel).name
+        if base in by_base:
+            _refuse("entrypoint_pins", f"unique basename {base}", rel)
+        by_base[base] = digest
+    live = _entrypoint_live_files()
+    for basename in ENTRYPOINT_PIN_BASENAMES:
+        if basename not in by_base:
+            _refuse("entrypoint_pins", f"pin covering {basename}", "missing")
+        actual = sha256_file(live[basename])
+        if by_base[basename] != actual:
+            _refuse(f"entrypoint_pins.{basename}", actual, by_base[basename])
+    return pins, commit
+
+
+def _entrypoint_event_fields(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    pins = evidence.get("entrypoint_pins")
+    commit = evidence.get("pins_source_commit")
+    if not isinstance(pins, dict) or not pins:
+        _refuse("entrypoint_pins", "recorded pin map", "missing")
+    if type(commit) is not str:
+        _refuse("pins_source_commit", "40-char lowercase hex", commit)
+    return {"entrypoint_pins": dict(pins), "pins_source_commit": commit}
 
 
 def _open_flags_read() -> int:
@@ -1686,7 +1779,11 @@ def _apply_post_train_record(
     ckpt_dir = checkpoint_dir_for(run_dir, evidence.get("checkpoint_id"))
     if ckpt_dir is not None:
         ckpt_path = ckpt_dir / INTEGRITY_EVIDENCE_NAME
-        write_evidence(_public_integrity_record(record), ckpt_path, mode=0o400)
+        public = _public_integrity_record(record)
+        public.update(_entrypoint_event_fields(evidence))
+        if "script_git_sha" in evidence:
+            public["script_git_sha"] = evidence["script_git_sha"]
+        write_evidence(public, ckpt_path, mode=0o400)
         sealed = seal_integrity_evidence(ckpt_path, record, log_path=log_path)
         evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
         evidence["checkpoint_integrity_status"] = record["status"]
@@ -1695,18 +1792,17 @@ def _apply_post_train_record(
         evidence["integrity_evidence"] = sealed["integrity_evidence"]
         evidence["result"] = sealed["result"]
         if post_completion:
-            _post_hq_event(
-                "completion",
-                {
-                    "run_id": evidence["run_id"],
-                    "sha256_evidence": sealed["sha256_evidence"],
-                    "sha256_pack": _sha_from_record(record, "sha256_pack"),
-                    "sha256_train": _sha_from_record(record, "sha256_train"),
-                    "sha256_holdout": _sha_from_record(record, "sha256_holdout"),
-                    "result": sealed["result"],
-                    "exit_code": record.get("exit_code", 0),
-                },
-            )
+            completion = {
+                "run_id": evidence["run_id"],
+                "sha256_evidence": sealed["sha256_evidence"],
+                "sha256_pack": _sha_from_record(record, "sha256_pack"),
+                "sha256_train": _sha_from_record(record, "sha256_train"),
+                "sha256_holdout": _sha_from_record(record, "sha256_holdout"),
+                "result": sealed["result"],
+                "exit_code": record.get("exit_code", 0),
+            }
+            completion.update(_entrypoint_event_fields(evidence))
+            _post_hq_event("completion", completion)
     if record["status"] != CHECKPOINT_MATCH:
         evidence["ok"] = False
         evidence["result"] = CHECKPOINT_REFUSED
@@ -1783,6 +1879,7 @@ def kick(
         if os.name != "nt":
             raise
     git_sha = _script_git_sha()
+    entrypoint_pins, pins_source_commit = load_entrypoint_pins(git_sha=git_sha)
     try:
         trust_blobs = cam_pin_spec.require_committed_trust()
     except cam_pin_spec.CamPinError as exc:
@@ -1793,6 +1890,8 @@ def kick(
         "checkpoint_id": None,
         "script_git_sha": git_sha,
         "script_sha256": _script_sha256(),
+        "entrypoint_pins": entrypoint_pins,
+        "pins_source_commit": pins_source_commit,
         "kickoff_url": kickoff_url,
         "host": socket.gethostname(),
         "anchor_source": PIN_SOURCE,
@@ -1812,6 +1911,8 @@ def kick(
         evidence["checkpoint_id"] = None
         evidence["script_git_sha"] = git_sha
         evidence["script_sha256"] = evidence.get("script_sha256") or _script_sha256()
+        evidence["entrypoint_pins"] = entrypoint_pins
+        evidence["pins_source_commit"] = pins_source_commit
         evidence["kickoff_url"] = kickoff_url
         evidence["evidence_path"] = str(evidence_path.resolve())
         evidence["trust_blobs"] = trust_blobs
@@ -1827,15 +1928,14 @@ def kick(
         evidence["trainer_argv"] = trainer_argv
         persist()
         if not smoke:
-            _post_hq_event(
-                "kick",
-                {
-                    "run_id": run_id,
-                    "sha256_pack": evidence["computed_shas"]["sha256_pack"],
-                    "sha256_train": evidence["computed_shas"]["sha256_train"],
-                    "sha256_holdout": evidence["computed_shas"]["sha256_holdout"],
-                },
-            )
+            kick_event = {
+                "run_id": run_id,
+                "sha256_pack": evidence["computed_shas"]["sha256_pack"],
+                "sha256_train": evidence["computed_shas"]["sha256_train"],
+                "sha256_holdout": evidence["computed_shas"]["sha256_holdout"],
+            }
+            kick_event.update(_entrypoint_event_fields(evidence))
+            _post_hq_event("kick", kick_event)
         body = {
             "mode": "helper-ft-smoke" if smoke else "helper-ft",
             "pack_id": evidence["pack_id"],

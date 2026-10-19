@@ -552,7 +552,35 @@ def _cli_args(dest: Path, log_path: Path | None = None) -> list[str]:
     return argv
 
 
+FORGE_PINS_SOURCE_COMMIT_FIXTURE = "c" * 40
+
+
+def _live_entrypoint_pins() -> dict[str, str]:
+    return {
+        "apps/dottie-os/scripts/lab/kick_helper_ft.py": kick_helper_ft.sha256_file(
+            Path(kick_helper_ft.__file__).resolve()
+        ),
+        "apps/dottie-os/scripts/lab/cam_pin_spec.py": kick_helper_ft.sha256_file(
+            Path(cam_pin_spec.__file__).resolve()
+        ),
+    }
+
+
+def _install_forge_entrypoint_pins(owner: unittest.TestCase) -> None:
+    pins = _live_entrypoint_pins()
+    os.environ[kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV] = json.dumps(pins)
+    os.environ[kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV] = FORGE_PINS_SOURCE_COMMIT_FIXTURE
+    owner.forge_entrypoint_pins = pins
+    owner.forge_pins_source_commit = FORGE_PINS_SOURCE_COMMIT_FIXTURE
+
+
+def _clear_forge_entrypoint_pins() -> None:
+    os.environ.pop(kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV, None)
+    os.environ.pop(kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV, None)
+
+
 def _start_hq_http_mock(owner: unittest.TestCase) -> None:
+    _install_forge_entrypoint_pins(owner)
     owner.hq_pins = {}
     owner.hq_error = None
     owner.hq_http_status = None
@@ -646,6 +674,7 @@ def _stop_hq_http_mock(owner: unittest.TestCase) -> None:
     cam_pin_spec.SWARM_HQ_ORIGIN = owner._origin_saved
     os.environ.pop("SWARM_HQ_URL", None)
     os.environ.pop("SWARM_HQ_AGENT_TOKEN", None)
+    _clear_forge_entrypoint_pins()
 
 
 def _stage_run_private(dest: Path) -> Path:
@@ -2625,12 +2654,118 @@ class HelperFtCritic3dacTests(unittest.TestCase):
                 manifest = _write_helper_pack(dest)
                 self._pin(manifest)
                 evidence = kick_helper_ft.kick(dest)
+                rec = json.loads(
+                    Path(evidence["checkpoint_integrity_evidence_path"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
         self.assertIsNone(evidence["script_git_sha"])
+        self.assertIsNone(rec["script_git_sha"])
         self.assertEqual(len(evidence["script_sha256"]), 64)
         self.assertEqual(evidence["script_sha256"], kick_helper_ft._script_sha256())
+        self.assertEqual(evidence["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(evidence["pins_source_commit"], self.forge_pins_source_commit)
+        self.assertEqual(rec["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(rec["pins_source_commit"], self.forge_pins_source_commit)
         self.assertEqual(evidence["kickoff_url"], kick_helper_ft.DEFAULT_KICKOFF_URL)
         self.assertEqual(evidence["trust_blobs"], _TEST_TRUST_BLOBS)
         self.assertTrue(evidence["post_train_shas"])
+        kick_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/kick")]
+        done_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/completion")]
+        self.assertEqual(kick_posts[0]["body"]["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(kick_posts[0]["body"]["pins_source_commit"], self.forge_pins_source_commit)
+        self.assertEqual(done_posts[0]["body"]["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(done_posts[0]["body"]["pins_source_commit"], self.forge_pins_source_commit)
+
+    def test_entrypoint_pins_both_present_recorded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+            on_disk = json.loads(Path(evidence["evidence_path"]).read_text(encoding="utf-8"))
+            rec = json.loads(
+                Path(evidence["checkpoint_integrity_evidence_path"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+        self.assertTrue(evidence["script_git_sha"])
+        self.assertEqual(evidence["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(evidence["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(on_disk["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(on_disk["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(rec["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(rec["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        kick_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/kick")]
+        done_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/completion")]
+        self.assertEqual(len(kick_posts), 1)
+        self.assertEqual(len(done_posts), 1)
+        self.assertEqual(kick_posts[0]["body"]["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(kick_posts[0]["body"]["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(done_posts[0]["body"]["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(done_posts[0]["body"]["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        dumped = json.dumps(on_disk) + json.dumps(rec) + json.dumps(kick_posts[0]["body"])
+        self.assertNotIn(SWARM_HQ_AGENT_TOKEN_FIXTURE, dumped)
+
+    def test_entrypoint_pins_missing_refuses(self) -> None:
+        os.environ.pop(kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV, None)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "entrypoint_pins")
+        self.assertEqual(ctx.exception.actual, "missing")
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_posts, [])
+
+    def test_pins_source_commit_missing_refuses(self) -> None:
+        os.environ.pop(kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV, None)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "pins_source_commit")
+        self.assertEqual(ctx.exception.actual, "missing")
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_posts, [])
+
+    def test_pins_source_commit_malformed_refuses(self) -> None:
+        os.environ[kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV] = "NotAGitSha"
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "pins_source_commit")
+        self.assertEqual(ctx.exception.expected, "40-char lowercase hex")
+        self.assertEqual(ctx.exception.actual, "NotAGitSha")
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_posts, [])
+
+    def test_null_git_sha_refuses_without_entrypoint_pins(self) -> None:
+        os.environ.pop(kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV, None)
+        os.environ.pop(kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV, None)
+        with patch.object(kick_helper_ft, "_script_git_sha", return_value=None):
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "inbox-pack"
+                dest.mkdir()
+                manifest = _write_helper_pack(dest)
+                self._pin(manifest)
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "entrypoint_pins")
+        self.assertEqual(ctx.exception.actual, "missing")
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_posts, [])
 
     def test_integrity_evidence_line_parses_and_matches_file_sha(self) -> None:
         buf = StringIO()
