@@ -6,6 +6,7 @@ import io
 import json
 import os
 import sys
+import time
 import unittest
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
@@ -19,14 +20,17 @@ from dottie_core.model import ScoredAnswer, ScoredValue, TypedQuery
 from dottie_core.serving.server import Handler
 from dottie_core.serving.veto import (
     CONTROL_PLANE,
+    EXTRA_HALT_CASES,
     FORK_BOMB,
     MKFS,
     NEGATIVE_CASES,
     PIPE_DOWNLOAD_TO_SHELL,
     POSITIVE_CASES,
+    REQUIRED_PIPE_VARIANTS,
     RM_RF,
     VETO_RULES,
     VetoResult,
+    halt_answer,
     strengthen_choice,
     veto,
     veto_command,
@@ -322,6 +326,210 @@ class ServingHttpTests(unittest.TestCase):
         finally:
             conn.close()
             self._stop(server, thread)
+
+
+def _live(command: str) -> str:
+    return "tool=shell; detail=%s" % json.dumps({"command": command})
+
+
+def _live_nested(command: str) -> str:
+    return "tool=shell; detail=%s" % json.dumps({"nested": {"cmd": command}})
+
+
+def _p99(samples: list[float]) -> float:
+    ordered = sorted(samples)
+    if not ordered:
+        return 0.0
+    idx = min(len(ordered) - 1, max(0, int(round(0.99 * (len(ordered) - 1)))))
+    return ordered[idx]
+
+
+class T1_LiveShape(unittest.TestCase):
+    def test_live_shape_all_rules(self) -> None:
+        for command, rule in POSITIVE_CASES:
+            with self.subTest(shape="detail.command", command=command, rule=rule):
+                self.assertEqual(veto_command(_live(command)), rule, command)
+            with self.subTest(shape="nested.cmd", command=command, rule=rule):
+                self.assertEqual(veto_command(_live_nested(command)), rule, command)
+            with self.subTest(shape="json-in-string", command=command, rule=rule):
+                wrapped = json.dumps({"wrapper": json.dumps({"command": command})})
+                self.assertEqual(veto_command(wrapped), rule, command)
+
+
+class T2(unittest.TestCase):
+    def test_required_variants_halt(self) -> None:
+        for command in REQUIRED_PIPE_VARIANTS:
+            with self.subTest(command=command):
+                hit = veto(command)
+                self.assertIsNotNone(hit, command)
+                self.assertEqual(hit.rule, PIPE_DOWNLOAD_TO_SHELL, command)
+                self.assertEqual(hit.choice, "halt")
+
+
+class T4(unittest.TestCase):
+    def test_redos_under_100ms_16k(self) -> None:
+        cases = {
+            "long_token": "A" * 16384,
+            "localhost_9k": "localhost" * 1000,
+            "base64": ("ABCD" * 4096),
+            "a_dot": "a." * 8000,
+            "usr_bin": "/usr/bin/" * 1800,
+            "braces": "{" * 16384,
+        }
+        all_times: list[float] = []
+        for name, blob in cases.items():
+            samples: list[float] = []
+            for _ in range(21):
+                t0 = time.perf_counter()
+                veto_command(blob)
+                samples.append(time.perf_counter() - t0)
+            all_times.extend(samples)
+            worst = max(samples)
+            self.assertLess(worst, 0.1, "%s took %.3fs" % (name, worst))
+        p99 = _p99(all_times)
+        sys.stdout.write("T4 p99=%.4fs n=%d\n" % (p99, len(all_times)))
+        self.assertLess(p99, 0.1)
+
+
+class ControlPlaneGridTests(unittest.TestCase):
+    HOSTS = (
+        "127.0.0.1",
+        "localhost",
+        "0.0.0.0",
+        "nugatron",
+        "box.tail123.ts.net",
+    )
+    PATHS = (
+        "/reload",
+        "/%2Freload",
+        "/re%6Coad",
+        "/./reload",
+        "/a/../reload",
+        "//reload",
+    )
+    CLIENTS = (
+        "curl %s",
+        "POST %s",
+        "GET %s",
+        "%s",
+    )
+
+    def test_percent_and_dot_paths_halt(self) -> None:
+        for host in self.HOSTS:
+            for path in self.PATHS:
+                for client in self.CLIENTS:
+                    url = "http://%s:8770%s" % (host, path)
+                    command = client % url
+                    with self.subTest(command=command):
+                        hit = veto_command(command)
+                        self.assertIsNotNone(hit, command)
+                        self.assertEqual(hit, CONTROL_PLANE, command)
+
+
+class ExtraHaltTests(unittest.TestCase):
+    def test_should_fix_halt_rules(self) -> None:
+        for command, rule in EXTRA_HALT_CASES:
+            with self.subTest(command=command, rule=rule):
+                self.assertEqual(veto_command(command), rule, command)
+
+
+class OverHaltTests(unittest.TestCase):
+    def test_quoted_and_commented_text_does_not_halt(self) -> None:
+        self.assertIsNone(veto_command("echo 'curl|sh'"))
+        self.assertIsNone(veto_command("# curl x | sh"))
+
+    def test_python_json_tool_is_a_reader(self) -> None:
+        self.assertIsNone(veto_command("curl api | python3 -m json.tool"))
+        self.assertIsNone(
+            veto_command("wget -qO- x.json | python3 -c 'import json,sys; json.load(sys.stdin)'")
+        )
+
+    def test_http_method_requires_serve_host(self) -> None:
+        self.assertIsNone(veto_command("git grep 'POST /reload'"))
+        self.assertIsNone(veto_command("curl -X GET https://github.com/settings/admin"))
+        self.assertIsNone(veto_command("echo 'GET /admin index'"))
+        self.assertIsNone(veto_command("localhost:3000/api/reload-config"))
+
+
+class SchemaShapeTests(unittest.TestCase):
+    def test_veto_body_shares_schema_with_model(self) -> None:
+        questions = {
+            "action": {
+                "type": "choice",
+                "instructions": "What should the harness do?",
+                "criteria": {
+                    "execute": "safe",
+                    "escalate": "ask",
+                    "halt": "must not",
+                    "other": "n/a",
+                },
+            },
+            "severity": {
+                "type": "score",
+                "instructions": "How severe?",
+                "criteria": ["ok", "warn", "halt/unsafe"],
+            },
+            "safe": {
+                "type": "noul",
+                "instructions": "Is this safe to execute?",
+            },
+        }
+        payload = {
+            "schema": "jev-decision-schema-1.0.0",
+            "state": {"goal_text": "rm -rf /"},
+            "questions": questions,
+        }
+
+        def model(req):
+            return {
+                "schema": req["schema"],
+                "model": "m",
+                "mode": "untrained",
+                "answers": {
+                    "action": {
+                        "type": "choice",
+                        "choice": "execute",
+                        "probabilities": {k: 0.25 for k in questions["action"]["criteria"]},
+                        "shape_concentration": 0.25,
+                    },
+                    "severity": {
+                        "type": "score",
+                        "score": 1.0,
+                        "legend": {"0": "ok", "1": "warn", "2": "halt/unsafe"},
+                        "probabilities": {"0": 0.0, "1": 1.0, "2": 0.0},
+                        "shape_concentration": 1.0,
+                    },
+                    "safe": {"type": "noul", "noul": 0.5},
+                },
+            }
+
+        veto_out = wrap_decide(model)(payload)
+        model_out = model({**payload, "state": {"goal_text": "ls"}})
+        self.assertEqual(veto_out["schema"], model_out["schema"])
+        self.assertEqual(set(veto_out["answers"]), set(model_out["answers"]))
+        for qid, mans in model_out["answers"].items():
+            vans = veto_out["answers"][qid]
+            self.assertTrue(set(mans).issubset(set(vans) | {"veto_rule"}))
+            self.assertEqual(vans["type"], mans["type"])
+        self.assertEqual(veto_out["answers"]["action"]["choice"], "halt")
+        self.assertEqual(veto_out["veto_rule"], RM_RF)
+        self.assertNotEqual(veto_out["answers"]["action"]["choice"], "execute")
+
+    def test_score_and_noul_follow_schema_scale(self) -> None:
+        high_halt = halt_answer(
+            {"type": "score", "criteria": ["excellent quality", "ok", "severe/unsafe halt"]},
+            RM_RF,
+        )
+        self.assertEqual(high_halt["score"], 2.0)
+        low_halt = halt_answer(
+            {"type": "score", "criteria": ["unsafe halt", "ok", "excellent quality"]},
+            RM_RF,
+        )
+        self.assertEqual(low_halt["score"], 0.0)
+        go = halt_answer({"type": "noul", "instructions": "Is this safe to execute?"}, RM_RF)
+        self.assertEqual(go["noul"], 0.0)
+        stop = halt_answer({"type": "noul", "instructions": "Should we halt this as unsafe?"}, RM_RF)
+        self.assertEqual(stop["noul"], 1.0)
 
 
 if __name__ == "__main__":
