@@ -107,12 +107,14 @@ _NEAR_DUP_INDEX_ATTR = "_dottie_os_content_uuid_near_dup_index"
 _KICK_ROWS_ATTR = "_dottie_os_kick_near_dup_rows"
 _KICK_FPS_ATTR = "_dottie_os_kick_near_dup_fps"
 _NEAR_DUP_TOKENIZER_REL = "apps/dottie-os/scripts/lab/near_dup_tokenizer.py"
-# Fail-closed until Mill vendors the live file and this sha in CODE_PINS together.
+# Explicit placeholder pin. Fail closed until Mill vendors the live file
+# and this sha is replaced together in CODE_PINS / REQUIRED_PINS.
 NEAR_DUP_TOKENIZER_SHA256 = (
-    "e844054070312bfaaedaf03470e1daf7a0373d6693d2d05b07cac04a7227a650"
+    "9913e54924c1746b6b6c84dd13b1a0406bd15ec1c31c6808defcf87e75521d5c"
 )
 _NEAR_DUP_TOKENIZER_PLACEHOLDER_MARKERS = (
     "NEAR_DUP_TOKENIZER_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE",
+    "NEAR_DUP_TOKENIZER_PLACEHOLDER",
 )
 _TEST_NEAR_DUP_TOKENIZER = None
 # Mill N membership. One formula for raw source.uuid and for uuid-less
