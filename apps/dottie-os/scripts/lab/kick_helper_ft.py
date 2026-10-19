@@ -46,6 +46,7 @@ if _LAB not in sys.path:
     sys.path.insert(0, _LAB)
 
 import cam_pin_spec
+import helper_ft_trackio
 
 PACK_FILE = "curated_pack_v2.jsonl"
 TRAIN_FILE = "curated_pack_v2_train.jsonl"
@@ -892,6 +893,33 @@ def _recheck_copies(
         _refuse(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
 
 
+def log_eval_scores(run_id: str, scores: dict) -> bool:
+    """Attach Critic eval scores to the HELPER FT Trackio run. Fail-open."""
+    return helper_ft_trackio.log_eval_scores(run_id, scores)
+
+
+def _track_integrity(session: helper_ft_trackio.RunSession, evidence: Mapping[str, Any]) -> None:
+    computed = evidence.get("computed_shas") if isinstance(evidence.get("computed_shas"), Mapping) else {}
+    post = evidence.get("post_train_shas") if isinstance(evidence.get("post_train_shas"), Mapping) else {}
+    pin = evidence.get("pin") if isinstance(evidence.get("pin"), Mapping) else {}
+    result = evidence.get("checkpoint_integrity_status")
+    if evidence.get("ok") is True:
+        result = result or CHECKPOINT_MATCH
+    elif result is None:
+        result = CHECKPOINT_REFUSED
+    session.log_integrity(
+        {
+            "sha256_evidence": evidence.get("sha256_evidence"),
+            "sha256_pack": post.get("sha256_pack") or computed.get("sha256_pack") or pin.get("sha256_pack"),
+            "sha256_train": post.get("sha256_train") or computed.get("sha256_train") or pin.get("sha256_train"),
+            "sha256_holdout": post.get("sha256_holdout") or computed.get("sha256_holdout") or pin.get("sha256_holdout"),
+            "result": result,
+            "status": result,
+            "host": evidence.get("host") or evidence.get("post_train_host"),
+        }
+    )
+
+
 def kick(
     pack_dir: Path,
     *,
@@ -905,10 +933,14 @@ def kick(
     ``start_training`` / ``kickoff`` are test injection hooks and still run only
     after the gate. CLI and env cannot supply them. There is no skip/override.
     """
-    _refuse_skip_env()
-    _refuse_pin_env()
-    pack_dir = Path(pack_dir)
-    _refuse_local_pin_files(_resolve_pack_dir(pack_dir))
+    try:
+        _refuse_skip_env()
+        _refuse_pin_env()
+        pack_dir = Path(pack_dir)
+        _refuse_local_pin_files(_resolve_pack_dir(pack_dir))
+    except KickRefused as exc:
+        helper_ft_trackio.log_refused(_new_run_id(), exc)
+        raise
     run_id = _new_run_id()
     if log_path is not None:
         log_path = Path(log_path)
@@ -925,9 +957,11 @@ def kick(
         if os.name != "nt":
             raise
     git_sha = _script_git_sha()
+    session = helper_ft_trackio.RunSession(run_id=run_id, run_dir=run_dir)
     try:
         trust_blobs = cam_pin_spec.require_committed_trust()
     except cam_pin_spec.CamPinError as exc:
+        helper_ft_trackio.log_refused(run_id, KickRefused(exc.field, exc.expected, exc.actual), run_dir=run_dir)
         _refuse(exc.field, exc.expected, exc.actual)
     evidence: dict[str, Any] = {
         "ok": False,
@@ -966,6 +1000,7 @@ def kick(
         evidence["trainer_config"] = trainer_config
         evidence["trainer_argv"] = trainer_argv
         persist()
+        session.start(helper_ft_trackio.config_from_evidence(evidence))
         body = {
             "mode": "helper-ft",
             "pack_id": evidence["pack_id"],
@@ -999,8 +1034,11 @@ def kick(
         else:
             started = start_training(run_private, evidence, log_path)
             wait_for_training_exit(started if isinstance(started, dict) else None)
+        session.log_losses_from_launch(started if isinstance(started, dict) else None, log_path=log_path)
         _recheck_copies(run_private, evidence, run_dir=run_dir, log_path=log_path)
         persist()
+        _track_integrity(session, evidence)
+        session.finish()
         return evidence
     except KickRefused as exc:
         evidence["ok"] = False
@@ -1011,6 +1049,9 @@ def kick(
             persist()
         except OSError:
             pass
+        if evidence.get("sha256_evidence") or evidence.get("checkpoint_integrity_status"):
+            _track_integrity(session, evidence)
+        session.refuse(exc, config=helper_ft_trackio.config_from_evidence(evidence))
         raise
     except Exception as exc:
         evidence["ok"] = False
@@ -1021,6 +1062,10 @@ def kick(
             persist()
         except OSError:
             pass
+        session.refuse(
+            KickRefused("kickoff", "success", f"{type(exc).__name__}: {exc}"),
+            config=helper_ft_trackio.config_from_evidence(evidence),
+        )
         _refuse("kickoff", "success", f"{type(exc).__name__}: {exc}")
 
 
