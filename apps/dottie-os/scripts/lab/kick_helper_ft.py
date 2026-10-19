@@ -309,6 +309,7 @@ _FP_PLACEHOLDER_LINES = frozenset(
 )
 _HMAC_KEY_BYTES: bytes | None = None
 _HMAC_KEY_ID_LOADED: str | None = None
+_SIGNED_FP_COUNTS: dict[str, int] | None = None
 # Strip format/combining marks and non-whitespace controls. Keep \t \n \r
 # so they collapse as whitespace (``$\\tls`` → ``$ ls``). Keep C0 separators
 # ``\x1c``-``\x1e`` so they remain line terminators instead of disappearing.
@@ -2848,9 +2849,19 @@ def _hmac_key_id_is_placeholder(key_id: str) -> bool:
 
 def reset_hmac_key_state() -> None:
     """Tests only: drop the kick-scoped HMAC key."""
-    global _HMAC_KEY_BYTES, _HMAC_KEY_ID_LOADED
+    global _HMAC_KEY_BYTES, _HMAC_KEY_ID_LOADED, _SIGNED_FP_COUNTS
     _HMAC_KEY_BYTES = None
     _HMAC_KEY_ID_LOADED = None
+    _SIGNED_FP_COUNTS = None
+
+
+def install_signed_fp_counts(counts: Mapping[str, int] | None) -> None:
+    """Kick-scoped signed n_refs / n_refused_short / candidate count."""
+    global _SIGNED_FP_COUNTS
+    if counts is None:
+        _SIGNED_FP_COUNTS = None
+        return
+    _SIGNED_FP_COUNTS = {str(key): int(value) for key, value in counts.items()}
 
 
 def _hmac_digest_hex(key: bytes, shingle: str) -> str:
@@ -2986,8 +2997,35 @@ def _check_fp_file_header_kcv(obj: Mapping[str, Any], key: bytes) -> None:
         _refuse_fp_kcv("mismatch")
 
 
-def _check_fp_indexes(indexes: Sequence[int]) -> None:
-    """S-MULTI-I: unique contiguous 0..n-1 with n equal to signed |N|. No partial load."""
+def _signed_fp_counts(signed: Mapping[str, int] | None) -> dict[str, int]:
+    counts = signed if signed is not None else _SIGNED_FP_COUNTS
+    cand_key = row_fields.mill_n_candidates_key()
+    if counts is None:
+        _refuse(f"cam-pin.{cam_pin_spec.NEAR_DUP_N_REFS_KEY}", "present", "missing")
+    n_refs = counts.get(cam_pin_spec.NEAR_DUP_N_REFS_KEY)
+    n_refused = counts.get(cam_pin_spec.NEAR_DUP_N_REFUSED_SHORT_KEY)
+    n_cand = counts.get(cand_key)
+    if type(n_refs) is not int:
+        _refuse(f"cam-pin.{cam_pin_spec.NEAR_DUP_N_REFS_KEY}", "present", "missing")
+    if type(n_refused) is not int:
+        _refuse(f"cam-pin.{cam_pin_spec.NEAR_DUP_N_REFUSED_SHORT_KEY}", "present", "missing")
+    if type(n_cand) is not int:
+        _refuse(f"cam-pin.{cand_key}", "present", "missing")
+    if n_refs + n_refused != n_cand:
+        _refuse(
+            f"cam-pin.{cam_pin_spec.NEAR_DUP_N_REFS_KEY}",
+            f"{cand_key} = n_refs + n_refused_short",
+            "mismatch",
+        )
+    return {
+        cam_pin_spec.NEAR_DUP_N_REFS_KEY: n_refs,
+        cam_pin_spec.NEAR_DUP_N_REFUSED_SHORT_KEY: n_refused,
+        cand_key: n_cand,
+    }
+
+
+def _check_fp_indexes(indexes: Sequence[int], n_refs: int) -> None:
+    """S-MULTI-I: unique contiguous 0..n_refs-1. n equals signed n_refs. No partial load."""
     seen: set[int] = set()
     for idx in indexes:
         if idx in seen:
@@ -2995,14 +3033,18 @@ def _check_fp_indexes(indexes: Sequence[int]) -> None:
         seen.add(idx)
     n = len(indexes)
     if seen != set(range(n)):
-        _refuse("reserved_near_dup_fingerprints.index", "0..n-1", "gap")
-    if n != RESERVED_CONTENT_UUIDS_MIN_ROWS:
-        _refuse("reserved_near_dup_fingerprints.index", "|N|", "mismatch")
+        _refuse("reserved_near_dup_fingerprints.index", "0..n_refs-1", "gap")
+    if n != n_refs:
+        _refuse("reserved_near_dup_fingerprints.index", "n_refs", "mismatch")
+    if seen != set(range(n_refs)):
+        _refuse("reserved_near_dup_fingerprints.index", "0..n_refs-1", "gap")
 
 
 def load_reserved_near_dup_fingerprints(
     path: object,
     expected_sha256: object,
+    *,
+    signed: Mapping[str, int] | None = None,
 ) -> dict[str, tuple[str, frozenset[str]]]:
     """Load sha-pinned HMAC-SHA256 N fingerprints. Plaintext shingles and unkeyed digests refuse."""
     if path is None or path is _UNSET or (type(path) is str and not path):
@@ -3027,6 +3069,16 @@ def load_reserved_near_dup_fingerprints(
     key = _HMAC_KEY_BYTES
     if key is None:
         _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher", "missing")
+    signed_counts: dict[str, int] | None = None
+    header_n: int | None = None
+    if fp_file:
+        try:
+            row_fields.mill_load_fingerprint_file(path, key)
+        except row_fields.RowFieldsError as exc:
+            if "kcv" in exc.field or "HasherMismatch" in exc.reason:
+                _refuse_fp_kcv("mismatch")
+            _refuse("reserved_near_dup_fingerprints", "mill load_fingerprint_file", "mismatch")
+        signed_counts = _signed_fp_counts(signed)
     header_ok = False
     indexes: list[int] = []
     found: dict[str, tuple[str, frozenset[str]]] = {}
@@ -3052,6 +3104,23 @@ def load_reserved_near_dup_fingerprints(
             )
         if fp_file and not header_ok:
             _check_fp_file_header_kcv(obj, key)
+            try:
+                header_n = row_fields.mill_header_n(obj)
+            except row_fields.RowFieldsError:
+                _refuse("reserved_near_dup_fingerprints.n", "n_refs", "missing")
+            try:
+                header_stop = row_fields.mill_header_stoplist_sha(obj)
+            except row_fields.RowFieldsError:
+                _refuse("reserved_near_dup_fingerprints.stoplist_sha", "pinned stoplist", "missing")
+            pinned_stop = row_fields.mill_stoplist_sha()
+            if header_stop is None or type(header_stop) is not str or not header_stop:
+                _refuse("reserved_near_dup_fingerprints.stoplist_sha", "pinned stoplist", "missing")
+            if header_stop != pinned_stop:
+                _refuse(
+                    "reserved_near_dup_fingerprints.stoplist_sha",
+                    "pinned stoplist",
+                    "mismatch",
+                )
             header_ok = True
             continue
         if fp_file:
@@ -3213,6 +3282,12 @@ def load_reserved_near_dup_fingerprints(
                     "dummy tags subset of public set",
                     "mismatch",
                 )
+            if fp_file and len(public) < cap and not dummies:
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
+                    "strict dummy below CAP",
+                    "missing",
+                )
             real = public - dummies
             if len(real) < MIN_REF_SHINGLES:
                 _refuse(
@@ -3226,7 +3301,14 @@ def load_reserved_near_dup_fingerprints(
     if fp_file:
         if not header_ok:
             _refuse_fp_kcv("missing")
-        _check_fp_indexes(indexes)
+        if signed_counts is None:
+            _refuse(f"cam-pin.{cam_pin_spec.NEAR_DUP_N_REFS_KEY}", "present", "missing")
+        n_refs = signed_counts[cam_pin_spec.NEAR_DUP_N_REFS_KEY]
+        if header_n is None:
+            _refuse("reserved_near_dup_fingerprints.n", "n_refs", "missing")
+        if header_n != n_refs:
+            _refuse("reserved_near_dup_fingerprints.n", "n_refs", "mismatch")
+        _check_fp_indexes(indexes, n_refs)
     return found
 
 
@@ -3265,6 +3347,98 @@ def _containment_real_b(candidate: frozenset[str], real_b: frozenset[str]) -> fl
     if not real_b:
         _refuse("reserved_eval_partition.near_dup", "real |B|>=16", "empty")
     return len(candidate & real_b) / len(real_b)
+
+
+def _betacf(a: float, b: float, x: float) -> float:
+    maxit = 200
+    eps = 3.0e-12
+    fpmin = 1.0e-30
+    qab = a + b
+    qap = a + 1.0
+    qam = a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < fpmin:
+        d = fpmin
+    d = 1.0 / d
+    h = d
+    for m in range(1, maxit + 1):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        if abs(d) < fpmin:
+            d = fpmin
+        c = 1.0 + aa / c
+        if abs(c) < fpmin:
+            c = fpmin
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        if abs(d) < fpmin:
+            d = fpmin
+        c = 1.0 + aa / c
+        if abs(c) < fpmin:
+            c = fpmin
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < eps:
+            return h
+    return h
+
+
+def _reg_incomplete_beta(x: float, a: float, b: float) -> float:
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    lbeta = math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
+    if x < (a + 1.0) / (a + b + 2.0):
+        front = math.exp(a * math.log(x) + b * math.log(1.0 - x) - lbeta) / a
+        return front * _betacf(a, b, x)
+    front = math.exp(b * math.log(1.0 - x) + a * math.log(x) - lbeta) / b
+    return 1.0 - front * _betacf(b, a, 1.0 - x)
+
+
+def clopper_pearson_upper(hits: int, n: int, *, confidence: float = 0.99) -> float:
+    """One-sided Clopper-Pearson upper bound on hits/n. Mill export wins when present."""
+    mill_val = None
+    if row_fields.mill_fp_file_ready():
+        mill_val = row_fields.mill_clopper_pearson_upper(hits, n)
+    if mill_val is not None:
+        return mill_val
+    if n < 1:
+        return 1.0
+    if hits >= n:
+        return 1.0
+    if hits < 0:
+        hits = 0
+    alpha = 1.0 - confidence
+    if hits == 0:
+        return 1.0 - alpha ** (1.0 / n)
+    a = float(hits + 1)
+    b = float(n - hits)
+    lo = 0.0
+    hi = 1.0
+    for _ in range(80):
+        mid = (lo + hi) / 2.0
+        if _reg_incomplete_beta(mid, a, b) < confidence:
+            lo = mid
+        else:
+            hi = mid
+    return hi
+
+
+def _forward_sample_too_small(hits: int, effective: int) -> bool:
+    """Refuse forward when the 99% CP upper bound is untrustworthy or >= 0.5 below the floor."""
+    floor = row_fields.mill_forward_sample_floor()
+    minimum = row_fields.mill_forward_sample_min()
+    if effective < minimum:
+        return True
+    if effective >= floor:
+        return False
+    return clopper_pearson_upper(hits, effective) >= 0.5
 
 
 def _collect_v2x_near_dup(
@@ -3335,7 +3509,42 @@ def _collect_v2x_near_dup(
                     )
                 )
                 return hits
-            if _containment_real_b(hashed, n_tokens) >= 0.5:
+            overlap = hashed & n_tokens
+            hit_n = len(overlap)
+            effective = len(n_tokens)
+            if row_fields.mill_fp_file_ready():
+                if _forward_sample_too_small(hit_n, effective):
+                    hits.append(
+                        (
+                            "reserved_eval_partition.forward_sample_too_small_refused",
+                            f"{rid}:forward_sample_too_small_refused",
+                        )
+                    )
+                    break
+                threshold = row_fields.mill_forward_threshold()
+                if effective >= row_fields.mill_forward_sample_floor() and _containment_real_b(
+                    hashed, n_tokens
+                ) >= threshold:
+                    hits.append(
+                        (
+                            "reserved_eval_partition.near_dup",
+                            f"{rid}:near_dup of {n_id}",
+                        )
+                    )
+                    break
+                stoplist = row_fields.mill_stoplist()
+                cand_r = hashed - stoplist
+                ref_r = n_tokens - stoplist
+                shorter = min(len(cand_r), len(ref_r))
+                if shorter >= row_fields.mill_reverse_floor() and ref_r and len(cand_r & ref_r) / shorter >= threshold:
+                    hits.append(
+                        (
+                            "reserved_eval_partition.near_dup",
+                            f"{rid}:near_dup of {n_id}",
+                        )
+                    )
+                    break
+            elif _containment_real_b(hashed, n_tokens) >= 0.5:
                 hits.append(
                     (
                         "reserved_eval_partition.near_dup",
@@ -4953,6 +5162,23 @@ def verify_and_stage(
 
         trainer_paths = trainer_input_paths(run_private)
         _split_soundness(run_private, computed_shas)
+        if row_fields.mill_fp_file_ready():
+            cand_key = row_fields.mill_n_candidates_key()
+            if cam_pin_spec.NEAR_DUP_N_REFS_KEY not in pin:
+                _refuse(f"cam-pin.{cam_pin_spec.NEAR_DUP_N_REFS_KEY}", "present", "missing")
+            if cam_pin_spec.NEAR_DUP_N_REFUSED_SHORT_KEY not in pin:
+                _refuse(f"cam-pin.{cam_pin_spec.NEAR_DUP_N_REFUSED_SHORT_KEY}", "present", "missing")
+            if cand_key not in pin:
+                _refuse(f"cam-pin.{cand_key}", "present", "missing")
+            install_signed_fp_counts(
+                {
+                    cam_pin_spec.NEAR_DUP_N_REFS_KEY: int(pin[cam_pin_spec.NEAR_DUP_N_REFS_KEY]),
+                    cam_pin_spec.NEAR_DUP_N_REFUSED_SHORT_KEY: int(
+                        pin[cam_pin_spec.NEAR_DUP_N_REFUSED_SHORT_KEY]
+                    ),
+                    cand_key: int(pin[cand_key]),
+                }
+            )
         enforce_pack_gates(
             manifest,
             trainer_paths,

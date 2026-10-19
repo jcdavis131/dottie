@@ -8,9 +8,10 @@ json_path strings), ``get_by_path(row, json_path)`` path round-trips, and
 reads row values only through ``get_by_path``. The gate and the trainer
 import this module only.
 
-Until v2.2 is vendored, every extract_paths / get_by_path / check_denied /
-trainer / gate-tokenize call fail-closes. v1 stays pinned for near-dup
-tokens, HMAC, and the rest of the kick.
+Until mill v2.6 is vendored (Critic GO), every extract_paths / get_by_path /
+check_denied / trainer / gate-tokenize / load_fingerprint_file call
+fail-closes. v1 stays pinned for near-dup tokens, HMAC, and the rest of
+the kick. Do not vendor later mill files until Critic GO.
 """
 from __future__ import annotations
 
@@ -18,6 +19,15 @@ import sys
 from typing import Any, Mapping, Sequence
 
 MILL_EXTRACT_PATHS_VERSION = "v2.2"
+# Pin target is mill v2.6. Placeholders until Mill posts shas and Critic GO.
+MILL_PIN_TARGET_VERSION = "v2.6"
+MILL_FP_FORMAT_PLACEHOLDER = "mill-ndfp-3"
+STOPLIST_SHA256 = "STOPLIST_SHA256_PLACEHOLDER_NOT_A_LIVE_DIGEST"
+STOPLIST_SOURCE_PACK_SHA256 = "STOPLIST_SOURCE_PACK_SHA256_PLACEHOLDER"
+STOPLIST_SOURCE_ROWS = 0
+N_REFS_KEY = "n_refs"
+N_REFUSED_SHORT_KEY = "n_refused_short"
+N_REF_CANDIDATES_KEY = "n_ref_candidates"
 _PINNED_MILL_MODULE = "neardup_tokens_v1"
 
 
@@ -127,14 +137,25 @@ def _mill_fp_index_fn(mill: Any) -> Any:
     return None
 
 
+def _mill_load_fp_fn(mill: Any) -> Any:
+    for name in ("load_fingerprint_file", "load_fp_file", "read_fingerprint_file"):
+        fn = getattr(mill, name, None)
+        if callable(fn):
+            return fn
+    return None
+
+
 def mill_fp_file_ready() -> bool:
-    """True when mill v2.2 exports KCV and the index-binding verifier."""
+    """True when mill v2.6 exports KCV, rec_mac binding, and load_fingerprint_file."""
     mill = _pinned_mill()
+    thresh = getattr(mill, "FORWARD_THRESHOLD", None)
     return (
         mill_fp_pad_ready()
         and _mill_kcv_fn(mill) is not None
         and _mill_index_bind_fn(mill) is not None
         and _mill_fp_index_fn(mill) is not None
+        and _mill_load_fp_fn(mill) is not None
+        and type(thresh) in (int, float)
     )
 
 
@@ -319,6 +340,190 @@ def mill_verify_index_binding(record: object, key: bytes) -> None:
         raise AssertionError("unreachable")
     if result is False:
         _refuse("reserved_near_dup_fingerprints.index_binding", "mill index-binding failed")
+
+
+def mill_load_fingerprint_file(path: object, key: bytes) -> Any:
+    """Mill-owned fingerprint file load. Gate backstops n_refs / KCV / rec_mac after this."""
+    mill = _require_v22()
+    fn = _mill_load_fp_fn(mill)
+    if not callable(fn):
+        _refuse("extract_paths", "mill load_fingerprint_file is missing")
+        raise AssertionError("unreachable")
+    if type(key) is not bytes or not key:
+        _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher missing")
+        raise AssertionError("unreachable")
+    try:
+        return fn(path, key)
+    except TypeError:
+        try:
+            return fn(path=path, key=key)
+        except Exception as exc:
+            _refuse_fp_load(exc)
+            raise AssertionError("unreachable")
+    except Exception as exc:
+        _refuse_fp_load(exc)
+        raise AssertionError("unreachable")
+
+
+def mill_n_candidates_key() -> str:
+    mill = _pinned_mill()
+    for name in ("N_CANDIDATES_KEY", "N_REF_CANDIDATES_KEY", "N_FP_CANDIDATES_KEY"):
+        val = getattr(mill, name, None)
+        if type(val) is str and val:
+            return val
+    return N_REF_CANDIDATES_KEY
+
+
+def mill_fp_format() -> str:
+    mill = _require_v22()
+    for name in ("FP_FORMAT", "FINGERPRINT_FORMAT", "FORMAT"):
+        val = getattr(mill, name, None)
+        if type(val) is str and val:
+            return val
+    return MILL_FP_FORMAT_PLACEHOLDER
+
+
+def mill_header_n(obj: Mapping[str, Any]) -> int | None:
+    mill = _require_v22()
+    fn = getattr(mill, "fp_header_n", None)
+    if callable(fn):
+        try:
+            value = fn(obj)
+        except Exception:
+            _refuse("extract_paths", "mill header n failed")
+            raise AssertionError("unreachable")
+        if value is None:
+            return None
+        if type(value) is not int or value < 0:
+            _refuse("extract_paths", "mill header n is invalid")
+            raise AssertionError("unreachable")
+        return value
+    for field in ("n", "n_refs"):
+        value = obj.get(field) if isinstance(obj, Mapping) else None
+        if type(value) is int and value >= 0:
+            return value
+    return None
+
+
+def mill_header_stoplist_sha(obj: Mapping[str, Any]) -> str | None:
+    mill = _require_v22()
+    fn = getattr(mill, "fp_header_stoplist_sha", None)
+    if callable(fn):
+        try:
+            value = fn(obj)
+        except Exception:
+            _refuse("extract_paths", "mill header stoplist_sha failed")
+            raise AssertionError("unreachable")
+        if value is None:
+            return None
+        if type(value) is not str:
+            _refuse("extract_paths", "mill header stoplist_sha is invalid")
+            raise AssertionError("unreachable")
+        return value
+    value = obj.get("stoplist_sha") if isinstance(obj, Mapping) else None
+    if value is None:
+        return None
+    if type(value) is not str:
+        _refuse("extract_paths", "mill header stoplist_sha is invalid")
+        raise AssertionError("unreachable")
+    return value
+
+
+def mill_stoplist_sha() -> str:
+    mill = _pinned_mill()
+    for name in ("STOPLIST_SHA256", "REVERSE_STOPLIST_SHA256", "STOPLIST_SHA"):
+        val = getattr(mill, name, None)
+        if type(val) is str and val:
+            return val
+    return STOPLIST_SHA256
+
+
+def mill_stoplist() -> frozenset[str]:
+    mill = _require_v22()
+    raw = getattr(mill, "STOPLIST", None)
+    if raw is None:
+        raw = getattr(mill, "REVERSE_STOPLIST", None)
+    if raw is None:
+        return frozenset()
+    out: set[str] = set()
+    for item in raw:
+        if type(item) is str:
+            out.add(item)
+    return frozenset(out)
+
+
+def mill_forward_threshold() -> float:
+    """Mill forward containment threshold. Gate never assigns this constant."""
+    mill = _require_v22()
+    val = getattr(mill, "FORWARD_THRESHOLD", None)
+    if type(val) is int:
+        return float(val)
+    if type(val) is not float:
+        _refuse("extract_paths", "mill FORWARD_THRESHOLD is missing")
+        raise AssertionError("unreachable")
+    return val
+
+
+def mill_forward_sample_floor() -> int:
+    mill = _pinned_mill()
+    val = getattr(mill, "FORWARD_SAMPLE_FLOOR", None)
+    if type(val) is int and val >= 1:
+        return val
+    return 64
+
+
+def mill_forward_sample_min() -> int:
+    mill = _pinned_mill()
+    val = getattr(mill, "FORWARD_SAMPLE_MIN", None)
+    if type(val) is int and val >= 1:
+        return val
+    return 7
+
+
+def mill_reverse_floor() -> int:
+    mill = _pinned_mill()
+    val = getattr(mill, "REVERSE_FLOOR", None)
+    if type(val) is int and val >= 1:
+        return val
+    return 64
+
+
+def mill_clopper_pearson_upper(hits: int, n: int) -> float | None:
+    mill = _pinned_mill()
+    fn = getattr(mill, "clopper_pearson_upper", None)
+    if fn is None:
+        fn = getattr(mill, "forward_upper_bound", None)
+    if not callable(fn):
+        return None
+    try:
+        value = fn(hits, n)
+    except Exception:
+        _refuse("extract_paths", "mill Clopper-Pearson failed")
+        raise AssertionError("unreachable")
+    if type(value) is int:
+        return float(value)
+    if type(value) is not float:
+        _refuse("extract_paths", "mill Clopper-Pearson is invalid")
+        raise AssertionError("unreachable")
+    return value
+
+
+def hasher_mismatch_error_types() -> tuple[type, ...]:
+    mill = _pinned_mill()
+    cls = getattr(mill, "HasherMismatchError", None)
+    if isinstance(cls, type) and issubclass(cls, BaseException):
+        return (cls,)
+    return ()
+
+
+def _refuse_fp_load(exc: BaseException) -> None:
+    if isinstance(exc, RowFieldsError):
+        raise exc
+    mismatch = hasher_mismatch_error_types()
+    if mismatch and isinstance(exc, mismatch):
+        _refuse("reserved_near_dup_fingerprints.kcv", "mill HasherMismatchError")
+        raise AssertionError("unreachable")
+    _refuse("reserved_near_dup_fingerprints", "mill load_fingerprint_file failed")
 
 
 def mill_fp_index(record: object) -> int:

@@ -106,7 +106,15 @@ NEAR_DUP_TOKENIZER_VERSION_V2 = "v2"
 PINNED_NEAR_DUP_MIN_REF = {"b_ge": 16, "nchar_ge": 20}
 NEAR_DUP_FP_BUCKETS_KEY = "near_dup_fp_buckets"
 NEAR_DUP_MIN_REF_KEY = "near_dup_min_ref"
+NEAR_DUP_N_REFS_KEY = "n_refs"
+NEAR_DUP_N_REFUSED_SHORT_KEY = "n_refused_short"
+NEAR_DUP_N_CANDIDATES_KEY = "n_ref_candidates"
 SIGNED_KEYS_V2_FP = (NEAR_DUP_FP_BUCKETS_KEY, NEAR_DUP_MIN_REF_KEY)
+SIGNED_KEYS_V2_FP_COUNTS = (
+    NEAR_DUP_N_REFS_KEY,
+    NEAR_DUP_N_REFUSED_SHORT_KEY,
+    NEAR_DUP_N_CANDIDATES_KEY,
+)
 NEAR_DUP_TOKENIZER_V1_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v1.py"
 # Fail-closed v2 slot. Mill vendoring is held; do not pin a live v2 file here.
 NEAR_DUP_TOKENIZER_V2_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v2.py"
@@ -260,15 +268,27 @@ V2_PIN_ALLOWED_KEYS = frozenset(
         "source",
         NEAR_DUP_FP_BUCKETS_KEY,
         NEAR_DUP_MIN_REF_KEY,
+        NEAR_DUP_N_REFS_KEY,
+        NEAR_DUP_N_REFUSED_SHORT_KEY,
+        NEAR_DUP_N_CANDIDATES_KEY,
     )
 )
 
 
 def signed_keys_v2() -> tuple[str, ...]:
-    """v2 signed keys. Fingerprint bucket/min-ref fields join the signature once mill v2.2 is live."""
+    """v2 signed keys. Fingerprint count fields join the signature once mill file checks are live."""
+    keys = SIGNED_KEYS_V2
     if row_fields.mill_fp_pad_ready():
-        return SIGNED_KEYS_V2 + SIGNED_KEYS_V2_FP
-    return SIGNED_KEYS_V2
+        keys = keys + SIGNED_KEYS_V2_FP
+    if row_fields.mill_fp_file_ready():
+        cand = row_fields.mill_n_candidates_key()
+        extra = (
+            NEAR_DUP_N_REFS_KEY,
+            NEAR_DUP_N_REFUSED_SHORT_KEY,
+            cand,
+        )
+        keys = keys + extra
+    return keys
 
 
 class CamPinError(Exception):
@@ -619,7 +639,14 @@ def parse_v2_pin_payload(
         _refuse("cam-pin", "v2 pin keys", f"unknown {unknown[0]}")
     required = V2_PIN_REQUIRED_KEYS
     if row_fields.mill_fp_pad_ready():
-        required = (*V2_PIN_REQUIRED_KEYS, *SIGNED_KEYS_V2_FP)
+        required = (*required, *SIGNED_KEYS_V2_FP)
+    if row_fields.mill_fp_file_ready():
+        required = (
+            *required,
+            NEAR_DUP_N_REFS_KEY,
+            NEAR_DUP_N_REFUSED_SHORT_KEY,
+            row_fields.mill_n_candidates_key(),
+        )
     for key in required:
         if key not in payload:
             _refuse(f"cam-pin.{key}", "present", "missing")
@@ -743,6 +770,29 @@ def parse_v2_pin_payload(
                 "nchar>=20 OR |B|>=16",
                 "mill mismatch",
             )
+    if row_fields.mill_fp_file_ready():
+        cand_key = row_fields.mill_n_candidates_key()
+        if NEAR_DUP_N_REFS_KEY not in payload:
+            _refuse(f"cam-pin.{NEAR_DUP_N_REFS_KEY}", "present", "missing")
+        if NEAR_DUP_N_REFUSED_SHORT_KEY not in payload:
+            _refuse(f"cam-pin.{NEAR_DUP_N_REFUSED_SHORT_KEY}", "present", "missing")
+        if cand_key not in payload:
+            _refuse(f"cam-pin.{cand_key}", "present", "missing")
+        n_refs = require_int(f"cam-pin.{NEAR_DUP_N_REFS_KEY}", payload.get(NEAR_DUP_N_REFS_KEY))
+        n_refused = require_int(
+            f"cam-pin.{NEAR_DUP_N_REFUSED_SHORT_KEY}",
+            payload.get(NEAR_DUP_N_REFUSED_SHORT_KEY),
+        )
+        n_cand = require_int(f"cam-pin.{cand_key}", payload.get(cand_key))
+        if n_refs + n_refused != n_cand:
+            _refuse(
+                f"cam-pin.{NEAR_DUP_N_REFS_KEY}",
+                f"{cand_key} = n_refs + n_refused_short",
+                "mismatch",
+            )
+        record[NEAR_DUP_N_REFS_KEY] = n_refs
+        record[NEAR_DUP_N_REFUSED_SHORT_KEY] = n_refused
+        record[cand_key] = n_cand
     if "recordedBy" in payload:
         record["recordedBy"] = payload["recordedBy"]
     if "stampVerified" in payload:
