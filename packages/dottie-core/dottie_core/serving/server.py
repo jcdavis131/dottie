@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dottie_core.state import Belief, Constraints, StateRef, WorldState  # noqa: E402
 from dottie_core.model import TypedQuery  # noqa: E402
 from dottie_core.trained import TrainedModel  # noqa: E402
-from dottie_core.serving.veto import wrap_decide  # noqa: E402
+from dottie_core.serving.veto import halt_body, veto  # noqa: E402
 
 
 def _state_from_dict(d: dict) -> WorldState:
@@ -122,14 +122,19 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length) or b"{}")
+            hit = None
+            try:
+                hit = veto(body)
+            except Exception as exc:
+                sys.stderr.write("veto_error: %s: %s\n" % (type(exc).__name__, exc))
+                hit = None
+            if hit is not None:
+                self._send(200, {"ok": True, **halt_body(body, hit.rule)})
+                return
             state = _state_from_dict(body["state"])
             query = _query_from_dict(body["query"])
-            decide_fn = wrap_decide(self.model.decide)  # type: ignore[union-attr]
-            ans = decide_fn(state, query)
-            if isinstance(ans, dict) and ans.get("veto_rule"):
-                self._send(200, {"ok": True, **ans})
-            else:
-                self._send(200, {"ok": True, **_answer_to_dict(ans)})
+            ans = self.model.decide(state, query)  # type: ignore[union-attr]
+            self._send(200, {"ok": True, **_answer_to_dict(ans)})
         except Exception as e:
             traceback.print_exc()
             self._send(400, {"ok": False, "error": f"{type(e).__name__}: {e}"})
