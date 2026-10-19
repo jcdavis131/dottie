@@ -1574,8 +1574,10 @@ def collect_reserved_partition(
     Condition 1: ``int(sha256(uuid_text), 16) % n == k`` with ``n`` and ``k``
     from ``MANIFEST.reserved_eval_partition``. There is no default that passes.
     Condition 2: the row's content uuid (same helper Mill uses) is in
-    ``content_shas``. A row satisfies the uuid rule with ``source.uuid`` or a
-    content uuid the gate recomputes and verifies. Missing both refuses.
+    ``content_shas``. A row satisfies the uuid rule with ``source.uuid``
+    (always a dataset id) or a verified ``source.content_uuid``. Missing
+    both refuses. ``source.uuid`` is never treated as a content uuid, even
+    when it is 64 hex.
     """
     cfg = _reserved_partition_cfg(manifest)
     if cfg is None:

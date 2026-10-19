@@ -5412,13 +5412,32 @@ class HelperFtContentUuidTests(unittest.TestCase):
         self.assertIn("dup-b", listed)
         self.assertIn("duplicate", listed)
 
+    def test_source_uuid_64hex_is_not_a_content_uuid(self) -> None:
+        a = _row(rid="ds-a", action="execute")
+        b = _row(rid="ds-b", action="halt")
+        dataset_id = "ab" * 32
+        actual = content_uuid.content_uuid(a)
+        self.assertNotEqual(dataset_id, actual)
+        a.setdefault("source", {})
+        a["source"]["uuid"] = dataset_id
+        self.assertIsNone(content_uuid.claimed_content_uuid(a))
+        self.assertEqual(content_uuid.source_uuid_text(a), dataset_id)
+        self.assertIsNone(content_uuid.verify_content_uuid(a))
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, [a, b], pack_id="uuid-dataset-id")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
     def test_forged_content_uuid_refused(self) -> None:
         a = _row(rid="forge-a", action="execute")
         b = _row(rid="forge-b", action="halt")
         actual = content_uuid.content_uuid(a)
         a.setdefault("source", {})
-        a["source"]["uuid"] = "a" * 64
-        self.assertNotEqual(a["source"]["uuid"], actual)
+        a["source"]["content_uuid"] = "a" * 64
+        self.assertNotEqual(a["source"]["content_uuid"], actual)
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
@@ -5437,8 +5456,8 @@ class HelperFtContentUuidTests(unittest.TestCase):
         b = _row(rid="ok-b", action="halt")
         a.setdefault("source", {})
         b.setdefault("source", {})
-        a["source"]["uuid"] = content_uuid.content_uuid(a)
-        b["source"]["uuid"] = content_uuid.content_uuid(b)
+        a["source"]["content_uuid"] = content_uuid.content_uuid(a)
+        b["source"]["content_uuid"] = content_uuid.content_uuid(b)
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
@@ -5561,12 +5580,12 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
         b = _row(rid="cu-b", action="halt")
         a["source"].pop("uuid", None)
         b["source"].pop("uuid", None)
-        a["source"]["uuid"] = content_uuid.content_uuid(a)
-        b["source"]["uuid"] = content_uuid.content_uuid(b)
+        a["source"]["content_uuid"] = content_uuid.content_uuid(a)
+        b["source"]["content_uuid"] = content_uuid.content_uuid(b)
         # pick k that neither residue hits
         residues = {
-            int(hashlib.sha256(a["source"]["uuid"].encode("utf-8")).hexdigest(), 16) % 11,
-            int(hashlib.sha256(b["source"]["uuid"].encode("utf-8")).hexdigest(), 16) % 11,
+            int(hashlib.sha256(a["source"]["content_uuid"].encode("utf-8")).hexdigest(), 16) % 11,
+            int(hashlib.sha256(b["source"]["content_uuid"].encode("utf-8")).hexdigest(), 16) % 11,
         }
         k = next(idx for idx in range(11) if idx not in residues)
         with tempfile.TemporaryDirectory() as tmp:

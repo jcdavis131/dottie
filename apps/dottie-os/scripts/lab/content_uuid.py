@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Canonical content uuid for HELPER FT rows.
 
-Mill backfills ``source.uuid`` on a row whose source has no uuid by hashing
-this canonical form. The kick gate recomputes the same digest, so the uuid
-Mill writes and the hash the gate checks always match.
+Mill backfills ``source.content_uuid`` on a row whose source has none by
+hashing this canonical form. The kick gate recomputes the same digest and
+verifies ``source.content_uuid``. ``source.uuid`` is always an opaque
+dataset id, never a content uuid, even when it is 64 hex. A missing
+``source.uuid`` is allowed when a valid ``source.content_uuid`` is present
+and verifies.
 
 Included fields: ``state`` and ``questions`` only.
 Excluded: ``labels``, ids (``id``, ``uuid``, ``trajectory_id``,
@@ -107,17 +110,14 @@ def row_id(row: Mapping[str, Any]) -> str:
 
 
 def claimed_content_uuid(row: Mapping[str, Any]) -> str | None:
-    """A 64-hex uuid sitting in ``source.uuid`` or ``content_uuid``.
+    """Return ``source.content_uuid`` when it is 64 lowercase hex.
 
-    Opaque (non-hex) ``source.uuid`` values are dataset ids, not content uuids.
+    ``source.uuid`` is always a dataset id. It is never read as a content
+    uuid, even when it is 64 hex.
     """
     source = row.get("source")
-    candidates: list[object] = []
     if isinstance(source, Mapping):
-        candidates.append(source.get("uuid"))
-        candidates.append(source.get("content_uuid"))
-    candidates.append(row.get("content_uuid"))
-    for value in candidates:
+        value = source.get("content_uuid")
         if is_sha256_hex(value):
             return str(value)
     return None
