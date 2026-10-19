@@ -2970,40 +2970,31 @@ def collect_reserved_partition(
                         f"{rid}:missing source.uuid",
                     )
                 )
-                if len(hits) >= 10:
-                    return hits
-                continue
-            mismatch = _uuidless_shape_mismatch(row, spec)
-            if mismatch:
-                hits.append(
-                    (
-                        "reserved_eval_partition.uuid_missing.shape_mismatch",
-                        f"{rid}:{mismatch}",
+            else:
+                mismatch = _uuidless_shape_mismatch(row, spec)
+                if mismatch:
+                    hits.append(
+                        (
+                            "reserved_eval_partition.uuid_missing.shape_mismatch",
+                            f"{rid}:{mismatch}",
+                        )
                     )
-                )
-                if len(hits) >= 10:
-                    return hits
-                continue
-            if verified is None:
-                hits.append(
-                    (
-                        "reserved_eval_partition.content_uuid",
-                        f"{rid}:missing source.content_uuid",
+                if verified is None:
+                    hits.append(
+                        (
+                            "reserved_eval_partition.content_uuid",
+                            f"{rid}:missing source.content_uuid",
+                        )
                     )
-                )
-                if len(hits) >= 10:
-                    return hits
-                continue
-            if not reserved:
-                hits.append(
-                    (
-                        "reserved_content_uuids",
-                        f"{rid}:reserved list required for uuid-less allowlisted row",
+                if not reserved:
+                    hits.append(
+                        (
+                            "reserved_content_uuids",
+                            f"{rid}:reserved list required for uuid-less allowlisted row",
+                        )
                     )
-                )
-                if len(hits) >= 10:
-                    return hits
-                continue
+            if len(hits) >= 10:
+                return hits
         else:
             try:
                 residue = content_uuid.eval_partition_residue(uuid_text)
