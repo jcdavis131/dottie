@@ -24,7 +24,7 @@ The Dottie router's System One backend (`DOTTIE_OS_URL`, see
 `docs/ROUTER.md`) is off by default, and neither the advisor nor the gate is
 wired to it.
 
-**Out of scope for this tree:** the advisor, the gate, and any FT kick.
+**Out of scope for this tree:** the advisor, the LIVE gate, champion files, `:8770`, and auto-promote. The HELPER FT kick (`scripts/lab/kick_helper_ft.py`) is a point-of-use integrity gate on the training host; it does not promote.
 
 ## Schema: strict System One records + provenance sidecar
 
@@ -53,6 +53,7 @@ console app). Do not swap those trees.
 | `scripts/apply_and_run_pack_v2.ps1` | Copy + patch + run + smoke on nugatron. No FT. |
 | `scripts/lab/run_ultradata_harvest.py` | Lean harvest (agent 40 / code 40 / math 30) |
 | `scripts/lab/finalize_manifest.py` | Rewrite `MANIFEST.json` to the pack-hop schema |
+| `scripts/lab/kick_helper_ft.py` | Stage-5 HELPER FT kick: re-hash pack/train/holdout vs MANIFEST, write evidence, then train may start. No override, no auto-promote. |
 | `scripts/lab/stage-hop.ps1` | Zip jcd-pc outbox pack |
 | `scripts/lab/receive-hop.ps1` | Unpack zip into nugatron trainer inbox |
 | `docs/` | Pack v2 handoff, hop interface, local-exec notes |
@@ -72,9 +73,10 @@ host extra for live harvest only — CI never downloads UltraData.
 python3 -m unittest discover -s apps/dottie-os/tests -v
 ```
 
-No torch, no Hugging Face download, no `--go`, no FT. Tests exercise
+No torch, no Hugging Face download, no `--go`, no GPU FT. Tests exercise
 classification heuristics, holdout pairing, the pack smoke against a tiny
-in-memory fixture, manifest hashing, and the idempotent factory patch.
+in-memory fixture, manifest hashing, the HELPER FT integrity gate (match /
+one-byte mismatch / missing field), and the idempotent factory patch.
 
 ## Host apply (nugatron only, not CI)
 

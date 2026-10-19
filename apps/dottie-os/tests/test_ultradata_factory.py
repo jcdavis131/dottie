@@ -57,6 +57,7 @@ def _load(name: str, path: Path):
 smoke_pack_v2 = _load("smoke_pack_v2", SCRIPTS / "smoke_pack_v2.py")
 patch_hf = _load("patch_hf_to_system_one", SCRIPTS / "patch_hf_to_system_one.py")
 finalize_manifest = _load("finalize_manifest", LAB / "finalize_manifest.py")
+kick_helper_ft = _load("kick_helper_ft", LAB / "kick_helper_ft.py")
 
 
 def _row(*, rid: str, action: str, pair_id: str | None = None, source: str = "openbmb/UltraData-SFT-Agent-2609") -> dict:
@@ -237,6 +238,7 @@ class ManifestAndPatchTests(unittest.TestCase):
             dest = Path(tmp) / "ultradata_harvest_20260922-120000"
             dest.mkdir()
             write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+            write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[1:])
             write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[:1])
             (dest / "curated_pack_v2_summary.json").write_text(
                 json.dumps({"counts": {"total": 2, "by_tier": {"L3": 2}}}),
@@ -246,7 +248,11 @@ class ManifestAndPatchTests(unittest.TestCase):
             manifest = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
         self.assertEqual(rc, 0)
         self.assertEqual(manifest["rows"], 2)
+        self.assertEqual(manifest["train_rows"], 1)
+        self.assertEqual(manifest["holdout_rows"], 1)
         self.assertEqual(len(manifest["sha256_pack"]), 64)
+        self.assertEqual(len(manifest["sha256_train"]), 64)
+        self.assertEqual(len(manifest["sha256_holdout"]), 64)
         self.assertFalse(manifest["champion_touched"])
         self.assertFalse(manifest["live_gate_touched"])
         self.assertFalse(manifest["ft_kicked"])
@@ -281,6 +287,117 @@ class ManifestAndPatchTests(unittest.TestCase):
         harvest = _load("run_ultradata_harvest", LAB / "run_ultradata_harvest.py")
         self.assertTrue(callable(harvest.main))
         self.assertTrue((harvest.APP_ROOT / "sidecar" / "curation" / "ultradata_curriculum.py").is_file())
+
+
+def _write_helper_pack(dest: Path) -> dict:
+    """Tiny inbox pack whose MANIFEST hashes are computed from the files, never hardcoded."""
+    rows = [_row(rid="k1", action="execute"), _row(rid="k2", action="halt")]
+    train, hold = rows[:1], rows[1:]
+    pack = dest / "curated_pack_v2.jsonl"
+    train_path = dest / "curated_pack_v2_train.jsonl"
+    hold_path = dest / "curated_pack_v2_holdout.jsonl"
+    write_jsonl(pack, rows)
+    write_jsonl(train_path, train)
+    write_jsonl(hold_path, hold)
+    manifest = {
+        "pack_id": "curated_pack_v2-test",
+        "rows": 2,
+        "train_rows": 1,
+        "holdout_rows": 1,
+        "sha256_pack": kick_helper_ft.sha256_file(pack),
+        "sha256_train": kick_helper_ft.sha256_file(train_path),
+        "sha256_holdout": kick_helper_ft.sha256_file(hold_path),
+        "champion_touched": False,
+        "live_gate_touched": False,
+        "ft_kicked": False,
+        "consent_champion_false": True,
+    }
+    (dest / "MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return manifest
+
+
+class HelperFtIntegrityTests(unittest.TestCase):
+    def test_match_lets_training_start(self) -> None:
+        started: list[Path] = []
+
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> None:
+            started.append(pack_dir)
+            self.assertTrue(evidence["ok"])
+            self.assertEqual(evidence["pack_id"], "curated_pack_v2-test")
+            self.assertEqual(evidence["computed_shas"], evidence["expected_shas"])
+            self.assertEqual(log_path.name, "helper_ft.log")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            evidence = kick_helper_ft.kick(dest, log_path=log_path, start_training=start)
+            on_disk = json.loads((log_path.parent / "pack_integrity_evidence.json").read_text(encoding="utf-8"))
+            rc = kick_helper_ft.main(["--pack", str(dest), "--log", str(log_path)])
+        self.assertEqual(len(started), 1)
+        self.assertEqual(rc, 0)
+        self.assertEqual(evidence["expected_shas"]["sha256_pack"], manifest["sha256_pack"])
+        self.assertEqual(on_disk["computed_shas"], evidence["computed_shas"])
+        self.assertEqual(on_disk["host"], evidence["host"])
+        self.assertTrue(on_disk["checked_at"].endswith("Z"))
+        self.assertEqual(on_disk["row_counts"]["curated_pack_v2.jsonl"]["actual"], 2)
+        self.assertEqual(on_disk["row_counts"]["curated_pack_v2_train.jsonl"]["actual"], 1)
+        self.assertEqual(on_disk["row_counts"]["curated_pack_v2_holdout.jsonl"]["actual"], 1)
+
+    def test_one_byte_change_in_any_file_refuses(self) -> None:
+        files = (
+            "curated_pack_v2.jsonl",
+            "curated_pack_v2_train.jsonl",
+            "curated_pack_v2_holdout.jsonl",
+        )
+        fields = ("sha256_pack", "sha256_train", "sha256_holdout")
+        for filename, field in zip(files, fields, strict=True):
+            with self.subTest(file=filename):
+                started: list[Path] = []
+
+                def start(pack_dir: Path, evidence: dict, log_path: Path) -> None:
+                    started.append(pack_dir)
+
+                with tempfile.TemporaryDirectory() as tmp:
+                    dest = Path(tmp) / "inbox-pack"
+                    dest.mkdir()
+                    _write_helper_pack(dest)
+                    target = dest / filename
+                    target.write_bytes(target.read_bytes() + b"x")
+                    with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                        kick_helper_ft.kick(dest, start_training=start)
+                    rc = kick_helper_ft.main(["--pack", str(dest)])
+                self.assertEqual(started, [])
+                self.assertEqual(rc, 1)
+                self.assertEqual(ctx.exception.field, field)
+                self.assertNotEqual(ctx.exception.expected, ctx.exception.actual)
+                self.assertIn(field, str(ctx.exception))
+                self.assertIn("expected", str(ctx.exception))
+                self.assertIn("actual", str(ctx.exception))
+
+    def test_missing_manifest_field_refuses(self) -> None:
+        started: list[Path] = []
+
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> None:
+            started.append(pack_dir)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            _write_helper_pack(dest)
+            manifest_path = dest / "MANIFEST.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            del manifest["sha256_train"]
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, start_training=start)
+            rc = kick_helper_ft.main(["--pack", str(dest)])
+        self.assertEqual(started, [])
+        self.assertEqual(rc, 1)
+        self.assertEqual(ctx.exception.field, "sha256_train")
+        self.assertEqual(ctx.exception.expected, "present")
+        self.assertEqual(ctx.exception.actual, "missing")
 
 
 if __name__ == "__main__":

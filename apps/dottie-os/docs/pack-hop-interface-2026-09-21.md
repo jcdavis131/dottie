@@ -36,7 +36,10 @@ Caps for this harvest run (Forge): agent **120** / code **80** / math **60**.
   "produced_at": "<ISO8601>",
   "producer_host": "jcd-pc",
   "rows": 0,
+  "train_rows": 0,
   "sha256_pack": "<hex of curated_pack_v2.jsonl>",
+  "sha256_train": "<hex of curated_pack_v2_train.jsonl>",
+  "sha256_holdout": "<hex of curated_pack_v2_holdout.jsonl>",
   "holdout_frac": 0.20,
   "holdout_rows": 0,
   "tier_counts": {"L0": 0, "L1": 0, "L2": 0, "L3": 0},
@@ -61,7 +64,7 @@ Caps for this harvest run (Forge): agent **120** / code **80** / math **60**.
 | nugatron inbox / registry staging | Ingest pack + MANIFEST; verify sha256 |
 | Radar | Pulse outbox/inbox presence + health; no edits |
 | Brief | Update lab brief from MANIFEST fields |
-| FT job (later, Cam kick only) | Read pack; never if `champion_touched` path confused with HELPER |
+| FT job (Cam kick only) | `scripts/lab/kick_helper_ft.py` re-hashes pack/train/holdout vs MANIFEST, writes evidence, then HELPER train may start. Never auto-promote. |
 
 ---
 

@@ -13,7 +13,10 @@ No SSH required. Agent (or Cam) runs both machine sides; box is the ferry.
 2. Agent: `CopyToBox` the zip from jcd to `/workspace/uploads/hops/<pack_id>.zip`
 3. Agent: `CopyFromBox` the zip to `C:\Users\jcdav\Projects\factory-trainer\runs\inbox\<pack_id>.zip`
 4. On **nugatron**: `powershell -ExecutionPolicy Bypass -File C:\Users\jcdav\Projects\factory-trainer\jobs\receive-hop.ps1 -ZipPath ...`
-5. Optional validate only: `POST :8765/train/kickoff` `{"mode":"inbox-validate","inbox":"latest"}` (no GPU train while gated)
+5. On nugatron, point-of-use integrity then HELPER kick (no override, no auto-promote):
+   `python C:\Users\jcdav\workspace\dottie-os\scripts\lab\kick_helper_ft.py --pack C:\Users\jcdav\Projects\factory-trainer\runs\inbox\<pack_id> --log C:\Users\jcdav\Projects\factory-trainer\runs\<pack_id>\helper_ft.log`
+   Re-hashes pack/train/holdout vs `MANIFEST.json` (`sha256_pack`, `sha256_train`, `sha256_holdout`). Mismatch or missing field exits non-zero. Evidence JSON is written next to the run log.
+6. Optional GPU: `POST :8765/train/kickoff` only after the gate exits 0. `{"mode":"inbox-validate","inbox":"latest"}` stays validate-only (no GPU train while gated).
 
 ## Lifecycle after pack is used (Cam)
 Compact → Google Drive → wipe **jcd-pc** collect artifacts only.
