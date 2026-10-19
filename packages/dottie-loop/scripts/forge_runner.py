@@ -28,6 +28,7 @@ uv workspace). Everything else is stdlib + git.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import platform
 import shutil
@@ -135,6 +136,38 @@ def tick(args: argparse.Namespace) -> dict[str, Any]:
     res = q.execute(spec, checkout, runner)
     push_queue(queue_dir, f"runner {runner.hostname}: {spec.job_id} {res['status']}")
     return {"claimed": spec.job_id, "result": res}
+
+
+def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
+    """HELPER FT ``POST /train/kickoff``. Never accepts ``inbox: latest``.
+
+    Canonical implementation: ``apps/dottie-os/scripts/lab/helper_ft_kickoff.py``.
+    When this runner is copied off-tree, still refuse latest/missing evidence.
+    """
+    here = Path(__file__).resolve()
+    candidates = []
+    if len(here.parents) >= 4:
+        candidates.append(
+            here.parents[3] / "apps" / "dottie-os" / "scripts" / "lab" / "helper_ft_kickoff.py"
+        )
+    for path in candidates:
+        if path.is_file():
+            spec = importlib.util.spec_from_file_location("helper_ft_kickoff", path)
+            if spec is None or spec.loader is None:
+                break
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.handle_train_kickoff(body)
+    if not isinstance(body, dict):
+        return {"ok": False, "field": "body", "expected": "object", "actual": type(body).__name__}
+    inbox = body.get("inbox")
+    if isinstance(inbox, str) and inbox.strip().lower() == "latest":
+        return {"ok": False, "field": "inbox", "expected": "named pack_id", "actual": "latest"}
+    if body.get("mode") == "inbox-validate":
+        return {"ok": False, "field": "mode", "expected": "helper-ft", "actual": "inbox-validate"}
+    if not body.get("evidence"):
+        return {"ok": False, "field": "evidence", "expected": "present", "actual": "missing"}
+    return {"ok": False, "field": "handler", "expected": "helper_ft_kickoff.py", "actual": "missing"}
 
 
 def main(argv: list[str] | None = None) -> int:

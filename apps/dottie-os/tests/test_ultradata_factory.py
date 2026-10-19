@@ -60,6 +60,7 @@ smoke_pack_v2 = _load("smoke_pack_v2", SCRIPTS / "smoke_pack_v2.py")
 patch_hf = _load("patch_hf_to_system_one", SCRIPTS / "patch_hf_to_system_one.py")
 finalize_manifest = _load("finalize_manifest", LAB / "finalize_manifest.py")
 kick_helper_ft = _load("kick_helper_ft", LAB / "kick_helper_ft.py")
+helper_ft_kickoff = _load("helper_ft_kickoff", LAB / "helper_ft_kickoff.py")
 
 
 def _row(*, rid: str, action: str, pair_id: str | None = None, source: str = "openbmb/UltraData-SFT-Agent-2609") -> dict:
@@ -260,6 +261,28 @@ class ManifestAndPatchTests(unittest.TestCase):
         self.assertFalse(manifest["ft_kicked"])
         self.assertTrue(manifest["consent_champion_false"])
 
+    def test_finalize_manifest_missing_train_fails(self) -> None:
+        rows = [_row(rid="m1", action="execute"), _row(rid="m2", action="halt")]
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "ultradata_harvest_x"
+            dest.mkdir()
+            write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[:1])
+            with self.assertRaises(SystemExit) as ctx:
+                finalize_manifest.main(dest)
+        self.assertIn("missing train", str(ctx.exception))
+
+    def test_finalize_manifest_missing_holdout_fails(self) -> None:
+        rows = [_row(rid="m1", action="execute"), _row(rid="m2", action="halt")]
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "ultradata_harvest_x"
+            dest.mkdir()
+            write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+            write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[:1])
+            with self.assertRaises(SystemExit) as ctx:
+                finalize_manifest.main(dest)
+        self.assertIn("missing holdout", str(ctx.exception))
+
     def test_patch_hf_is_idempotent(self) -> None:
         stub = (
             "from __future__ import annotations\n"
@@ -327,6 +350,33 @@ def _anchor_kwargs(manifest: dict) -> dict:
     }
 
 
+def _refresh_hashes(dest: Path, **overrides: object) -> dict:
+    pack = dest / "curated_pack_v2.jsonl"
+    train_path = dest / "curated_pack_v2_train.jsonl"
+    hold_path = dest / "curated_pack_v2_holdout.jsonl"
+    manifest = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
+    manifest["sha256_pack"] = kick_helper_ft.sha256_file(pack)
+    manifest["sha256_train"] = kick_helper_ft.sha256_file(train_path)
+    manifest["sha256_holdout"] = kick_helper_ft.sha256_file(hold_path)
+    manifest["rows"] = sum(1 for line in pack.read_text(encoding="utf-8").splitlines() if line.strip())
+    manifest["train_rows"] = sum(1 for line in train_path.read_text(encoding="utf-8").splitlines() if line.strip())
+    manifest["holdout_rows"] = sum(1 for line in hold_path.read_text(encoding="utf-8").splitlines() if line.strip())
+    manifest.update(overrides)
+    (dest / "MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return manifest
+
+
+def _flip_one_ascii_byte(path: Path) -> None:
+    """Change one file byte without adding a JSONL row or breaking UTF-8."""
+    raw = bytearray(path.read_bytes())
+    for idx, byte in enumerate(raw):
+        if 65 <= byte <= 90 or 97 <= byte <= 122:
+            raw[idx] = 88 if byte != 88 else 89
+            path.write_bytes(bytes(raw))
+            return
+    raise AssertionError(f"no ASCII letter to flip in {path}")
+
+
 def _cli_args(dest: Path, manifest: dict, log_path: Path | None = None) -> list[str]:
     argv = [
         "--pack",
@@ -346,6 +396,21 @@ def _cli_args(dest: Path, manifest: dict, log_path: Path | None = None) -> list[
 
 
 class HelperFtIntegrityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            self.assertNotEqual(body.get("inbox"), "latest")
+            self.assertEqual(body.get("mode"), "helper-ft")
+            return {"ok": True, "checkpoint_id": "ckpt-test"}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+
+    def tearDown(self) -> None:
+        kick_helper_ft.post_kickoff = self._orig_post
+
     def test_match_lets_training_start(self) -> None:
         started: list[Path] = []
         original: Path | None = None
@@ -372,18 +437,35 @@ class HelperFtIntegrityTests(unittest.TestCase):
             evidence = kick_helper_ft.kick(
                 dest, log_path=log_path, start_training=start, **_anchor_kwargs(manifest)
             )
-            on_disk = json.loads((log_path.parent / "pack_integrity_evidence.json").read_text(encoding="utf-8"))
+            on_disk = json.loads(Path(evidence["evidence_path"]).read_text(encoding="utf-8"))
             rc = kick_helper_ft.main(_cli_args(dest, manifest, log_path))
         self.assertEqual(len(started), 1)
+        self.assertGreaterEqual(len(self.kickoff_calls), 1)
+        kickoff_body = self.kickoff_calls[0]
+        self.assertNotIn("inbox", kickoff_body)
+        self.assertEqual(kickoff_body["pack_id"], "curated_pack_v2-test")
+        self.assertEqual(kickoff_body["sha256_pack"], manifest["sha256_pack"])
+        self.assertEqual(kickoff_body["sha256_train"], manifest["sha256_train"])
+        self.assertEqual(kickoff_body["sha256_holdout"], manifest["sha256_holdout"])
+        self.assertIn("run_private_dir", kickoff_body)
+        self.assertIn("paths", kickoff_body)
+        self.assertTrue(kickoff_body["evidence"]["ok"])
         self.assertEqual(rc, 0)
         self.assertEqual(evidence["expected_shas"]["sha256_pack"], manifest["sha256_pack"])
         self.assertEqual(on_disk["computed_shas"], evidence["computed_shas"])
         self.assertEqual(on_disk["anchor_source"], "ticket")
+        self.assertEqual(on_disk["checkpoint_id"], "ckpt-test")
+        self.assertTrue(on_disk["run_id"])
+        self.assertIn("pack_integrity_evidence_" + on_disk["run_id"], on_disk["evidence_path"])
         self.assertEqual(on_disk["host"], evidence["host"])
         self.assertTrue(on_disk["checked_at"].endswith("Z"))
         self.assertEqual(on_disk["row_counts"]["curated_pack_v2.jsonl"]["actual"], 2)
         self.assertEqual(on_disk["row_counts"]["curated_pack_v2_train.jsonl"]["actual"], 1)
         self.assertEqual(on_disk["row_counts"]["curated_pack_v2_holdout.jsonl"]["actual"], 1)
+        self.assertNotEqual(Path(on_disk["evidence_path"]).parent, dest)
+        self.assertTrue(Path(on_disk["paths"]["train"]).is_absolute())
+        self.assertIn("script_git_sha", on_disk)
+        self.assertEqual(on_disk["anchor_source"], "ticket")
 
     def test_one_byte_change_in_any_file_refuses(self) -> None:
         files = (
@@ -404,11 +486,12 @@ class HelperFtIntegrityTests(unittest.TestCase):
                     dest.mkdir()
                     manifest = _write_helper_pack(dest)
                     target = dest / filename
-                    target.write_bytes(target.read_bytes() + b"x")
+                    _flip_one_ascii_byte(target)
                     with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                         kick_helper_ft.kick(dest, start_training=start, **_anchor_kwargs(manifest))
                     rc = kick_helper_ft.main(_cli_args(dest, manifest))
                 self.assertEqual(started, [])
+                self.assertEqual(self.kickoff_calls, [])
                 self.assertEqual(rc, 1)
                 self.assertEqual(ctx.exception.field, field)
                 self.assertNotEqual(ctx.exception.expected, ctx.exception.actual)
@@ -434,6 +517,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
                 kick_helper_ft.kick(dest, start_training=start, **_anchor_kwargs(original))
             rc = kick_helper_ft.main(_cli_args(dest, original))
         self.assertEqual(started, [])
+        self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(rc, 1)
         self.assertEqual(ctx.exception.field, "sha256_train")
         self.assertEqual(ctx.exception.expected, "present")
@@ -450,7 +534,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             dest.mkdir()
             ticket = _write_helper_pack(dest)
             pack = dest / "curated_pack_v2.jsonl"
-            pack.write_bytes(pack.read_bytes() + b"x")
+            _flip_one_ascii_byte(pack)
             host_manifest = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
             host_manifest["sha256_pack"] = kick_helper_ft.sha256_file(pack)
             (dest / "MANIFEST.json").write_text(json.dumps(host_manifest, indent=2) + "\n", encoding="utf-8")
@@ -458,6 +542,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
                 kick_helper_ft.kick(dest, start_training=start, **_anchor_kwargs(ticket))
             rc = kick_helper_ft.main(_cli_args(dest, ticket))
         self.assertEqual(started, [])
+        self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(rc, 1)
         self.assertEqual(ctx.exception.field, "sha256_pack")
         self.assertEqual(ctx.exception.expected, ticket["sha256_pack"])
@@ -479,9 +564,12 @@ class HelperFtIntegrityTests(unittest.TestCase):
                 trained_bytes.append((copy_dir / "curated_pack_v2.jsonl").read_bytes())
                 self.assertNotEqual(copy_dir.resolve(), dest.resolve())
 
-            kick_helper_ft.kick(dest, start_training=start, **_anchor_kwargs(manifest))
+            evidence = kick_helper_ft.kick(dest, start_training=start, **_anchor_kwargs(manifest))
             self.assertEqual(pack.read_bytes(), original + b"SWAPPED")
+            self.assertTrue(evidence["ok"])
+            self.assertEqual(evidence["post_train_shas"]["sha256_pack"], evidence["computed_shas"]["sha256_pack"])
         self.assertEqual(trained_bytes, [original])
+        self.assertEqual(len(self.kickoff_calls), 1)
 
     def test_symlinked_file_refuses(self) -> None:
         started: list[Path] = []
@@ -505,6 +593,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
                 kick_helper_ft.kick(dest, start_training=start, **_anchor_kwargs(manifest))
             rc = kick_helper_ft.main(_cli_args(dest, manifest))
         self.assertEqual(started, [])
+        self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(rc, 1)
         self.assertEqual(ctx.exception.field, "curated_pack_v2.jsonl")
         self.assertEqual(ctx.exception.expected, "regular file")
@@ -541,6 +630,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
                 ]
             )
         self.assertEqual(started, [])
+        self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(rc, 1)
         self.assertEqual(ctx.exception.field, "--expected-sha256-pack")
         self.assertEqual(ctx.exception.expected, "present")
@@ -570,6 +660,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             finally:
                 del os.environ["DOTTIE_SKIP_HELPER_FT_GATE"]
         self.assertEqual(started, [])
+        self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(ctx.exception.field, "DOTTIE_SKIP_HELPER_FT_GATE")
         option_strings = [
             flag
@@ -578,6 +669,383 @@ class HelperFtIntegrityTests(unittest.TestCase):
         ]
         for banned in ("--force", "--skip", "--no-verify", "--override"):
             self.assertNotIn(banned, option_strings)
+
+    def test_post_train_copy_mismatch_marks_evidence_not_ok(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+
+            def start(copy_dir: Path, evidence: dict, log_path: Path) -> None:
+                target = copy_dir / "curated_pack_v2.jsonl"
+                target.write_bytes(target.read_bytes() + b"x")
+
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(
+                    dest, log_path=log_path, start_training=start, **_anchor_kwargs(manifest)
+                )
+            files = list(log_path.parent.glob("pack_integrity_evidence_*.json"))
+            self.assertEqual(len(files), 1)
+            on_disk = json.loads(files[0].read_text(encoding="utf-8"))
+        self.assertFalse(on_disk["ok"])
+        self.assertEqual(ctx.exception.field, "sha256_pack")
+        self.assertEqual(len(self.kickoff_calls), 1)
+
+    def test_refused_run_never_leaves_ok_true_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            _write_helper_pack(dest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with self.assertRaises(kick_helper_ft.KickRefused):
+                kick_helper_ft.kick(dest, log_path=log_path, anchor_source="ticket")
+            files = list(log_path.parent.glob("pack_integrity_evidence_*.json"))
+            self.assertEqual(len(files), 1)
+            on_disk = json.loads(files[0].read_text(encoding="utf-8"))
+        self.assertFalse(on_disk["ok"])
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_missing_file_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            (dest / "curated_pack_v2_train.jsonl").unlink()
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(ctx.exception.field, "curated_pack_v2_train.jsonl")
+        self.assertEqual(ctx.exception.expected, "present")
+        self.assertEqual(ctx.exception.actual, "missing")
+
+    def test_missing_manifest_file_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            (dest / "MANIFEST.json").unlink()
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(ctx.exception.field, "MANIFEST.json")
+        self.assertEqual(ctx.exception.expected, "present")
+        self.assertEqual(ctx.exception.actual, "missing")
+
+    def test_row_count_mismatch_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            host = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
+            host["rows"] = 99
+            (dest / "MANIFEST.json").write_text(json.dumps(host, indent=2) + "\n", encoding="utf-8")
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(ctx.exception.field, "rows")
+        self.assertEqual(ctx.exception.expected, 99)
+        self.assertEqual(ctx.exception.actual, 2)
+
+    def test_row_count_rejects_bool_and_str(self) -> None:
+        for bad in (True, "2", 2.0):
+            with self.subTest(bad=bad):
+                self.kickoff_calls.clear()
+                with tempfile.TemporaryDirectory() as tmp:
+                    dest = Path(tmp) / "inbox-pack"
+                    dest.mkdir()
+                    manifest = _write_helper_pack(dest)
+                    host = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
+                    host["train_rows"] = bad
+                    (dest / "MANIFEST.json").write_text(json.dumps(host, indent=2) + "\n", encoding="utf-8")
+                    with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                        kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+                self.assertEqual(self.kickoff_calls, [])
+                self.assertEqual(ctx.exception.field, "train_rows")
+                self.assertEqual(ctx.exception.expected, "int")
+
+    def test_missing_row_field_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            host = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
+            del host["holdout_rows"]
+            (dest / "MANIFEST.json").write_text(json.dumps(host, indent=2) + "\n", encoding="utf-8")
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(ctx.exception.field, "holdout_rows")
+        self.assertEqual(ctx.exception.expected, "present")
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_pack_id_required(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            host = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
+            del host["pack_id"]
+            (dest / "MANIFEST.json").write_text(json.dumps(host, indent=2) + "\n", encoding="utf-8")
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(ctx.exception.field, "pack_id")
+        self.assertEqual(ctx.exception.expected, "present")
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_champion_touched_must_be_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            host = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
+            host["champion_touched"] = True
+            (dest / "MANIFEST.json").write_text(json.dumps(host, indent=2) + "\n", encoding="utf-8")
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(ctx.exception.field, "champion_touched")
+        self.assertEqual(ctx.exception.expected, False)
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_duplicate_manifest_keys_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            original = (dest / "MANIFEST.json").read_text(encoding="utf-8")
+            (dest / "MANIFEST.json").write_text(
+                original.replace('"pack_id":', '"pack_id": "dup",\n  "pack_id":', 1),
+                encoding="utf-8",
+            )
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(ctx.exception.field, "MANIFEST.json")
+        self.assertEqual(ctx.exception.expected, "unique keys")
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_holdout_identical_to_train_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            _write_helper_pack(dest)
+            train = (dest / "curated_pack_v2_train.jsonl").read_bytes()
+            (dest / "curated_pack_v2_holdout.jsonl").write_bytes(train)
+            (dest / "curated_pack_v2.jsonl").write_bytes(train + train)
+            manifest = _refresh_hashes(dest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(ctx.exception.field, "split")
+        self.assertEqual(ctx.exception.expected, "train and holdout distinct")
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_holdout_row_hash_leak_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            _write_helper_pack(dest)
+            rows = [
+                _row(rid="a1", action="execute"),
+                _row(rid="a2", action="halt"),
+                _row(rid="a1", action="execute"),
+            ]
+            write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[:2])
+            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", [rows[0]])
+            write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+            manifest = _refresh_hashes(dest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(ctx.exception.field, "split")
+        self.assertIn("row-hash leak", str(ctx.exception.actual))
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_holdout_trajectory_id_leak_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            _write_helper_pack(dest)
+            train_row = _row(rid="same-id", action="execute")
+            hold_row = _row(rid="same-id", action="halt")
+            write_jsonl(dest / "curated_pack_v2_train.jsonl", [train_row])
+            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", [hold_row])
+            write_jsonl(dest / "curated_pack_v2.jsonl", [train_row, hold_row])
+            manifest = _refresh_hashes(dest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(ctx.exception.field, "split")
+        self.assertIn("trajectory_id leak", str(ctx.exception.actual))
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_pack_not_union_of_splits_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            _write_helper_pack(dest)
+            extra = _row(rid="extra", action="execute")
+            train = [_row(rid="t1", action="execute")]
+            hold = [_row(rid="h1", action="halt")]
+            write_jsonl(dest / "curated_pack_v2_train.jsonl", train)
+            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", hold)
+            write_jsonl(dest / "curated_pack_v2.jsonl", train + hold + [extra])
+            manifest = _refresh_hashes(dest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(ctx.exception.field, "split")
+        self.assertEqual(ctx.exception.actual, "row-set mismatch")
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_invalid_encoding_is_clean_refusal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            (dest / "MANIFEST.json").write_bytes(b'{"pack_id": "x"\xff}')
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+        self.assertEqual(ctx.exception.field, "MANIFEST.json")
+        self.assertEqual(ctx.exception.expected, "utf-8 text")
+        self.assertEqual(ctx.exception.actual, "invalid encoding")
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_kickoff_failure_updates_evidence(self) -> None:
+        def boom(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            raise kick_helper_ft.KickRefused("kickoff", "ok", {"ok": False})
+
+        kick_helper_ft.post_kickoff = boom
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, log_path=log_path, **_anchor_kwargs(manifest))
+            files = list(log_path.parent.glob("pack_integrity_evidence_*.json"))
+            self.assertEqual(len(files), 1)
+            on_disk = json.loads(files[0].read_text(encoding="utf-8"))
+        self.assertFalse(on_disk["ok"])
+        self.assertEqual(on_disk["field"], "kickoff")
+        self.assertEqual(ctx.exception.field, "kickoff")
+        self.assertEqual(len(self.kickoff_calls), 1)
+
+    def test_checks_fail_closed_if_row_file_or_manifest_removed(self) -> None:
+        src = Path(kick_helper_ft.__file__).read_text(encoding="utf-8")
+        self.assertIn("if rows_field not in manifest", src)
+        self.assertIn("if actual_rows != expected_rows", src)
+        self.assertIn('_refuse(filename, "present", "missing")', src)
+        self.assertIn("_regular_file_in_pack(pack_root, MANIFEST_FILE)", src)
+        self.assertIn("FileNotFoundError", src)
+
+    def test_handler_refuses_inbox_latest_and_missing_evidence(self) -> None:
+        latest = helper_ft_kickoff.handle_train_kickoff(
+            {"mode": "helper-ft", "inbox": "latest", "pack_id": "p", "evidence": {"ok": True, "pack_id": "p"}}
+        )
+        self.assertFalse(latest["ok"])
+        self.assertEqual(latest["field"], "inbox")
+        self.assertEqual(latest["actual"], "latest")
+        missing = helper_ft_kickoff.handle_train_kickoff({"mode": "helper-ft", "pack_id": "p"})
+        self.assertFalse(missing["ok"])
+        self.assertEqual(missing["field"], "evidence")
+        validate = helper_ft_kickoff.handle_train_kickoff({"mode": "inbox-validate"})
+        self.assertFalse(validate["ok"])
+        self.assertEqual(validate["field"], "mode")
+        not_ok = helper_ft_kickoff.handle_train_kickoff(
+            {"mode": "helper-ft", "pack_id": "p", "evidence": {"ok": False, "pack_id": "p"}}
+        )
+        self.assertFalse(not_ok["ok"])
+        self.assertEqual(not_ok["field"], "evidence.ok")
+        mismatched = helper_ft_kickoff.handle_train_kickoff(
+            {
+                "mode": "helper-ft",
+                "pack_id": "named-pack",
+                "evidence": {"ok": True, "pack_id": "other-pack"},
+            }
+        )
+        self.assertFalse(mismatched["ok"])
+        self.assertEqual(mismatched["field"], "pack_id")
+
+    def test_handler_refuses_sha_mismatch_on_named_pack(self) -> None:
+        body = {
+            "mode": "helper-ft",
+            "pack_id": "curated_pack_v2-test",
+            "sha256_pack": "a" * 64,
+            "sha256_train": "b" * 64,
+            "sha256_holdout": "c" * 64,
+            "evidence": {
+                "ok": True,
+                "pack_id": "curated_pack_v2-test",
+                "computed_shas": {"sha256_pack": "d" * 64, "sha256_train": "b" * 64, "sha256_holdout": "c" * 64},
+                "expected_shas": {"sha256_pack": "d" * 64, "sha256_train": "b" * 64, "sha256_holdout": "c" * 64},
+            },
+            "paths": {},
+        }
+        result = helper_ft_kickoff.handle_train_kickoff(body)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "sha256_pack")
+
+    def test_handler_accepts_matching_named_pack(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            body = {
+                "mode": "helper-ft",
+                "pack_id": manifest["pack_id"],
+                "sha256_pack": manifest["sha256_pack"],
+                "sha256_train": manifest["sha256_train"],
+                "sha256_holdout": manifest["sha256_holdout"],
+                "evidence": {
+                    "ok": True,
+                    "pack_id": manifest["pack_id"],
+                    "computed_shas": {
+                        "sha256_pack": manifest["sha256_pack"],
+                        "sha256_train": manifest["sha256_train"],
+                        "sha256_holdout": manifest["sha256_holdout"],
+                    },
+                    "expected_shas": {
+                        "sha256_pack": manifest["sha256_pack"],
+                        "sha256_train": manifest["sha256_train"],
+                        "sha256_holdout": manifest["sha256_holdout"],
+                    },
+                },
+                "paths": {
+                    "pack": str(dest / "curated_pack_v2.jsonl"),
+                    "train": str(dest / "curated_pack_v2_train.jsonl"),
+                    "holdout": str(dest / "curated_pack_v2_holdout.jsonl"),
+                },
+            }
+            result = helper_ft_kickoff.handle_train_kickoff(body)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["pack_id"], manifest["pack_id"])
+
+    def test_forge_runner_kickoff_never_accepts_latest(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        loop_src = repo / "packages" / "dottie-loop"
+        runner_path = loop_src / "scripts" / "forge_runner.py"
+        src = runner_path.read_text(encoding="utf-8")
+        self.assertIn("helper_ft_kickoff.py", src)
+        self.assertIn('inbox.strip().lower() == "latest"', src)
+        self.assertIn('body.get("mode") == "inbox-validate"', src)
+        if str(loop_src) not in sys.path:
+            sys.path.insert(0, str(loop_src))
+        runner = _load("forge_runner_kickoff", runner_path)
+        refused = runner.handle_train_kickoff(
+            {"mode": "helper-ft", "inbox": "latest", "evidence": {"ok": True, "pack_id": "p"}, "pack_id": "p"}
+        )
+        self.assertFalse(refused["ok"])
+        self.assertEqual(refused["field"], "inbox")
+        missing = runner.handle_train_kickoff({"mode": "helper-ft", "pack_id": "p"})
+        self.assertFalse(missing["ok"])
+        self.assertEqual(missing["field"], "evidence")
+
+    def test_default_evidence_lives_in_run_dir_not_inbox(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            evidence = kick_helper_ft.kick(dest, **_anchor_kwargs(manifest))
+            evidence_path = Path(evidence["evidence_path"])
+            self.assertTrue(evidence_path.is_file())
+            self.assertFalse(str(evidence_path).startswith(str(dest.resolve())))
+            self.assertIn(evidence["run_id"], evidence_path.name)
 
 
 if __name__ == "__main__":

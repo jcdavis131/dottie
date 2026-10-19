@@ -20,16 +20,16 @@ def main(dest: Path) -> int:
     holdout = dest / "curated_pack_v2_holdout.jsonl"
     if not pack.is_file():
         raise SystemExit(f"missing pack: {pack}")
+    if not train.is_file():
+        raise SystemExit(f"missing train: {train}")
+    if not holdout.is_file():
+        raise SystemExit(f"missing holdout: {holdout}")
     with pack.open(encoding="utf-8") as pf:
         rows = sum(1 for line in pf if line.strip())
-    train_rows = 0
-    if train.is_file():
-        with train.open(encoding="utf-8") as tf:
-            train_rows = sum(1 for line in tf if line.strip())
-    holdout_rows = 0
-    if holdout.is_file():
-        with holdout.open(encoding="utf-8") as hf:
-            holdout_rows = sum(1 for line in hf if line.strip())
+    with train.open(encoding="utf-8") as tf:
+        train_rows = sum(1 for line in tf if line.strip())
+    with holdout.open(encoding="utf-8") as hf:
+        holdout_rows = sum(1 for line in hf if line.strip())
     tier_counts = {"L0": 0, "L1": 0, "L2": 0, "L3": 0}
     if summary_path.is_file():
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -57,11 +57,9 @@ def main(dest: Path) -> int:
         "consent_champion_false": True,
         "harvest_container": "jcd-ultradata-harvest",
         "harvest_log": r"C:\Users\JCD\ai-lab\harvest.log",
+        "sha256_train": sha256_file(train),
+        "sha256_holdout": sha256_file(holdout),
     }
-    if train.is_file():
-        manifest["sha256_train"] = sha256_file(train)
-    if holdout.is_file():
-        manifest["sha256_holdout"] = sha256_file(holdout)
     (dest / "MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(manifest, indent=2))
     return 0
