@@ -4420,6 +4420,116 @@ class HelperFtLeakGateSyntheticTests(unittest.TestCase):
         self.assertEqual(ctx.exception.field, "state.leak")
         self.assertTrue(any("m" in str(item) for item in ctx.exception.actual))
 
+    def test_presence_only_on_halt_refused(self) -> None:
+        actions = ["execute"] * 6 + ["halt"] * 6
+        rows = [_row(rid=f"abs-leak-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row, action in zip(rows, actions, strict=True):
+            meta: dict[str, object] = {"keep": "x"}
+            if action == "halt":
+                meta["danger"] = "yes"
+            row["state"] = {"message": row["state"]["message"], "meta": meta}
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-absence-leak")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+        self.assertTrue(
+            any("danger" in str(item) or "key_count" in str(item) for item in ctx.exception.actual)
+        )
+
+    def test_presence_uncorrelated_twin_accepted(self) -> None:
+        actions = ["execute"] * 6 + ["halt"] * 6
+        rows = [_row(rid=f"abs-twin-{idx}", action=action) for idx, action in enumerate(actions)]
+        for idx, row in enumerate(rows):
+            meta: dict[str, object] = {"keep": "x"}
+            if idx % 2 == 0:
+                meta["danger"] = "yes"
+            row["state"] = {"message": row["state"]["message"], "meta": meta}
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-absence-twin")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
+    def test_null_vs_value_refused(self) -> None:
+        actions = ["execute"] * 6 + ["halt"] * 6
+        rows = [_row(rid=f"null-leak-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row, action in zip(rows, actions, strict=True):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"flag": "yes" if action == "halt" else None},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-null-leak")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+        self.assertTrue(any("flag" in str(item) for item in ctx.exception.actual))
+
+    def test_null_vs_value_uncorrelated_twin_accepted(self) -> None:
+        actions = ["execute"] * 6 + ["halt"] * 6
+        rows = [_row(rid=f"null-twin-{idx}", action=action) for idx, action in enumerate(actions)]
+        for idx, row in enumerate(rows):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"flag": "yes" if idx % 2 == 0 else None},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-null-twin")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
+    def test_keycount_on_halt_refused(self) -> None:
+        actions = ["execute"] * 6 + ["halt"] * 6
+        rows = [_row(rid=f"kc-leak-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row, action in zip(rows, actions, strict=True):
+            meta: dict[str, object] = {"keep": "x"}
+            if action == "halt":
+                meta["extra_a"] = "1"
+                meta["extra_b"] = "2"
+                meta["extra_c"] = "3"
+            row["state"] = {"message": row["state"]["message"], "meta": meta}
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-keycount-leak")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+        self.assertTrue(
+            any("key_count" in str(item) or "extra_" in str(item) for item in ctx.exception.actual)
+        )
+
+    def test_keycount_uncorrelated_twin_accepted(self) -> None:
+        actions = ["execute"] * 6 + ["halt"] * 6
+        rows = [_row(rid=f"kc-twin-{idx}", action=action) for idx, action in enumerate(actions)]
+        for idx, row in enumerate(rows):
+            meta: dict[str, object] = {"keep": "x"}
+            if idx % 2 == 0:
+                meta["extra_a"] = "1"
+                meta["extra_b"] = "2"
+                meta["extra_c"] = "3"
+            row["state"] = {"message": row["state"]["message"], "meta": meta}
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-keycount-twin")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
     def test_bool_column_uncorrelated_twin_accepted(self) -> None:
         actions = ["execute"] * 6 + ["halt"] * 6
         rows = [_row(rid=f"bool-twin-{idx}", action=action) for idx, action in enumerate(actions)]

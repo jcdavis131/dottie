@@ -103,6 +103,10 @@ LEAK_B64_MIN_LEN = 8
 LEAK_B64_MAX_DECODED = 256
 LEAK_BOOL_TRUE = "__bool__:true"
 LEAK_BOOL_FALSE = "__bool__:false"
+LEAK_NULL = "__null__"
+LEAK_ABSENT = "__absent__"
+LEAK_KEY_COUNT_SUFFIX = ".__key_count__"
+LEAK_PRESENT_SUFFIX = ".__present__"
 _LEAK_BOOKKEEPING_KEYS = frozenset(
     {
         "schema",
@@ -690,6 +694,15 @@ def _is_message_key(key: object) -> bool:
     return normalize_leak_key(key) == "message"
 
 
+def _is_leak_synthetic_path(path: str) -> bool:
+    """Presence and key-count features are categorical, never noul copies."""
+    return (
+        path == "__key_count__"
+        or path.endswith(LEAK_KEY_COUNT_SUFFIX)
+        or path.endswith(LEAK_PRESENT_SUFFIX)
+    )
+
+
 def _leak_entropy(counts: Mapping[object, int], n: int) -> float:
     if n <= 0:
         return 0.0
@@ -822,7 +835,7 @@ def _canonical_leak_value(value: object) -> object:
     if isinstance(value, str):
         return value
     if value is None:
-        return None
+        return LEAK_NULL
     return str(value)
 
 
@@ -870,6 +883,9 @@ def _walk_leak_value(
     from_message: bool,
 ) -> None:
     if isinstance(value, Mapping):
+        if not from_message:
+            count_path = f"{path}{LEAK_KEY_COUNT_SUFFIX}" if path else "__key_count__"
+            into[count_path] = len(value)
         for key, child in value.items():
             child_path = f"{path}.{key}" if path else str(key)
             child_is_message = from_message or _is_message_key(key)
@@ -888,21 +904,18 @@ def _walk_leak_value(
         if decoded is not None:
             _walk_leak_value(decoded, f"{path}.<b64>", into, from_message=False)
         if not from_message:
-            token = _canonical_leak_value(value)
-            if token is not None:
-                into[path] = token
+            into[path] = _canonical_leak_value(value)
         return
     if from_message:
         return
-    token = _canonical_leak_value(value)
-    if token is not None:
-        into[path] = token
+    into[path] = _canonical_leak_value(value)
 
 
 def _fields_from_row(row: Mapping[str, Any]) -> dict[str, object]:
     into: dict[str, object] = {}
     state = row.get("state")
     if isinstance(state, Mapping):
+        into["state" + LEAK_KEY_COUNT_SUFFIX] = len(state)
         for key, child in state.items():
             if _is_message_key(key):
                 _walk_leak_value(
@@ -912,10 +925,14 @@ def _fields_from_row(row: Mapping[str, Any]) -> dict[str, object]:
                 _walk_leak_value(
                     child, f"state.{key}", into, from_message=False
                 )
-    for key, child in row.items():
-        if key == "state" or str(key) in _LEAK_BOOKKEEPING_KEYS:
-            continue
-        _walk_leak_value(child, str(key), into, from_message=_is_message_key(key))
+    scored_keys = [
+        key for key in row if key != "state" and str(key) not in _LEAK_BOOKKEEPING_KEYS
+    ]
+    into["__key_count__"] = len(scored_keys) + (1 if isinstance(state, Mapping) else 0)
+    for key in scored_keys:
+        _walk_leak_value(
+            row[key], str(key), into, from_message=_is_message_key(key)
+        )
     return into
 
 
@@ -989,7 +1006,11 @@ def collect_state_leaks(
     refuse. JSON objects inside strings (including a JSON tail on
     ``message``), base64-encoded labels, top-level extra keys, nested
     state, and ``*.jsonl`` sidecars in ``pack_dir`` are unwrapped and
-    scored the same way.
+    scored the same way. JSON ``null`` is the ``__null__`` category;
+    a field missing from a row is ``__absent__`` (distinct from null).
+    Every column also yields a ``.__present__`` feature, and every
+    mapping yields a ``.__key_count__`` feature, so presence-only and
+    key-count leaks are scored, not dropped.
 
     Measure. Let U = Theil's uncertainty coefficient
     ``MI(field; gold) / H(gold)``. Conditional accuracy is the empirical
@@ -1032,13 +1053,25 @@ def collect_state_leaks(
             for path, token in extra.items():
                 columns[path][idx] = token
 
+    for col in columns.values():
+        for idx, token in enumerate(col):
+            if token is None:
+                col[idx] = LEAK_ABSENT
+    for path, col in list(columns.items()):
+        if path.endswith(LEAK_PRESENT_SUFFIX) or path.endswith(LEAK_KEY_COUNT_SUFFIX):
+            continue
+        columns[path + LEAK_PRESENT_SUFFIX] = [
+            LEAK_BOOL_FALSE if token == LEAK_ABSENT else LEAK_BOOL_TRUE for token in col
+        ]
+
     found: list[str] = []
     seen: set[str] = set()
     for path, col in columns.items():
+        synthetic = _is_leak_synthetic_path(path)
         choice_pairs = [
             (value, gold)
             for value, gold in zip(col, choices)
-            if value is not None and gold is not None
+            if gold is not None
         ]
         if choice_pairs:
             values, golds = [pair[0] for pair in choice_pairs], [pair[1] for pair in choice_pairs]
@@ -1049,6 +1082,8 @@ def collect_state_leaks(
                     found.append(item)
                     if len(found) >= 10:
                         return found
+        if synthetic:
+            continue
         noul_pairs = [
             (value, gold)
             for value, gold in zip(col, nouls)
