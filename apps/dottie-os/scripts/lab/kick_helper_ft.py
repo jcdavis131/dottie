@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Stage-5 HELPER factory-trainer kick: point-of-use pack integrity, then kickoff.
 
-Trust comes from CLI anchors (``--expected-sha256-pack`` / ``-train`` /
-``-holdout``) taken from the Mill-signed Swarm HQ pack record or the ticket,
-not from MANIFEST.json alone. Those anchors must match both MANIFEST.json and
-the bytes copied into a run-private directory. Rewriting the pack and the
-MANIFEST together on the host still fails.
+The only trust anchor is a Cam-stamped pack-pin fetched over HTTPS from Swarm
+HQ (``GET {SWARM_HQ_URL}/api/packs/<pack_id>/pin``). The API must report the
+record as created with Cam's stamp token (``recordedBy=cam``,
+``stampVerified=true`` on the server). There is no ticket, Mill-signed, or
+``--cam-pin`` paste path: agents share the host and can fake those. Redis is
+never read. If HQ is unreachable, refuse.
 
-After the gate passes, this script POSTs ``/train/kickoff`` itself with the
-named pack_id, shas, run-private paths and evidence. It never sends
-``inbox: latest``. Copies are re-hashed after kickoff; a mismatch sets
-``ok: false``.
+The pin must be present, match ``MANIFEST.json``, and match the computed hashes
+of the run-private copies. Rewriting the pack and the MANIFEST together still
+fails. After the gate passes, this script POSTs ``/train/kickoff`` with the
+same pin; ``inbox: latest`` is never sent.
 
 There is no skip flag or skip env var. Does not promote, does not touch serve,
 :8770, champion files, or the LIVE gate.
@@ -28,6 +29,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections import Counter
@@ -41,16 +43,19 @@ HOLDOUT_FILE = "curated_pack_v2_holdout.jsonl"
 MANIFEST_FILE = "MANIFEST.json"
 DEFAULT_LOG_NAME = "helper_ft.log"
 DEFAULT_KICKOFF_URL = "http://127.0.0.1:8765/train/kickoff"
+SWARM_HQ_URL_ENV = "SWARM_HQ_URL"
+PIN_SOURCE = "swarm-hq-cam-pin"
+CAM_RECORDED_BY = "cam"
 CHUNK = 1 << 20
 SHA256_LEN = 64
 _HEX = frozenset("0123456789abcdef")
 _GATE_OK = object()
 
-# (manifest sha field, on-disk file, required row-count field, CLI / kick kwarg)
-ARTIFACTS: tuple[tuple[str, str, str, str], ...] = (
-    ("sha256_pack", PACK_FILE, "rows", "--expected-sha256-pack"),
-    ("sha256_train", TRAIN_FILE, "train_rows", "--expected-sha256-train"),
-    ("sha256_holdout", HOLDOUT_FILE, "holdout_rows", "--expected-sha256-holdout"),
+# (manifest sha field, on-disk file, required row-count field)
+ARTIFACTS: tuple[tuple[str, str, str], ...] = (
+    ("sha256_pack", PACK_FILE, "rows"),
+    ("sha256_train", TRAIN_FILE, "train_rows"),
+    ("sha256_holdout", HOLDOUT_FILE, "holdout_rows"),
 )
 
 _FORBIDDEN_SKIP_ENV = (
@@ -295,17 +300,70 @@ def _read_manifest(pack_dir: Path) -> dict[str, Any]:
     return payload
 
 
-def _anchors_from_kwargs(
-    expected_sha256_pack: str | None,
-    expected_sha256_train: str | None,
-    expected_sha256_holdout: str | None,
-) -> dict[str, str]:
-    values = {
-        "--expected-sha256-pack": expected_sha256_pack,
-        "--expected-sha256-train": expected_sha256_train,
-        "--expected-sha256-holdout": expected_sha256_holdout,
+def _require_cam_pin(record: object, pack_id: str) -> dict[str, Any]:
+    """Refuse unless HQ reports a Cam-stamped pin for this pack_id."""
+    if not isinstance(record, dict) or not record:
+        _refuse("cam-pin", "present", "missing")
+    recorded = record.get("recordedBy")
+    if recorded != CAM_RECORDED_BY:
+        _refuse("cam-pin.recordedBy", CAM_RECORDED_BY, recorded)
+    if record.get("stampVerified") is not True:
+        _refuse("cam-pin.stampVerified", True, record.get("stampVerified"))
+    pin_pack = record.get("pack_id")
+    if not isinstance(pin_pack, str) or not pin_pack.strip():
+        _refuse("cam-pin.pack_id", "present", "missing")
+    if pin_pack.strip() != pack_id:
+        _refuse("cam-pin.pack_id", pack_id, pin_pack)
+    pin: dict[str, Any] = {
+        "pack_id": pack_id,
+        "recordedBy": CAM_RECORDED_BY,
+        "stampVerified": True,
+        "source": PIN_SOURCE,
     }
-    return {field: _require_sha256_hex(field, value) for field, value in values.items()}
+    for sha_field, _filename, _rows in ARTIFACTS:
+        pin[sha_field] = _require_sha256_hex(f"cam-pin.{sha_field}", record.get(sha_field))
+    return pin
+
+
+def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
+    """GET ``{SWARM_HQ_URL}/api/packs/<pack_id>/pin`` over HTTPS. Never Redis."""
+    if not isinstance(pack_id, str) or not pack_id.strip():
+        _refuse("pack_id", "present", "missing")
+    base = os.environ.get(SWARM_HQ_URL_ENV)
+    if not isinstance(base, str) or not base.strip():
+        _refuse(SWARM_HQ_URL_ENV, "present", "missing")
+    base = base.strip()
+    if not base.lower().startswith("https://"):
+        _refuse(SWARM_HQ_URL_ENV, "https URL", base)
+    url = base.rstrip("/") + "/api/packs/" + urllib.parse.quote(pack_id.strip(), safe="") + "/pin"
+    request = urllib.request.Request(
+        url, method="GET", headers={"Accept": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            blob = response.read()
+            status = getattr(response, "status", None) or response.getcode()
+    except urllib.error.HTTPError as exc:
+        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {exc.code}")
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", None) or exc
+        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"unreachable:{reason}")
+    except OSError as exc:
+        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"OSError:{getattr(exc, 'errno', None)}")
+    if status not in (200, None) and int(status) != 200:
+        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {status}")
+    try:
+        raw = blob.decode("utf-8")
+    except UnicodeDecodeError:
+        _refuse("cam-pin", "utf-8 JSON", "invalid encoding")
+    try:
+        payload = json.loads(raw) if raw else None
+    except ValueError:
+        _refuse("cam-pin", "JSON object", "invalid JSON")
+    if not isinstance(payload, dict) or not payload:
+        _refuse("cam-pin", "present", "missing")
+    record = payload.get("pin") if isinstance(payload.get("pin"), dict) else payload
+    return record
 
 
 def _line_identities(path: Path, field: str) -> tuple[list[str], list[str]]:
@@ -352,23 +410,14 @@ def _split_soundness(run_private: Path, computed_shas: Mapping[str, str]) -> Non
 def verify_and_stage(
     pack_dir: Path,
     *,
-    expected_sha256_pack: str | None,
-    expected_sha256_train: str | None,
-    expected_sha256_holdout: str | None,
-    anchor_source: str | None,
     run_private: Path,
 ) -> dict[str, Any]:
-    """Copy-hash pack/train/holdout into ``run_private`` and check CLI anchors.
+    """Copy-hash pack/train/holdout and check them against the Cam HQ pin.
 
     Returns evidence fields on success. Raises KickRefused on any failure. Does not
-    start training or POST kickoff.
+    start training or POST kickoff. No MANIFEST-only or ticket fallback.
     """
     _refuse_skip_env()
-    if not isinstance(anchor_source, str) or not anchor_source.strip():
-        _refuse("--anchor-source", "present", "missing")
-    anchors = _anchors_from_kwargs(
-        expected_sha256_pack, expected_sha256_train, expected_sha256_holdout
-    )
     pack_root = _resolve_pack_dir(Path(pack_dir))
     run_private = Path(run_private)
     run_private.mkdir(parents=True, exist_ok=True)
@@ -384,15 +433,16 @@ def verify_and_stage(
     pack_id = manifest.get("pack_id")
     if not isinstance(pack_id, str) or not pack_id.strip():
         _refuse("pack_id", "present", "missing")
+    pack_id = pack_id.strip()
     if manifest.get("champion_touched") is not False:
         _refuse("champion_touched", False, manifest.get("champion_touched"))
+    pin = _require_cam_pin(fetch_cam_pin(pack_id), pack_id)
 
     computed_shas: dict[str, str] = {}
     manifest_shas: dict[str, str] = {}
     row_counts: dict[str, dict[str, int]] = {}
-    abs_paths: dict[str, str] = {}
 
-    for sha_field, filename, rows_field, cli_field in ARTIFACTS:
+    for sha_field, filename, rows_field in ARTIFACTS:
         src = _regular_file_in_pack(pack_root, filename)
         dest = run_private / filename
         computed = _copy_and_hash(src, dest, sha_field)
@@ -406,11 +456,11 @@ def verify_and_stage(
         if not isinstance(manifest_value, str) or not manifest_value:
             _refuse(sha_field, "present", "missing")
         manifest_sha = _require_sha256_hex(sha_field, manifest_value)
-        anchor = anchors[cli_field]
-        if anchor != manifest_sha:
-            _refuse(sha_field, anchor, manifest_sha)
-        if anchor != computed:
-            _refuse(sha_field, anchor, computed)
+        pin_sha = pin[sha_field]
+        if pin_sha != manifest_sha:
+            _refuse(sha_field, pin_sha, manifest_sha)
+        if pin_sha != computed:
+            _refuse(sha_field, pin_sha, computed)
         computed_shas[sha_field] = computed
         manifest_shas[sha_field] = manifest_sha
         row_counts[filename] = {"expected": expected_rows, "actual": actual_rows}
@@ -426,14 +476,15 @@ def verify_and_stage(
     _split_soundness(run_private, computed_shas)
 
     return {
-        "pack_id": pack_id.strip(),
+        "pack_id": pack_id,
         "host": socket.gethostname(),
-        "anchor_source": anchor_source.strip(),
+        "anchor_source": PIN_SOURCE,
+        "pin": pin,
         "computed_shas": computed_shas,
         "expected_shas": {
-            "sha256_pack": anchors["--expected-sha256-pack"],
-            "sha256_train": anchors["--expected-sha256-train"],
-            "sha256_holdout": anchors["--expected-sha256-holdout"],
+            "sha256_pack": pin["sha256_pack"],
+            "sha256_train": pin["sha256_train"],
+            "sha256_holdout": pin["sha256_holdout"],
         },
         "manifest_shas": manifest_shas,
         "row_counts": row_counts,
@@ -518,7 +569,7 @@ def post_kickoff(body: dict[str, Any], url: str = DEFAULT_KICKOFF_URL) -> dict[s
 
 def _recheck_copies(run_private: Path, evidence: dict[str, Any]) -> None:
     post: dict[str, str] = {}
-    for sha_field, filename, _rows, _cli in ARTIFACTS:
+    for sha_field, filename, _rows in ARTIFACTS:
         actual = sha256_file(run_private / filename)
         post[sha_field] = actual
         expected = evidence["computed_shas"][sha_field]
@@ -532,16 +583,12 @@ def _recheck_copies(run_private: Path, evidence: dict[str, Any]) -> None:
 def kick(
     pack_dir: Path,
     *,
-    expected_sha256_pack: str | None = None,
-    expected_sha256_train: str | None = None,
-    expected_sha256_holdout: str | None = None,
-    anchor_source: str | None = None,
     log_path: Path | None = None,
     start_training: StartTraining | None = None,
     kickoff: KickoffFn | None = None,
     kickoff_url: str = DEFAULT_KICKOFF_URL,
 ) -> dict[str, Any]:
-    """Verify CLI anchors, stage private copies, POST kickoff, re-check shas.
+    """Fetch the Cam HQ pin, stage private copies, POST kickoff, re-check shas.
 
     ``start_training`` / ``kickoff`` are test injection hooks and still run only
     after the gate. CLI and env cannot supply them. There is no skip/override.
@@ -568,7 +615,7 @@ def kick(
         "checkpoint_id": None,
         "script_git_sha": _script_git_sha(),
         "host": socket.gethostname(),
-        "anchor_source": anchor_source,
+        "anchor_source": PIN_SOURCE,
         "evidence_path": str(evidence_path.resolve()),
         "checked_at": _utc_now(),
     }
@@ -577,14 +624,7 @@ def kick(
         write_evidence(evidence, evidence_path)
 
     try:
-        staged = verify_and_stage(
-            pack_dir,
-            expected_sha256_pack=expected_sha256_pack,
-            expected_sha256_train=expected_sha256_train,
-            expected_sha256_holdout=expected_sha256_holdout,
-            anchor_source=anchor_source,
-            run_private=run_private,
-        )
+        staged = verify_and_stage(pack_dir, run_private=run_private)
         evidence.update(staged)
         evidence["run_id"] = run_id
         evidence["checkpoint_id"] = None
@@ -598,6 +638,7 @@ def kick(
             "sha256_train": evidence["computed_shas"]["sha256_train"],
             "sha256_holdout": evidence["computed_shas"]["sha256_holdout"],
             "expected_shas": dict(evidence["expected_shas"]),
+            "pin": dict(evidence["pin"]),
             "run_private_dir": evidence["run_private_dir"],
             "paths": evidence["paths"],
             "evidence": dict(evidence),
@@ -656,26 +697,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="run log path; evidence JSON is written in that run directory",
     )
     parser.add_argument(
-        "--expected-sha256-pack",
-        default=None,
-        help="trust-anchor SHA-256 of curated_pack_v2.jsonl (ticket or Mill-signed HQ record)",
-    )
-    parser.add_argument(
-        "--expected-sha256-train",
-        default=None,
-        help="trust-anchor SHA-256 of curated_pack_v2_train.jsonl",
-    )
-    parser.add_argument(
-        "--expected-sha256-holdout",
-        default=None,
-        help="trust-anchor SHA-256 of curated_pack_v2_holdout.jsonl",
-    )
-    parser.add_argument(
-        "--anchor-source",
-        default=None,
-        help="where the CLI hashes came from, e.g. ticket or mill-signed-swarm-hq",
-    )
-    parser.add_argument(
         "--kickoff-url",
         default=DEFAULT_KICKOFF_URL,
         help="HELPER FT POST /train/kickoff URL (default 127.0.0.1:8765)",
@@ -688,10 +709,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         evidence = kick(
             args.pack,
-            expected_sha256_pack=args.expected_sha256_pack,
-            expected_sha256_train=args.expected_sha256_train,
-            expected_sha256_holdout=args.expected_sha256_holdout,
-            anchor_source=args.anchor_source,
             log_path=args.log,
             kickoff_url=args.kickoff_url,
         )

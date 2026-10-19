@@ -2,8 +2,8 @@
 """Forge-runner HELPER FT ``POST /train/kickoff`` handler (:8765).
 
 Re-hashes run-private pack/train/holdout itself and compares those digests
-with the request shas and with the CLI/HQ anchors. An evidence blob that
-exists or says ``ok: true`` is not enough.
+with the request shas and with the Cam Swarm HQ pin carried in the request.
+An evidence blob that exists or says ``ok: true`` is not enough.
 
 ``inbox: latest`` and every other HELPER FT start route are refused. Stdlib
 only. Does not promote, does not touch serve, :8770, or champion files.
@@ -165,24 +165,31 @@ def handle_train_kickoff(
             return _bad("evidence.run_id", run_id, disk_ev.get("run_id"))
         if disk_ev.get("ok") is False:
             return _bad("evidence.ok", True, False)
+    pin = body.get("pin")
+    if not isinstance(pin, dict) or not pin:
+        return _bad("pin", "present", "missing")
+    if pin.get("recordedBy") != "cam":
+        return _bad("pin.recordedBy", "cam", pin.get("recordedBy"))
+    if pin.get("stampVerified") is not True:
+        return _bad("pin.stampVerified", True, pin.get("stampVerified"))
+    if pin.get("pack_id") != pack_id:
+        return _bad("pin.pack_id", pack_id, pin.get("pack_id"))
     paths = body.get("paths")
     if not isinstance(paths, dict) or not paths:
         return _bad("paths", "present", "missing")
-    body_anchor = body.get("expected_shas")
-    if not isinstance(body_anchor, dict) or not body_anchor:
-        return _bad("expected_shas", "present", "missing")
-    ev_anchor = evidence.get("expected_shas")
+    body_anchor = pin
+    ev_anchor = evidence.get("pin") if isinstance(evidence.get("pin"), dict) else evidence.get("expected_shas")
     if not isinstance(ev_anchor, dict) or not ev_anchor:
-        return _bad("evidence.expected_shas", "present", "missing")
+        return _bad("evidence.pin", "present", "missing")
     computed = evidence.get("computed_shas") if isinstance(evidence.get("computed_shas"), dict) else {}
     for sha_field, path_key in SHA_FIELDS:
         req = _require_sha(sha_field, body.get(sha_field))
         if isinstance(req, dict):
             return req
-        anchor = _require_sha(f"expected_shas.{sha_field}", body_anchor.get(sha_field))
+        anchor = _require_sha(f"pin.{sha_field}", body_anchor.get(sha_field))
         if isinstance(anchor, dict):
             return anchor
-        ev_expected = _require_sha(f"evidence.expected_shas.{sha_field}", ev_anchor.get(sha_field))
+        ev_expected = _require_sha(f"evidence.pin.{sha_field}", ev_anchor.get(sha_field))
         if isinstance(ev_expected, dict):
             return ev_expected
         if req != anchor:
