@@ -5369,14 +5369,27 @@ class HelperFtContentUuidTests(unittest.TestCase):
         self.assertNotEqual(digest, content_uuid.content_uuid(nested_ts))
         self.assertEqual(digest, content_uuid.content_uuid(top_only))
 
-    def test_int_and_float_are_distinct(self) -> None:
+    def test_integer_valued_float_matches_int(self) -> None:
         as_int = {"state": {"n": 1}, "questions": {"action": {"type": "choice"}}}
         as_float = {"state": {"n": 1.0}, "questions": {"action": {"type": "choice"}}}
-        self.assertNotEqual(
+        self.assertEqual(
             content_uuid.content_uuid(as_int), content_uuid.content_uuid(as_float)
         )
+        self.assertEqual(
+            content_uuid.canonical_content_bytes(as_int),
+            content_uuid.canonical_content_bytes(as_float),
+        )
         self.assertIn(b'"n":1}', content_uuid.canonical_content_bytes(as_int))
-        self.assertIn(b'"n":1.0}', content_uuid.canonical_content_bytes(as_float))
+        self.assertNotIn(b'"n":1.0}', content_uuid.canonical_content_bytes(as_float))
+
+    def test_negative_zero_matches_int_zero(self) -> None:
+        as_neg_zero = {"state": {"n": -0.0}, "questions": {"action": {"type": "choice"}}}
+        as_int_zero = {"state": {"n": 0}, "questions": {"action": {"type": "choice"}}}
+        self.assertEqual(
+            content_uuid.content_uuid(as_neg_zero),
+            content_uuid.content_uuid(as_int_zero),
+        )
+        self.assertIn(b'"n":0}', content_uuid.canonical_content_bytes(as_neg_zero))
 
     def test_bools_do_not_collapse_with_0_1(self) -> None:
         as_true = {"state": {"flag": True}, "questions": {"action": {"type": "choice"}}}
@@ -5552,6 +5565,33 @@ class HelperFtContentUuidTests(unittest.TestCase):
         self.assertIn("xsplit-train", listed)
         self.assertIn("xsplit-hold", listed)
         self.assertIn("cross-split duplicate", listed)
+
+    def test_cross_split_int_vs_integer_float_is_duplicate(self) -> None:
+        a = _row(rid="ifloat-train", action="execute")
+        b = _row(rid="ifloat-hold", action="execute")
+        filler = _row(rid="ifloat-filler", action="halt")
+        a["state"] = {"message": "int vs integer float body", "n": 1}
+        b["state"] = {"message": "int vs integer float body", "n": 1.0}
+        b["questions"] = json.loads(json.dumps(a["questions"]))
+        b["labels"] = json.loads(json.dumps(a["labels"]))
+        filler["state"] = {"message": "other"}
+        self.assertEqual(content_uuid.content_uuid(a), content_uuid.content_uuid(b))
+        self.assertEqual(
+            content_uuid.canonical_labels_bytes(a), content_uuid.canonical_labels_bytes(b)
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_split_pack(
+                dest, [a, filler], [b], pack_id="uuid-cross-split-int-float"
+            )
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "content_uuid.cross_split_duplicate")
+        listed = " ".join(str(item) for item in ctx.exception.actual)
+        self.assertIn("ifloat-train", listed)
+        self.assertIn("ifloat-hold", listed)
 
     def test_source_uuid_64hex_is_not_a_content_uuid(self) -> None:
         a = _row(rid="ds-a", action="execute")

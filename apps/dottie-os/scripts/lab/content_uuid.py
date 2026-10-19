@@ -19,12 +19,15 @@ top-level key.
 Encoding, exactly:
 1. Build a JSON object with the included fields that are present (a missing
    field is omitted, not null).
-2. Unicode NFC-normalize every string in that object (keys and values).
+2. Recursively canonicalize that object. ``type(v) is bool`` is left as a
+   JSON bool (``true``/``false``) and is checked **before** int/float
+   handling, so bools never collapse with ``0``/``1``. Any finite float
+   ``f`` with ``f.is_integer()`` becomes ``int(f)`` (so ``1.0`` hashes as
+   ``1``, and ``-0.0`` becomes ``0``). Non-integer floats keep their
+   ``json.dumps`` repr. Strings (keys and values) are Unicode NFC.
+   ``NaN`` and ``±Infinity`` anywhere in ``state``/``questions`` are refused.
 3. ``json.dumps(..., sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-   allow_nan=False)``. Numbers stay distinct as ``json.dumps`` renders them:
-   ``1`` (int) ≠ ``1.0`` (float). Bools are JSON ``true``/``false`` and never
-   collapse with ``0``/``1``. ``NaN`` and ``±Infinity`` anywhere in
-   ``state``/``questions`` are refused.
+   allow_nan=False)``.
 4. UTF-8 encode those JSON bytes.
 5. ``sha256`` hex digest of those bytes is the content uuid.
 
@@ -77,47 +80,52 @@ def _non_finite_label(value: float) -> str:
     return "-Infinity"
 
 
-def _refuse_non_finite(value: Any, path: str = "") -> None:
-    """Refuse NaN/±Infinity. ``type is float`` so bools are not inspected."""
-    if type(value) is float and (math.isnan(value) or math.isinf(value)):
-        label = _non_finite_label(value)
-        loc = path or "value"
-        raise ContentUuidError(
-            "content_uuid.non_finite",
-            "finite JSON number",
-            label,
-            f"non-finite number ({label}) in {loc}",
-        )
-    if isinstance(value, Mapping):
-        for key, child in value.items():
-            child_path = f"{path}.{key}" if path else str(key)
-            _refuse_non_finite(child, child_path)
-        return
-    if isinstance(value, (list, tuple)):
-        for idx, child in enumerate(value):
-            _refuse_non_finite(child, f"{path}[{idx}]")
+def _canonicalize_value(value: Any, path: str = "") -> Any:
+    """NFC strings; integer-valued floats → int; bools stay bools; refuse NaN/Inf.
 
-
-def _nfc_value(value: Any) -> Any:
+    ``type(v) is bool`` is checked before int/float handling so ``True``
+    does not collapse with ``1``.
+    """
+    if type(value) is bool:
+        return value
+    if type(value) is float:
+        if math.isnan(value) or math.isinf(value):
+            label = _non_finite_label(value)
+            loc = path or "value"
+            raise ContentUuidError(
+                "content_uuid.non_finite",
+                "finite JSON number",
+                label,
+                f"non-finite number ({label}) in {loc}",
+            )
+        if value.is_integer():
+            return int(value)
+        return value
     if isinstance(value, str):
         return unicodedata.normalize("NFC", value)
     if isinstance(value, Mapping):
-        return {_nfc_value(str(key)): _nfc_value(child) for key, child in value.items()}
-    if isinstance(value, list):
-        return [_nfc_value(child) for child in value]
-    if isinstance(value, tuple):
-        return [_nfc_value(child) for child in value]
+        payload: dict[str, Any] = {}
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            payload[_canonicalize_value(str(key), child_path)] = _canonicalize_value(
+                child, child_path
+            )
+        return payload
+    if isinstance(value, (list, tuple)):
+        return [
+            _canonicalize_value(child, f"{path}[{idx}]")
+            for idx, child in enumerate(value)
+        ]
     return value
 
 
 def canonical_json_bytes(value: Any) -> bytes:
     """UTF-8 JSON: NFC strings, sorted keys, compact ``,`` / ``:`` separators.
 
-    Ints and floats stay distinct (``1`` ≠ ``1.0``). Bools stay ``true``/
-    ``false``. ``allow_nan=False`` so NaN/±Infinity refuse.
+    Integer-valued floats hash as ints (``1.0`` → ``1``, ``-0.0`` → ``0``).
+    Bools stay ``true``/``false``. ``allow_nan=False`` so NaN/±Infinity refuse.
     """
-    _refuse_non_finite(value)
-    payload = _nfc_value(value)
+    payload = _canonicalize_value(value)
     try:
         text = json.dumps(
             payload,
