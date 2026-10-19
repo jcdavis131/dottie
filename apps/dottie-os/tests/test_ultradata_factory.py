@@ -20,6 +20,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 import urllib.error
 import urllib.parse
@@ -3262,6 +3264,112 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(ctx.exception.actual, "unobserved")
         self.assertNotEqual(ctx.exception.actual, 0)
 
+    def test_private_copy_survives_5mib_same_size_rewrite(self) -> None:
+        """B-RACE: trainer reads the hashed buffer copy, not the original path."""
+        pad = "x" * (5 * 1024 * 1024)
+        seen: dict[str, str] = {}
+
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del log_path
+            train_copy = Path(evidence["paths"]["train"])
+            pack_copy = Path(evidence["paths"]["pack"])
+            self.assertTrue(str(train_copy).startswith(str(Path(evidence["run_private_dir"]))))
+            self.assertNotEqual(train_copy.resolve(), (source / "curated_pack_v2_train.jsonl").resolve())
+            seen["train"] = hashlib.sha256(train_copy.read_bytes()).hexdigest()
+            seen["pack"] = hashlib.sha256(pack_copy.read_bytes()).hexdigest()
+            src_train = source / "curated_pack_v2_train.jsonl"
+            original = src_train.read_bytes()
+            flipped = bytearray(original)
+            for idx, byte in enumerate(flipped):
+                if 97 <= byte <= 122 and byte != 121:
+                    flipped[idx] = 121
+                    break
+            self.assertEqual(len(flipped), len(original))
+            src_train.write_bytes(bytes(flipped))
+            self.assertEqual(len(src_train.read_bytes()), len(original))
+            return {"ok": True, "exit_code": 0}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "inbox-pack"
+            source.mkdir()
+            rows = [
+                _row(rid="big-0", action="execute"),
+                _row(rid="big-1", action="halt"),
+            ]
+            rows[0]["state"] = {"message": pad}
+            manifest = _write_action_pack(source, rows, pack_id="b-race-5mib")
+            self.assertGreaterEqual(
+                (source / "curated_pack_v2_train.jsonl").stat().st_size, 5 * 1024 * 1024
+            )
+            self._pin(manifest)
+            original_train_sha = manifest["sha256_train"]
+            evidence = kick_helper_ft.kick(source, start_training=start)
+            rec = json.loads(
+                Path(evidence["checkpoint_integrity_evidence_path"]).read_text(encoding="utf-8")
+            )
+            rewritten_train_sha = kick_helper_ft.sha256_file(
+                source / "curated_pack_v2_train.jsonl"
+            )
+        self.assertEqual(evidence["result"], "MATCH")
+        self.assertEqual(seen["train"], evidence["private_copy_shas"]["sha256_train"])
+        self.assertEqual(seen["pack"], evidence["private_copy_shas"]["sha256_pack"])
+        self.assertEqual(evidence["private_copy_shas"], evidence["computed_shas"])
+        self.assertEqual(rec["private_copy_shas"]["sha256_train"], seen["train"])
+        self.assertEqual(evidence["computed_shas"]["sha256_train"], original_train_sha)
+        self.assertNotEqual(rewritten_train_sha, seen["train"])
+
+    def test_evidence_swapper_cannot_post_match_on_refused_exit(self) -> None:
+        stop = threading.Event()
+
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del pack_dir, evidence, log_path
+            proc = subprocess.Popen([sys.executable, "-c", "raise SystemExit(1)"])
+            return {"ok": True, "process": proc}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            run_dir = log_path.parent
+            run_dir.mkdir(parents=True)
+
+            def swapper() -> None:
+                forged = (
+                    json.dumps({"status": "MATCH", "exit_code": 0, "match": True}) + "\n"
+                ).encode("utf-8")
+                while not stop.is_set():
+                    for root, _dirs, files in os.walk(run_dir):
+                        target = Path(root) / kick_helper_ft.INTEGRITY_EVIDENCE_NAME
+                        if target.name in files or target.parent.name.startswith("ckpt"):
+                            tmp_path = target.with_name(target.name + ".swap")
+                            try:
+                                tmp_path.write_bytes(forged)
+                                os.replace(tmp_path, target)
+                                if os.name == "posix":
+                                    os.chmod(target, 0o400)
+                            except OSError:
+                                pass
+                    time.sleep(0.001)
+
+            thread = threading.Thread(target=swapper, daemon=True)
+            thread.start()
+            try:
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.kick(dest, log_path=log_path, start_training=start)
+            finally:
+                stop.set()
+                thread.join(timeout=2)
+        self.assertIn(
+            ctx.exception.field,
+            ("trainer.exit", kick_helper_ft.INTEGRITY_EVIDENCE_NAME),
+        )
+        self.assertNotEqual(ctx.exception.actual, "MATCH")
+        posts = [p for p in self.hq_posts if str(p["url"]).endswith("/completion")]
+        for post in posts:
+            self.assertNotEqual(post["body"]["result"], "MATCH")
+
     def test_kick_posts_hq_kick_and_completion_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -3415,7 +3523,11 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         def kickoff(body: dict) -> dict:
             return helper_ft_kickoff.handle_train_kickoff(
                 body,
-                launch_trainer=lambda _b: {"ok": True, "checkpoint_id": "ckpt-once"},
+                launch_trainer=lambda _b: {
+                    "ok": True,
+                    "checkpoint_id": "ckpt-once",
+                    "exit_code": 0,
+                },
             )
 
         buf = StringIO()

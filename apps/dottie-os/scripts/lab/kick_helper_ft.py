@@ -614,8 +614,8 @@ def _regular_file_in_pack(pack_root: Path, filename: str) -> Path:
     return raw
 
 
-def _copy_and_hash(src: Path, dest: Path, field: str) -> str:
-    """Open with O_NOFOLLOW, hash the stream while writing a private copy."""
+def _read_file_buffer(src: Path, field: str) -> bytes:
+    """Read the whole regular file through one held fd. No path reopen."""
     try:
         fd = os.open(src, _open_flags_read())
     except OSError as exc:
@@ -626,30 +626,62 @@ def _copy_and_hash(src: Path, dest: Path, field: str) -> str:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):
             _refuse(field, "regular file", "non-regular")
-        digest = hashlib.sha256()
-        try:
-            out_fd = os.open(dest, _open_flags_write(), 0o600)
-        except OSError as exc:
-            _refuse(field, "writable copy", f"OSError:{exc.errno}")
-        try:
-            while True:
-                block = os.read(fd, CHUNK)
-                if not block:
-                    break
-                digest.update(block)
-                os.write(out_fd, block)
-        except OSError as exc:
-            _refuse(field, "readable regular file", f"OSError:{exc.errno}")
-        finally:
-            os.close(out_fd)
-        try:
-            os.chmod(dest, 0o400)
-        except OSError:
-            if os.name != "nt":
-                raise
-        return digest.hexdigest()
+        chunks: list[bytes] = []
+        while True:
+            block = os.read(fd, CHUNK)
+            if not block:
+                break
+            chunks.append(block)
+        return b"".join(chunks)
+    except OSError as exc:
+        _refuse(field, "readable regular file", f"OSError:{exc.errno}")
+        raise AssertionError("unreachable")
     finally:
         os.close(fd)
+
+
+def _write_buffer_exclusive(dest: Path, buf: bytes, field: str) -> None:
+    """Write ``buf`` through O_CREAT|O_EXCL, fsync, fchmod 0400. Same bytes hashed."""
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        out_fd = os.open(dest, _open_flags_write(), 0o600)
+    except OSError as exc:
+        _refuse(field, "exclusive writable copy", f"OSError:{exc.errno}")
+    try:
+        view = memoryview(buf)
+        offset = 0
+        while offset < len(buf):
+            offset += os.write(out_fd, view[offset:])
+        if hasattr(os, "fsync"):
+            os.fsync(out_fd)
+        if os.name == "posix" and hasattr(os, "fchmod"):
+            os.fchmod(out_fd, 0o400)
+        else:
+            os.chmod(dest, 0o400)
+        written = os.fstat(out_fd)
+        try:
+            named = os.lstat(dest)
+        except OSError as exc:
+            _refuse(field, "same inode", f"OSError:{exc.errno}")
+        if (written.st_dev, written.st_ino) != (named.st_dev, named.st_ino):
+            _refuse(field, "same inode", "path swapped")
+    except OSError as exc:
+        _refuse(field, "writable copy", f"OSError:{exc.errno}")
+    finally:
+        os.close(out_fd)
+
+
+def _copy_and_hash(src: Path, dest: Path, field: str) -> str:
+    """Read into a buffer, hash that buffer, write the same buffer to a private copy.
+
+    The trainer must read only the private copy. Hashing a stream while writing
+    and then reopening a shared path leaves a TOCTOU window (B-RACE).
+    """
+    buf = _read_file_buffer(src, field)
+    digest = hashlib.sha256(buf).hexdigest()
+    _write_buffer_exclusive(dest, buf, field)
+    return digest
 
 
 def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -1833,6 +1865,7 @@ def verify_and_stage(
         "anchor_source": PIN_SOURCE,
         "pin": pin,
         "computed_shas": computed_shas,
+        "private_copy_shas": dict(computed_shas),
         "expected_shas": {
             "sha256_pack": pin["sha256_pack"],
             "sha256_train": pin["sha256_train"],
@@ -1854,8 +1887,16 @@ def write_evidence(
     *,
     mode: int | None = None,
 ) -> Path:
-    """Atomically write evidence JSON (mkstemp in the same directory + os.replace)."""
+    """Atomically write evidence JSON (mkstemp in the same directory + os.replace).
+
+    Checkpoint ``integrity_evidence.json`` must use
+    ``write_integrity_evidence_held`` instead: this replace path is the B-RACE
+    window. Overwrite is only for the run-dir pack evidence log.
+    """
     evidence_path = Path(evidence_path)
+    if evidence_path.name == INTEGRITY_EVIDENCE_NAME:
+        write_integrity_evidence_held(dict(evidence), evidence_path)
+        return evidence_path
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
     payload = (json.dumps(dict(evidence), indent=2) + "\n").encode("utf-8")
     fd, tmp_name = tempfile.mkstemp(
@@ -1868,11 +1909,78 @@ def write_evidence(
     finally:
         os.close(fd)
     os.replace(tmp_name, evidence_path)
-    if mode is None and evidence_path.name == INTEGRITY_EVIDENCE_NAME:
-        mode = 0o400
     if mode is not None and os.name == "posix":
         os.chmod(evidence_path, mode)
     return evidence_path
+
+
+def write_integrity_evidence_held(
+    record: Mapping[str, Any],
+    evidence_path: Path,
+) -> dict[str, Any]:
+    """O_CREAT|O_EXCL write of checkpoint evidence. Hash the bytes written.
+
+    Completion ``result`` is the in-memory ``record["status"]``, never a
+    re-read of a replaceable path. After fsync/fchmod, fstat the held fd
+    and refuse if the named path's dev/inode differ (swapper).
+    """
+    evidence_path = Path(evidence_path)
+    public = _public_integrity_record(record)
+    payload = (json.dumps(public, indent=2) + "\n").encode("utf-8")
+    sha256_evidence = hashlib.sha256(payload).hexdigest()
+    status = public.get("status")
+    result = status if status in (CHECKPOINT_MATCH, CHECKPOINT_REFUSED) else CHECKPOINT_REFUSED
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    if os.path.lexists(evidence_path):
+        try:
+            os.chmod(evidence_path, 0o600)
+        except OSError:
+            pass
+        try:
+            os.unlink(evidence_path)
+        except OSError as exc:
+            _refuse(INTEGRITY_EVIDENCE_NAME, "exclusive create", f"OSError:{exc.errno}")
+    try:
+        fd = os.open(str(evidence_path), _open_flags_write(), 0o600)
+    except OSError as exc:
+        _refuse(INTEGRITY_EVIDENCE_NAME, "exclusive create", f"OSError:{exc.errno}")
+    try:
+        view = memoryview(payload)
+        offset = 0
+        while offset < len(payload):
+            offset += os.write(fd, view[offset:])
+        if hasattr(os, "fsync"):
+            os.fsync(fd)
+        if os.name == "posix" and hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o400)
+        written = os.fstat(fd)
+        try:
+            named = os.lstat(evidence_path)
+        except OSError as exc:
+            _refuse(INTEGRITY_EVIDENCE_NAME, "same inode", f"OSError:{exc.errno}")
+        if (written.st_dev, written.st_ino) != (named.st_dev, named.st_ino):
+            _refuse(INTEGRITY_EVIDENCE_NAME, "same inode", "path swapped")
+        if named.st_nlink != 1:
+            _refuse(INTEGRITY_EVIDENCE_NAME, "nlink=1", named.st_nlink)
+        if os.name == "posix" and stat.S_IMODE(written.st_mode) != 0o400:
+            _refuse(
+                INTEGRITY_EVIDENCE_NAME,
+                "0400",
+                oct(stat.S_IMODE(written.st_mode)),
+            )
+    except KickRefused:
+        raise
+    except OSError as exc:
+        _refuse(INTEGRITY_EVIDENCE_NAME, "held-fd write", f"OSError:{exc.errno}")
+    finally:
+        os.close(fd)
+    return {
+        "sha256_evidence": sha256_evidence,
+        "integrity_evidence": json.loads(payload.decode("utf-8")),
+        "result": result,
+        "st_dev": written.st_dev,
+        "st_ino": written.st_ino,
+    }
 
 
 def format_integrity_evidence_line(
@@ -1993,17 +2101,25 @@ def seal_integrity_evidence(
     record: Mapping[str, Any],
     *,
     log_path: Path | None = None,
+    sealed: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Hash the file this process wrote, then emit the human line."""
-    sealed = load_integrity_completion(evidence_path)
+    """Emit the human line from the in-memory held-fd write. Never re-parse for result."""
+    if sealed is None:
+        sealed = write_integrity_evidence_held(record, evidence_path)
+    out = dict(sealed)
     line = emit_integrity_evidence_line(
         evidence_path,
         record,
         log_path=log_path,
-        sha256_evidence=sealed["sha256_evidence"],
+        sha256_evidence=out["sha256_evidence"],
     )
-    sealed["integrity_evidence_line"] = line
-    return sealed
+    out["integrity_evidence_line"] = line
+    out["result"] = (
+        record["status"]
+        if record.get("status") in (CHECKPOINT_MATCH, CHECKPOINT_REFUSED)
+        else CHECKPOINT_REFUSED
+    )
+    return out
 
 
 def _sha_from_record(record: Mapping[str, Any], field: str) -> str:
@@ -2098,14 +2214,31 @@ def _apply_post_train_record(
         public.update(_entrypoint_event_fields(evidence))
         if "script_git_sha" in evidence:
             public["script_git_sha"] = evidence["script_git_sha"]
-        write_evidence(public, ckpt_path, mode=0o400)
-        sealed = seal_integrity_evidence(ckpt_path, record, log_path=log_path)
+        if isinstance(evidence.get("private_copy_shas"), Mapping):
+            public["private_copy_shas"] = dict(evidence["private_copy_shas"])
+        if evidence.get("run_private_dir"):
+            public["run_private_dir"] = evidence["run_private_dir"]
+        in_memory_result = (
+            record["status"]
+            if record.get("status") in (CHECKPOINT_MATCH, CHECKPOINT_REFUSED)
+            else CHECKPOINT_REFUSED
+        )
+        sealed = write_integrity_evidence_held(public, ckpt_path)
+        try:
+            named = os.lstat(ckpt_path)
+        except OSError as exc:
+            _refuse(INTEGRITY_EVIDENCE_NAME, "same inode", f"OSError:{exc.errno}")
+        if (named.st_dev, named.st_ino) != (sealed["st_dev"], sealed["st_ino"]):
+            _refuse(INTEGRITY_EVIDENCE_NAME, "same inode", "path swapped")
+        sealed = seal_integrity_evidence(
+            ckpt_path, record, log_path=log_path, sealed=sealed
+        )
         evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
         evidence["checkpoint_integrity_status"] = record["status"]
         evidence["integrity_evidence_line"] = sealed["integrity_evidence_line"]
         evidence["sha256_evidence"] = sealed["sha256_evidence"]
         evidence["integrity_evidence"] = sealed["integrity_evidence"]
-        evidence["result"] = sealed["result"]
+        evidence["result"] = in_memory_result
         if post_completion:
             completion = {
                 "run_id": evidence["run_id"],
@@ -2113,7 +2246,7 @@ def _apply_post_train_record(
                 "sha256_pack": _sha_from_record(record, "sha256_pack"),
                 "sha256_train": _sha_from_record(record, "sha256_train"),
                 "sha256_holdout": _sha_from_record(record, "sha256_holdout"),
-                "result": sealed["result"],
+                "result": in_memory_result,
                 "exit_code": record.get("exit_code", 0),
             }
             completion.update(_entrypoint_event_fields(evidence))

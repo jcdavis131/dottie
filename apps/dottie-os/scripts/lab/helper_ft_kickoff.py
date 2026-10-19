@@ -474,18 +474,22 @@ def handle_train_kickoff(
             ckpt_path = ckpt_dir / kick_helper_ft.INTEGRITY_EVIDENCE_NAME
             if smoke:
                 record["smoke"] = True
-            kick_helper_ft.write_evidence(
-                kick_helper_ft._public_integrity_record(record),
-                ckpt_path,
-                mode=0o400,
-            )
+            public = kick_helper_ft._public_integrity_record(record)
+            if isinstance(evidence.get("private_copy_shas"), dict):
+                public["private_copy_shas"] = dict(evidence["private_copy_shas"])
             try:
-                sealed = kick_helper_ft.load_integrity_completion(ckpt_path)
+                sealed = kick_helper_ft.write_integrity_evidence_held(public, ckpt_path)
             except kick_helper_ft.KickRefused as exc:
                 return _bad(exc.field, exc.expected, exc.actual)
+            in_memory_result = (
+                record["status"]
+                if record.get("status")
+                in (kick_helper_ft.CHECKPOINT_MATCH, kick_helper_ft.CHECKPOINT_REFUSED)
+                else kick_helper_ft.CHECKPOINT_REFUSED
+            )
             evidence["sha256_evidence"] = sealed["sha256_evidence"]
             evidence["integrity_evidence"] = sealed["integrity_evidence"]
-            evidence["result"] = sealed["result"]
+            evidence["result"] = in_memory_result
             evidence["exit_code"] = record.get("exit_code", 0)
             if smoke:
                 evidence["smoke"] = True
