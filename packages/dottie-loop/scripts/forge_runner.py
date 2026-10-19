@@ -165,10 +165,20 @@ _STATE_LEAK_KEYS = frozenset(
 
 
 def _fallback_state_leaks(body: dict[str, Any]) -> list[str]:
-    """Off-tree runner still refuses leaked state keys when jsonl paths exist."""
+    """Off-tree runner still refuses leaked gold values when jsonl paths exist."""
     paths = body.get("paths")
     if not isinstance(paths, dict):
         return []
+    pack_dir = body.get("source_pack_dir")
+    evidence = body.get("evidence")
+    if pack_dir is None and isinstance(evidence, dict):
+        pack_dir = evidence.get("source_pack_dir")
+    helper = _load_helper_ft_kickoff()
+    if helper is not None:
+        try:
+            return helper.kick_helper_ft.collect_state_leaks(paths, pack_dir=pack_dir)
+        except Exception:
+            pass
     found: list[str] = []
     seen: set[str] = set()
 

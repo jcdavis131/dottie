@@ -3024,63 +3024,116 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(lines[0], evidence["integrity_evidence_line"])
         self.assertEqual(evidence["result"], "MATCH")
 
-    def _write_state_pack(self, dest: Path, state: dict) -> dict:
-        _write_helper_pack(dest)
-        rows = [_row(rid="leak1", action="execute"), _row(rid="leak2", action="halt")]
-        rows[0]["state"] = state
+    def _write_action_rows_pack(
+        self, dest: Path, rows: list[dict], *, pack_id: str
+    ) -> dict:
+        train, hold = rows[:-1], rows[-1:]
         write_jsonl(dest / "curated_pack_v2.jsonl", rows)
-        write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[:1])
-        write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[1:])
+        write_jsonl(dest / "curated_pack_v2_train.jsonl", train)
+        write_jsonl(dest / "curated_pack_v2_holdout.jsonl", hold)
+        (dest / "MANIFEST.json").write_text(
+            json.dumps(
+                {
+                    "pack_id": pack_id,
+                    "rows": len(rows),
+                    "train_rows": len(train),
+                    "holdout_rows": len(hold),
+                    "champion_touched": False,
+                    "live_gate_touched": False,
+                    "ft_kicked": False,
+                    "consent_champion_false": True,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         return _refresh_hashes(dest)
 
-    def test_nested_state_meta_leaks_refused(self) -> None:
+    def test_constant_suspicious_key_is_not_a_leak(self) -> None:
+        """Names alone do not refuse: same key, constant non-predictive value."""
         self.assertEqual(
             kick_helper_ft.STATE_LEAK_KEYS,
             frozenset({"risk_hint", "halt_class", "provenance", "agent_config", "category"}),
         )
+        actions = ["execute", "execute", "halt", "halt"]
         for key in ("risk_hint", "halt_class", "provenance", "agent_config", "category"):
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "inbox-pack"
                 dest.mkdir()
-                manifest = self._write_state_pack(
-                    dest, {"message": "ok", "meta": {key: "leaked"}}
+                rows = [_row(rid=f"c-{key}-{idx}", action=action) for idx, action in enumerate(actions)]
+                for row in rows:
+                    row["state"] = {
+                        "message": row["state"]["message"],
+                        "meta": {key: "review"},
+                    }
+                manifest = self._write_action_rows_pack(
+                    dest, rows, pack_id=f"const-{key}"
+                )
+                self._pin(manifest)
+                evidence = kick_helper_ft.kick(dest)
+            self.assertEqual(evidence["result"], "MATCH", msg=key)
+
+    def test_gold_aligned_nested_field_is_a_pack_level_leak(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
+        for key in ("risk_hint", "halt_class", "provenance", "agent_config", "category"):
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "inbox-pack"
+                dest.mkdir()
+                rows = [_row(rid=f"g-{key}-{idx}", action=action) for idx, action in enumerate(actions)]
+                for row, action in zip(rows, actions, strict=True):
+                    row["state"] = {
+                        "message": row["state"]["message"],
+                        "meta": {key: action},
+                    }
+                manifest = self._write_action_rows_pack(
+                    dest, rows, pack_id=f"gold-{key}"
                 )
                 self._pin(manifest)
                 with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                     kick_helper_ft.kick(dest)
-            needle = f"state.meta.{key}"
             self.assertEqual(ctx.exception.field, "state.leak")
             self.assertTrue(
-                any(needle in str(item) for item in ctx.exception.actual),
-                msg=needle,
+                any(key in str(item) for item in ctx.exception.actual),
+                msg=key,
             )
 
-    def test_top_level_state_leaks_refused(self) -> None:
+    def test_top_level_gold_aligned_field_refused(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
         for key in ("risk_hint", "halt_class", "provenance", "agent_config", "category"):
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "inbox-pack"
                 dest.mkdir()
-                manifest = self._write_state_pack(dest, {"message": "ok", key: "leaked"})
+                rows = [_row(rid=f"t-{key}-{idx}", action=action) for idx, action in enumerate(actions)]
+                for row, action in zip(rows, actions, strict=True):
+                    row[key] = action
+                manifest = self._write_action_rows_pack(
+                    dest, rows, pack_id=f"top-{key}"
+                )
                 self._pin(manifest)
                 with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                     kick_helper_ft.kick(dest)
-            needle = f"state.{key}"
             self.assertEqual(ctx.exception.field, "state.leak")
             self.assertTrue(
-                any(needle in str(item) for item in ctx.exception.actual),
-                msg=needle,
+                any(key in str(item) for item in ctx.exception.actual),
+                msg=key,
             )
 
     def test_formatting_leaks_are_not_state_leak_gate(self) -> None:
         """Tool names, key shapes, and truncation markers are Mill's pack-time job."""
-        state = {
-            "message": "tool=read_file; detail=src/app.py…",
-            "meta": {"tool": "read_file", "keys": ["cmd", "path"]},
-        }
+        actions = ["execute", "execute", "halt", "halt"]
+        rows = [_row(rid=f"fmt-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row in rows:
+            row["state"] = {
+                "message": "tool=read_file; detail=src/app.py…",
+                "meta": {"tool": "read_file", "keys": ["cmd", "path"]},
+            }
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
-            manifest = self._write_state_pack(dest, state)
+            manifest = self._write_action_rows_pack(
+                dest, rows, pack_id="formatting-not-leak"
+            )
             self._pin(manifest)
             evidence = kick_helper_ft.kick(dest)
         self.assertEqual(evidence["result"], "MATCH")
@@ -3158,12 +3211,12 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertIsInstance(listed, list)
         self.assertLessEqual(len(listed), 10)
         self.assertGreaterEqual(len(listed), 1)
-        for item in listed:
-            self.assertRegex(str(item), r"^l3-\d{3}:state\.meta\.risk_hint$")
+        self.assertTrue(any("risk_hint" in str(item) for item in listed))
         self.assertEqual(len(listed), len(set(listed)))
         self.assertFalse(handler.get("ok"))
         self.assertEqual(handler["field"], "state.leak")
         self.assertLessEqual(len(handler["actual"]), 10)
+        self.assertTrue(any("risk_hint" in str(item) for item in handler["actual"]))
         self.assertFalse(runner_out.get("ok"))
         self.assertEqual(runner_out["field"], "state.leak")
 
@@ -3882,6 +3935,191 @@ class SwarmHqPinContractTests(unittest.TestCase):
                 result = self._result(name, fetch, fixture["pack_id"])
                 self.assertTrue(result.get("ok"))
                 self.assertIs(result["pin"]["stampVerified"], True)
+
+
+LEAKGATE_EVAL_DIR = TESTS / "fixtures" / "leakgate_eval"
+LEAKGATE_MANIFEST_SHA256 = "888645987a1d7e605a1d11046aa08a9e79b997ec602cf929c8333b9d18e068ec"
+
+
+def _write_action_pack(dest: Path, rows: list[dict], *, pack_id: str) -> dict:
+    train, hold = rows[:-1], rows[-1:]
+    write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+    write_jsonl(dest / "curated_pack_v2_train.jsonl", train)
+    write_jsonl(dest / "curated_pack_v2_holdout.jsonl", hold)
+    (dest / "MANIFEST.json").write_text(
+        json.dumps(
+            {
+                "pack_id": pack_id,
+                "rows": len(rows),
+                "train_rows": len(train),
+                "holdout_rows": len(hold),
+                "champion_touched": False,
+                "live_gate_touched": False,
+                "ft_kicked": False,
+                "consent_champion_false": True,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return _refresh_hashes(dest)
+
+
+class HelperFtLeakGateEvalTests(unittest.TestCase):
+    """Mill leak-gate fixtures: 25 refuse + 25 twins + 6 clean, eval-only."""
+
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+        _start_hq_http_mock(self)
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            self.assertNotEqual(body.get("inbox"), "latest")
+            self.assertIn(body.get("mode"), ("helper-ft", "helper-ft-smoke"))
+            return {"ok": True, "checkpoint_id": "ckpt-eval", "exit_code": 0}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+
+    def tearDown(self) -> None:
+        kick_helper_ft.post_kickoff = self._orig_post
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
+
+    def test_fixture_manifest_sha256(self) -> None:
+        path = LEAKGATE_EVAL_DIR / "MANIFEST.json"
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        self.assertEqual(digest, LEAKGATE_MANIFEST_SHA256)
+        self.assertTrue((LEAKGATE_EVAL_DIR / "EVAL_ONLY").is_file())
+
+    def test_mill_leakgate_fixtures_end_to_end(self) -> None:
+        index = json.loads((LEAKGATE_EVAL_DIR / "MANIFEST.json").read_text(encoding="utf-8"))
+        cases = index["case_list"]
+        self.assertEqual(len(cases), 56)
+        results: list[dict[str, object]] = []
+        for spec in cases:
+            case_id = spec["case"]
+            expect = spec["expect"]
+            src = LEAKGATE_EVAL_DIR / "packs" / case_id
+            with self.subTest(case=case_id):
+                with tempfile.TemporaryDirectory() as tmp:
+                    dest = Path(tmp) / case_id
+                    shutil.copytree(src, dest)
+                    manifest = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
+                    self.assertTrue(manifest.get("not_for_train"))
+                    self.assertTrue(manifest.get("eval_only"))
+                    self._pin(manifest)
+                    got = "accept"
+                    field = ""
+                    try:
+                        evidence = kick_helper_ft.kick(dest, smoke=True)
+                        field = str(evidence.get("field") or "")
+                    except kick_helper_ft.KickRefused as exc:
+                        got = "refuse" if exc.field == "state.leak" else f"refuse:{exc.field}"
+                        field = exc.field
+                    self.assertEqual(got, expect, msg=f"{case_id} field={field}")
+            results.append(
+                {
+                    "case": case_id,
+                    "expect": expect,
+                    "got": got,
+                    "ok": got == expect,
+                }
+            )
+        ok_n = sum(1 for row in results if row["ok"])
+        artifact = Path("/opt/cursor/artifacts/leakgate_56_results.md")
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            "# Leak-gate mill fixtures (56/56)",
+            "",
+            f"MANIFEST.json sha256 `{LEAKGATE_MANIFEST_SHA256}`",
+            "",
+            "| case | expect | got | ok |",
+            "|---|---|---|---|",
+        ]
+        for row in results:
+            mark = "PASS" if row["ok"] else "FAIL"
+            lines.append(f"| `{row['case']}` | {row['expect']} | {row['got']} | {mark} |")
+        lines.append("")
+        lines.append(f"Total {ok_n}/56")
+        artifact.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.assertEqual(ok_n, 56)
+
+
+class HelperFtLeakGateSyntheticTests(unittest.TestCase):
+    """Partial-leak and small-n cases, kept separate from Mill's 56 fixtures."""
+
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+        _start_hq_http_mock(self)
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            return {"ok": True, "checkpoint_id": "ckpt-syn", "exit_code": 0}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+
+    def tearDown(self) -> None:
+        kick_helper_ft.post_kickoff = self._orig_post
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
+
+    def test_partial_leak_most_rows_refused(self) -> None:
+        actions = ["execute"] * 8 + ["halt"] * 6 + ["escalate"] * 2
+        rows = [_row(rid=f"part-{idx}", action=action) for idx, action in enumerate(actions)]
+        for idx, row in enumerate(rows):
+            gold = row["labels"]["action"]["choice"]
+            hint = gold if idx >= 4 else f"noise-{idx}"
+            row["state"] = {"message": row["state"]["message"], "meta": {"hint": hint}}
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="synthetic-partial-leak")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+        self.assertTrue(any("hint" in str(item) for item in ctx.exception.actual))
+
+    def test_small_n_perfect_repeated_values_refused(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
+        rows = [_row(rid=f"sm-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row, action in zip(rows, actions, strict=True):
+            row["state"] = {"message": row["state"]["message"], "meta": {"tag": action}}
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="synthetic-small-n-perfect")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+
+    def test_small_n_constant_and_unique_fields_pass(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
+        rows = [_row(rid=f"ok-{idx}", action=action) for idx, action in enumerate(actions)]
+        for idx, row in enumerate(rows):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"flag": "review", "uid": f"row-{idx}"},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="synthetic-small-n-clean")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
 
 
 if __name__ == "__main__":

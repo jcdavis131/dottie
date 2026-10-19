@@ -1,0 +1,14 @@
+{
+ "pack_id": "leakfix-twin_key_RISK_DASH_HINT",
+ "rows": 16,
+ "train_rows": 12,
+ "holdout_rows": 4,
+ "sha256_pack": "3de33661e108372384769bb72871470ffcdb1ffcd4b9f4ddf033701c22167899",
+ "sha256_train": "7d9947806624eb056961d704eb1fd8c18c04d12783bab9cf87226671a345c465",
+ "sha256_holdout": "3938c3d65ea41f5f72b3b6bb262fbbd8561762f4851f5f3c09a43ea3bd8463a1",
+ "eval_only": true,
+ "not_for_train": true,
+ "champion_touched": false,
+ "ft_kicked": false,
+ "live_gate_touched": false
+}

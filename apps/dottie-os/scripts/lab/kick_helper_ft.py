@@ -27,20 +27,24 @@ There is no skip flag or skip env var. Does not promote, does not touch serve,
 from __future__ import annotations
 
 import argparse
+import base64
 import errno
 import hashlib
 import json
+import math
 import os
+import re
 import shutil
 import socket
 import stat
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import urllib.error
 import urllib.request
 import uuid
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, NoReturn
@@ -84,8 +88,30 @@ CHECKPOINT_UNSCORED = "unscored"
 STATE_LEAK_KEYS = frozenset(
     {"risk_hint", "halt_class", "provenance", "agent_config", "category"}
 )
-# The 20261018-185133 pack (sha256_pack a73c792f…) put gold labels in
-# state.meta.risk_hint on all 60 L3 rows. Refuse those keys at any depth.
+# Historical 185133 key names. The gate does **not** refuse on names alone:
+# a denylist key with a constant or uncorrelated value must pass. Detection
+# is pack-level value predictiveness (see collect_state_leaks).
+LEAK_MIN_SUPPORT = 2
+LEAK_U_THRESHOLD = 0.50
+LEAK_LIFT_MARGIN = 0.20
+LEAK_NEAR_PERFECT_ACC = 0.999
+LEAK_B64_MIN_LEN = 8
+LEAK_B64_MAX_DECODED = 256
+_LEAK_BOOKKEEPING_KEYS = frozenset(
+    {
+        "schema",
+        "id",
+        "questions",
+        "labels",
+        "source",
+        "consent",
+        "tier",
+        "trajectory_id",
+    }
+)
+_LEAK_PACK_JSONL = frozenset({PACK_FILE, TRAIN_FILE, HOLDOUT_FILE})
+_LEAK_B64_RE = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")
+_LEAK_FORMAT_CATS = frozenset({"Cc", "Cf", "Mn", "Me"})
 INBOX_LATEST_TOKENS = frozenset(
     {"latest", "inbox_latest", "inbox-latest", "inbox:latest"}
 )
@@ -558,55 +584,390 @@ def collect_not_for_train(
     return hits
 
 
-def _walk_state_leaks(
-    value: object,
+def normalize_leak_key(key: object) -> str:
+    """NFKC, strip format/combining marks, casefold, drop spaces and `_-.`."""
+    text = unicodedata.normalize("NFKC", str(key))
+    text = "".join(ch for ch in text if unicodedata.category(ch) not in _LEAK_FORMAT_CATS)
+    return re.sub(r"[\s_\-.]+", "", text.casefold())
+
+
+def _is_message_key(key: object) -> bool:
+    return normalize_leak_key(key) == "message"
+
+
+def _leak_entropy(counts: Mapping[object, int], n: int) -> float:
+    if n <= 0:
+        return 0.0
+    total = 0.0
+    for count in counts.values():
+        if count:
+            p = count / n
+            total -= p * math.log2(p)
+    return total
+
+
+def _theil_u(values: list[object], golds: list[object]) -> float:
+    """Uncertainty coefficient U(gold|field) = MI(field; gold) / H(gold)."""
+    n = len(values)
+    if n == 0:
+        return 0.0
+    h_gold = _leak_entropy(Counter(golds), n)
+    if h_gold == 0.0:
+        return 0.0
+    by_value: dict[object, list[object]] = defaultdict(list)
+    for value, gold in zip(values, golds):
+        by_value[value].append(gold)
+    h_cond = 0.0
+    for group in by_value.values():
+        h_cond += (len(group) / n) * _leak_entropy(Counter(group), len(group))
+    return (h_gold - h_cond) / h_gold
+
+
+def _conditional_accuracy(
+    values: list[object],
+    golds: list[object],
     *,
+    min_support: int = LEAK_MIN_SUPPORT,
+) -> tuple[float, int, float]:
+    """Per-value majority classifier on values with support >= min_support.
+
+    Returns (accuracy, n_supported, majority_baseline_on_supported).
+    """
+    by_value: dict[object, list[object]] = defaultdict(list)
+    for value, gold in zip(values, golds):
+        by_value[value].append(gold)
+    correct = 0
+    supported: list[object] = []
+    for group in by_value.values():
+        if len(group) < min_support:
+            continue
+        supported.extend(group)
+        predicted = Counter(group).most_common(1)[0][0]
+        correct += sum(1 for gold in group if gold == predicted)
+    if not supported:
+        return 0.0, 0, 0.0
+    baseline = Counter(supported).most_common(1)[0][1] / len(supported)
+    return correct / len(supported), len(supported), baseline
+
+
+def _field_predicts_gold(values: list[object], golds: list[object]) -> bool:
+    """True when repeated field values predict gold above the majority baseline.
+
+    Thresholds (not per-fixture):
+    - Skip constants (1 distinct value) and unique-per-row fields (cardinality
+      == n). Those can be ids or a non-predictive flag; unique values can
+      memorize any labeling.
+    - MIN_SUPPORT=2: a value must appear at least twice before it counts as a
+      repeated predictor. Small-n packs therefore fail closed only when a
+      repeated value is a pure (or near-pure) gold slice.
+    - Fail-closed: conditional accuracy >= LEAK_NEAR_PERFECT_ACC on the
+      supported rows (perfect / near-perfect copies, including n=3 A,A,B).
+    - Partial leaks: Theil's U(gold|field) >= 0.50 (field explains at least
+      half of gold entropy) AND accuracy is at least 20pp above the
+      majority-class baseline. That catches a field that matches gold on
+      most but not all rows without flagging mixed ``status: execute``
+      cycling or ordinary lang/tool constants.
+    """
+    n = len(values)
+    if n < LEAK_MIN_SUPPORT:
+        return False
+    if len(set(golds)) <= 1:
+        # A constant gold cannot be leaked; any co-occurring field would
+        # look like a perfect predictor.
+        return False
+    n_unique = len(set(values))
+    if n_unique <= 1 or n_unique >= n:
+        return False
+    accuracy, supported, baseline = _conditional_accuracy(values, golds)
+    if supported < LEAK_MIN_SUPPORT:
+        return False
+    if accuracy >= LEAK_NEAR_PERFECT_ACC:
+        return True
+    u_score = _theil_u(values, golds)
+    return u_score >= LEAK_U_THRESHOLD and accuracy >= baseline + LEAK_LIFT_MARGIN
+
+
+def _row_gold_choice(row: Mapping[str, Any]) -> str | None:
+    labels = row.get("labels")
+    if not isinstance(labels, Mapping):
+        return None
+    action = labels.get("action")
+    if isinstance(action, Mapping):
+        choice = action.get("choice")
+        if type(choice) is str and choice:
+            return choice
+    domain = labels.get("domain")
+    if isinstance(domain, Mapping):
+        choice = domain.get("choice")
+        if type(choice) is str and choice:
+            return choice
+    return None
+
+
+def _row_gold_noul(row: Mapping[str, Any]) -> float | None:
+    labels = row.get("labels")
+    if not isinstance(labels, Mapping):
+        return None
+    safe = labels.get("safe")
+    if not isinstance(safe, Mapping):
+        return None
+    noul = safe.get("noul")
+    if isinstance(noul, (int, float)) and type(noul) is not bool:
+        return round(float(noul), 6)
+    return None
+
+
+def _canonical_leak_value(value: object) -> object:
+    if isinstance(value, float) and type(value) is not bool:
+        return round(value, 6)
+    if isinstance(value, int) and type(value) is not bool:
+        return value
+    if isinstance(value, str):
+        return value
+    if value is None or type(value) is bool:
+        return None
+    return str(value)
+
+
+def _json_blobs(text: str) -> list[object]:
+    blobs: list[object] = []
+    decoder = json.JSONDecoder()
+    idx = 0
+    length = len(text)
+    while idx < length:
+        ch = text[idx]
+        if ch in "{[":
+            try:
+                obj, end = decoder.raw_decode(text, idx)
+            except ValueError:
+                idx += 1
+                continue
+            blobs.append(obj)
+            idx = end
+            continue
+        idx += 1
+    return blobs
+
+
+def _maybe_b64_text(text: str) -> str | None:
+    blob = text.strip()
+    if len(blob) < LEAK_B64_MIN_LEN or len(blob) % 4:
+        return None
+    if not _LEAK_B64_RE.fullmatch(blob):
+        return None
+    try:
+        raw = base64.b64decode(blob, validate=True)
+        decoded = raw.decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not decoded or decoded == text or len(decoded) > LEAK_B64_MAX_DECODED:
+        return None
+    return decoded
+
+
+def _walk_leak_value(
+    value: object,
     path: str,
-    row_id: str,
-    found: list[str],
-    seen: set[str],
+    into: dict[str, object],
+    *,
+    from_message: bool,
 ) -> None:
-    if len(found) >= 10:
-        return
     if isinstance(value, Mapping):
         for key, child in value.items():
-            key_s = str(key)
-            child_path = f"{path}.{key_s}"
-            if key_s in STATE_LEAK_KEYS:
-                item = f"{row_id}:{child_path}"
-                if item not in seen:
-                    seen.add(item)
-                    found.append(item)
-                    if len(found) >= 10:
-                        return
-            _walk_state_leaks(
-                child, path=child_path, row_id=row_id, found=found, seen=seen
-            )
-    elif isinstance(value, list):
+            child_path = f"{path}.{key}" if path else str(key)
+            child_is_message = from_message or _is_message_key(key)
+            _walk_leak_value(child, child_path, into, from_message=child_is_message)
+        return
+    if isinstance(value, list):
         for idx, child in enumerate(value):
-            _walk_state_leaks(
-                child, path=f"{path}[{idx}]", row_id=row_id, found=found, seen=seen
+            _walk_leak_value(child, f"{path}[{idx}]", into, from_message=from_message)
+        return
+    if isinstance(value, str):
+        for idx, blob in enumerate(_json_blobs(value)):
+            _walk_leak_value(
+                blob, f"{path}.<json{idx}>", into, from_message=False
             )
+        decoded = _maybe_b64_text(value)
+        if decoded is not None:
+            _walk_leak_value(decoded, f"{path}.<b64>", into, from_message=False)
+        if not from_message:
+            token = _canonical_leak_value(value)
+            if token is not None:
+                into[path] = token
+        return
+    if from_message:
+        return
+    token = _canonical_leak_value(value)
+    if token is not None:
+        into[path] = token
 
 
-def collect_state_leaks(recorded_paths: Mapping[str, str]) -> list[str]:
-    found: list[str] = []
+def _fields_from_row(row: Mapping[str, Any]) -> dict[str, object]:
+    into: dict[str, object] = {}
+    state = row.get("state")
+    if isinstance(state, Mapping):
+        for key, child in state.items():
+            if _is_message_key(key):
+                _walk_leak_value(
+                    child, f"state.{key}", into, from_message=True
+                )
+            else:
+                _walk_leak_value(
+                    child, f"state.{key}", into, from_message=False
+                )
+    for key, child in row.items():
+        if key == "state" or str(key) in _LEAK_BOOKKEEPING_KEYS:
+            continue
+        _walk_leak_value(child, str(key), into, from_message=_is_message_key(key))
+    return into
+
+
+def _unique_pack_rows(recorded_paths: Mapping[str, str]) -> list[dict[str, Any]]:
+    """Dedup by id. Prefer the pack file so train∪holdout is not double-counted."""
+    rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     for key in ("pack", "train", "holdout"):
         raw = recorded_paths.get(key)
         if type(raw) is not str or not raw:
             continue
         path = Path(raw)
+        chunk: list[dict[str, Any]] = []
         for obj in _iter_jsonl_objects(path, path.name):
-            _walk_state_leaks(
-                obj.get("state"),
-                path="state",
-                row_id=_row_id(obj),
-                found=found,
-                seen=seen,
-            )
-            if len(found) >= 10:
-                return found
+            rid = _row_id(obj)
+            if rid != "?" and rid in seen:
+                continue
+            seen.add(rid)
+            chunk.append(obj)
+        if key == "pack" and chunk:
+            return chunk
+        rows.extend(chunk)
+    return rows
+
+
+def _sidecar_jsonl_paths(pack_dir: Path | str | None) -> list[Path]:
+    if pack_dir is None:
+        return []
+    root = Path(pack_dir)
+    if not root.is_dir():
+        return []
+    found: list[Path] = []
+    try:
+        for child in root.iterdir():
+            if not child.is_file() or child.suffix != ".jsonl":
+                continue
+            if child.name in _LEAK_PACK_JSONL:
+                continue
+            found.append(child)
+    except OSError:
+        return []
+    return found
+
+
+def _fields_from_sidecar(path: Path) -> dict[str, dict[str, object]]:
+    """Map row id -> {sidecar.<key>: value} from a companion jsonl."""
+    by_id: dict[str, dict[str, object]] = {}
+    for obj in _iter_jsonl_objects(path, path.name):
+        rid = obj.get("id") or obj.get("trajectory_id")
+        if not isinstance(rid, str) or not rid:
+            continue
+        slot = by_id.setdefault(rid, {})
+        for key, child in obj.items():
+            if key in ("id", "trajectory_id"):
+                continue
+            _walk_leak_value(child, f"sidecar.{key}", slot, from_message=_is_message_key(key))
+    return by_id
+
+
+def collect_state_leaks(
+    recorded_paths: Mapping[str, str],
+    pack_dir: Path | str | None = None,
+) -> list[str]:
+    """Pack-level gold-label leak detector.
+
+    A non-``message`` field leaks when its *repeated* values predict the row
+    gold — ``labels.action.choice`` (L3) or ``labels.domain.choice`` (L2),
+    and independently ``labels.safe.noul`` for numeric fields — across the
+    pack. Key names are not a refuse rule: ``risk_hint`` with a constant
+    placeholder must pass; a brand-new key whose values track gold must
+    refuse. JSON objects inside strings (including a JSON tail on
+    ``message``), base64-encoded labels, top-level extra keys, nested
+    state, and ``*.jsonl`` sidecars in ``pack_dir`` are unwrapped and
+    scored the same way.
+
+    Measure. Let U = Theil's uncertainty coefficient
+    ``MI(field; gold) / H(gold)``. Conditional accuracy is the empirical
+    per-value majority classifier, restricted to values with support
+    ``LEAK_MIN_SUPPORT`` (2). Majority baseline is the most common gold
+    among those supported rows.
+
+    Thresholds (statistical defaults, not per-fixture tunings):
+    - Constants (1 distinct value) and unique-per-row fields (cardinality
+      == n) always pass. Unique fields can memorize any labeling; constants
+      cannot separate classes.
+    - A constant gold (one class among the rows that have the field) always
+      passes: any co-occurring field would look perfect otherwise.
+    - Fail closed at small n: accuracy >= ``LEAK_NEAR_PERFECT_ACC`` (0.999)
+      on supported rows refuses even a 3-row A,A,B copy. A 2-row A,B copy
+      is unique-per-row and passes.
+    - Partial leaks: U >= ``LEAK_U_THRESHOLD`` (0.50) and accuracy at least
+      ``LEAK_LIFT_MARGIN`` (0.20) above the majority baseline. Half of gold
+      entropy plus 20pp lift is "matches on most rows" without flagging a
+      mixed ``status`` cycle (~chance) or ordinary ``meta.tool`` / ``lang``.
+    """
+    rows = _unique_pack_rows(recorded_paths)
+    if not rows:
+        return []
+    sidecar_by_id: dict[str, dict[str, object]] = {}
+    for sidecar in _sidecar_jsonl_paths(pack_dir):
+        for rid, fields in _fields_from_sidecar(sidecar).items():
+            sidecar_by_id.setdefault(rid, {}).update(fields)
+
+    columns: dict[str, list[object | None]] = defaultdict(lambda: [None] * len(rows))
+    choices: list[str | None] = []
+    nouls: list[float | None] = []
+    for idx, row in enumerate(rows):
+        choices.append(_row_gold_choice(row))
+        nouls.append(_row_gold_noul(row))
+        for path, token in _fields_from_row(row).items():
+            columns[path][idx] = token
+        extra = sidecar_by_id.get(_row_id(row))
+        if extra:
+            for path, token in extra.items():
+                columns[path][idx] = token
+
+    found: list[str] = []
+    seen: set[str] = set()
+    for path, col in columns.items():
+        choice_pairs = [
+            (value, gold)
+            for value, gold in zip(col, choices)
+            if value is not None and gold is not None
+        ]
+        if choice_pairs:
+            values, golds = [pair[0] for pair in choice_pairs], [pair[1] for pair in choice_pairs]
+            if _field_predicts_gold(values, golds):
+                item = path
+                if item not in seen:
+                    seen.add(item)
+                    found.append(item)
+                    if len(found) >= 10:
+                        return found
+        noul_pairs = [
+            (value, gold)
+            for value, gold in zip(col, nouls)
+            if isinstance(value, (int, float))
+            and type(value) is not bool
+            and gold is not None
+        ]
+        if noul_pairs:
+            values, golds = [pair[0] for pair in noul_pairs], [pair[1] for pair in noul_pairs]
+            if _field_predicts_gold(values, golds):
+                item = path
+                if item not in seen:
+                    seen.add(item)
+                    found.append(item)
+                    if len(found) >= 10:
+                        return found
     return found
 
 
@@ -615,11 +976,12 @@ def enforce_pack_gates(
     recorded_paths: Mapping[str, str],
     *,
     smoke: bool = False,
+    pack_dir: Path | str | None = None,
 ) -> None:
     hits = collect_not_for_train(manifest, recorded_paths)
     if hits and not smoke:
         _refuse("not_for_train", False, hits[:10])
-    leaks = collect_state_leaks(recorded_paths)
+    leaks = collect_state_leaks(recorded_paths, pack_dir=pack_dir)
     if leaks:
         _refuse("state.leak", "absent", leaks[:10])
 
@@ -1053,7 +1415,9 @@ def verify_and_stage(
 
     trainer_paths = trainer_input_paths(run_private)
     _split_soundness(run_private, computed_shas)
-    enforce_pack_gates(manifest, trainer_paths, smoke=smoke)
+    enforce_pack_gates(
+        manifest, trainer_paths, smoke=smoke, pack_dir=pack_root
+    )
 
     return {
         "pack_id": pack_id,

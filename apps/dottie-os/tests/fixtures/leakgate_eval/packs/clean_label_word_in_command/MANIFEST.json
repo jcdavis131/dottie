@@ -1,0 +1,14 @@
+{
+ "pack_id": "leakfix-clean_label_word_in_command",
+ "rows": 16,
+ "train_rows": 12,
+ "holdout_rows": 4,
+ "sha256_pack": "65fbc78a7e00c818cbd547deec5339e820d956c950abcbe726716b8a48f3bef1",
+ "sha256_train": "a548ea6c92a60d3b76ed834f7d5dd2d462461fdf3435c1f93f64f64c84fb7a6f",
+ "sha256_holdout": "0f962cc3322e1d0df4dbf48a44585ba2760b0dd363ca795e4e93d12bc08cc8d6",
+ "eval_only": true,
+ "not_for_train": true,
+ "champion_touched": false,
+ "ft_kicked": false,
+ "live_gate_touched": false
+}

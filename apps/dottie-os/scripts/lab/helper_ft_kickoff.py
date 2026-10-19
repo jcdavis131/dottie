@@ -421,8 +421,14 @@ def handle_train_kickoff(
             return _bad(sha_field, hq_sha, actual)
         if actual != req:
             return _bad(sha_field, req, actual)
+    source_pack = body.get("source_pack_dir") or evidence.get("source_pack_dir")
     try:
-        kick_helper_ft.enforce_pack_gates(manifest, recorded_paths, smoke=smoke)
+        kick_helper_ft.enforce_pack_gates(
+            manifest,
+            recorded_paths,
+            smoke=smoke,
+            pack_dir=source_pack if isinstance(source_pack, str) else None,
+        )
     except kick_helper_ft.KickRefused as exc:
         return _bad(exc.field, exc.expected, exc.actual)
     host = socket.gethostname()
