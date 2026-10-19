@@ -3024,36 +3024,67 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(lines[0], evidence["integrity_evidence_line"])
         self.assertEqual(evidence["result"], "MATCH")
 
-    def test_state_label_leak_nested_and_top_level_refused(self) -> None:
-        def _write_leaky(dest: Path, state: dict) -> dict:
-            _write_helper_pack(dest)
-            rows = [_row(rid="leak1", action="execute"), _row(rid="leak2", action="halt")]
-            rows[0]["state"] = state
-            write_jsonl(dest / "curated_pack_v2.jsonl", rows)
-            write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[:1])
-            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[1:])
-            return _refresh_hashes(dest)
+    def _write_state_pack(self, dest: Path, state: dict) -> dict:
+        _write_helper_pack(dest)
+        rows = [_row(rid="leak1", action="execute"), _row(rid="leak2", action="halt")]
+        rows[0]["state"] = state
+        write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+        write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[:1])
+        write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[1:])
+        return _refresh_hashes(dest)
 
-        cases = (
-            ({"meta": {"risk_hint": "halt"}}, "state.meta.risk_hint"),
-            ({"halt_class": "x", "message": "ok"}, "state.halt_class"),
-            ({"meta": {"provenance": "lab"}}, "state.meta.provenance"),
-            ({"agent_config": "u", "message": "ok"}, "state.agent_config"),
-            ({"category": "L3", "message": "ok"}, "state.category"),
+    def test_nested_state_meta_leaks_refused(self) -> None:
+        self.assertEqual(
+            kick_helper_ft.STATE_LEAK_KEYS,
+            frozenset({"risk_hint", "halt_class", "provenance", "agent_config", "category"}),
         )
-        for state, needle in cases:
+        for key in ("risk_hint", "halt_class", "provenance", "agent_config", "category"):
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "inbox-pack"
                 dest.mkdir()
-                manifest = _write_leaky(dest, state)
+                manifest = self._write_state_pack(
+                    dest, {"message": "ok", "meta": {key: "leaked"}}
+                )
                 self._pin(manifest)
                 with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                     kick_helper_ft.kick(dest)
+            needle = f"state.meta.{key}"
             self.assertEqual(ctx.exception.field, "state.leak")
             self.assertTrue(
                 any(needle in str(item) for item in ctx.exception.actual),
                 msg=needle,
             )
+
+    def test_top_level_state_leaks_refused(self) -> None:
+        for key in ("risk_hint", "halt_class", "provenance", "agent_config", "category"):
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "inbox-pack"
+                dest.mkdir()
+                manifest = self._write_state_pack(dest, {"message": "ok", key: "leaked"})
+                self._pin(manifest)
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.kick(dest)
+            needle = f"state.{key}"
+            self.assertEqual(ctx.exception.field, "state.leak")
+            self.assertTrue(
+                any(needle in str(item) for item in ctx.exception.actual),
+                msg=needle,
+            )
+
+    def test_formatting_leaks_are_not_state_leak_gate(self) -> None:
+        """Tool names, key shapes, and truncation markers are Mill's pack-time job."""
+        state = {
+            "message": "tool=read_file; detail=src/app.py…",
+            "meta": {"tool": "read_file", "keys": ["cmd", "path"]},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write_state_pack(dest, state)
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+        self.assertNotIn("state.leak", json.dumps(evidence))
 
     def test_185133_shaped_synthetic_l3_leaks_refused_on_all_hooks(self) -> None:
         """Replica of 185133: 60 L3 rows with state.meta.risk_hint == gold label.
