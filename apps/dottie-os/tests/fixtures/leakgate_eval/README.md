@@ -4,27 +4,28 @@
 Do not train, GPU-kick, or score a checkpoint on them.
 
 Packs are **not tracked**. `gen.py` rebuilds them into a temp dir at test time
-from `source.json` (16 BASE rows). Timestamp pins: `--ts 20261018-230457`
-and `--produced-at 2026-10-18T23:04:57-05:00` (Mill's production clock).
+from Mill's synthetic `source.json` (16 BASE rows, wrapper
+`{"synthetic": true, "rows": [...]}`). Timestamp pins:
+`--ts 20261018-230457` and `--produced-at 2026-10-18T23:04:57-05:00`
+(Mill's production clock).
 
 ## Generator provenance
 
-`gen.py` is Mill's generator, vendored from upstream sha `5d7244a6…58a8`.
-It is not byte-identical: a 24-line patch adds CLI args
-`--src` / `--out` / `--ts` / `--produced-at` and replaces `datetime.now()`
-with those pinned timestamps. No generation logic changed.
+`gen.py` and `source.json` are Mill's canonical files (authored by Mill).
+`source.json` is fully synthetic placeholder rows: no UltraData text and
+no real uuids.
 
-Every `open()` uses `encoding='utf-8'`; every write also uses `newline='\n'`
-so the SHA is stable under `LC_ALL=C` and on Windows.
+Pinned sha256:
 
-Mill can rebuild independently and re-pin the fixtures / MANIFEST shas:
+- `gen.py` `d2df1fbfd45081aebf01261517c59eaccb9e4b93a11e372ed12f88a39207eb74`
+- `source.json` `8cd184c53874dea20b858dc11fdb30f0193fa8c72744901b4215e8c23718cfe3`
+- `fixtures.jsonl` `3562f36139c6c70a270d9689ad5ec0071e480ea82cc0b26daed997d8663307dc`
+- `MANIFEST.json` `81209b912e35e7c9850e09a155d25595e76cd3b67051a464a4f92a7f4b9adb56`
+
+Regen (from this directory):
 
 ```
-python3 apps/dottie-os/tests/fixtures/leakgate_eval/gen.py \
-  --src apps/dottie-os/tests/fixtures/leakgate_eval/source.json \
-  --out "$OUT" \
-  --ts 20261018-230457 \
-  --produced-at 2026-10-18T23:04:57-05:00
+python3 gen.py --src source.json --out <empty-dir> --ts 20261018-230457 --produced-at 2026-10-18T23:04:57-05:00
 ```
 
 Each generated mini-pack under packs/<case_id>/ is a runnable curated_pack_v2 (pack/train/holdout[/sidecar]).
@@ -32,7 +33,7 @@ A leak = a NON-message field whose VALUE predicts the gold label (action for L3,
 Detection must be VALUE-based and PACK-level: refuse when a field's values predict gold across rows; accept when the
 same key exists but its values are constant/mixed/uncorrelated. Single-row coincidences must ACCEPT.
 
-Base rows: 16 real rows from ultradata_l3halt_lenmatch_20261018-224530 (golds: {'execute': 5, 'halt': 4, 'escalate': 1, 'tool': 3, 'web': 1, 'algo': 1, 'other': 1}).
+Base rows: 16 synthetic rows authored by Mill (golds: {'execute': 5, 'halt': 4, 'escalate': 1, 'tool': 3, 'web': 1, 'algo': 1, 'other': 1}).
 
 ## Cases
 - `leak_meta_risk_hint` [refuse] (twin_of twin_meta_risk_hint): exact key state.meta.risk_hint = gold action/domain (classic leak)

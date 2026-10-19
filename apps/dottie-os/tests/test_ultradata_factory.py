@@ -4079,8 +4079,10 @@ class SwarmHqPinContractTests(unittest.TestCase):
 
 
 LEAKGATE_EVAL_DIR = TESTS / "fixtures" / "leakgate_eval"
-LEAKGATE_MANIFEST_SHA256 = "888645987a1d7e605a1d11046aa08a9e79b997ec602cf929c8333b9d18e068ec"
-LEAKGATE_FIXTURES_JSONL_SHA256 = "e415a0ea5dae1e1cf3ddd21573a798041e46351d5e6e9ff68c40f39ea480b99d"
+LEAKGATE_MANIFEST_SHA256 = "81209b912e35e7c9850e09a155d25595e76cd3b67051a464a4f92a7f4b9adb56"
+LEAKGATE_FIXTURES_JSONL_SHA256 = "3562f36139c6c70a270d9689ad5ec0071e480ea82cc0b26daed997d8663307dc"
+LEAKGATE_GEN_PY_SHA256 = "d2df1fbfd45081aebf01261517c59eaccb9e4b93a11e372ed12f88a39207eb74"
+LEAKGATE_SOURCE_JSON_SHA256 = "8cd184c53874dea20b858dc11fdb30f0193fa8c72744901b4215e8c23718cfe3"
 LEAKGATE_GEN_TS = "20261018-230457"
 LEAKGATE_GEN_PRODUCED_AT = "2026-10-18T23:04:57-05:00"
 REPO_ROOT = APP.parents[1]
@@ -4244,6 +4246,14 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
             hashlib.sha256(committed.read_bytes()).hexdigest(),
             LEAKGATE_MANIFEST_SHA256,
         )
+        self.assertEqual(
+            hashlib.sha256((LEAKGATE_EVAL_DIR / "gen.py").read_bytes()).hexdigest(),
+            LEAKGATE_GEN_PY_SHA256,
+        )
+        self.assertEqual(
+            hashlib.sha256((LEAKGATE_EVAL_DIR / "source.json").read_bytes()).hexdigest(),
+            LEAKGATE_SOURCE_JSON_SHA256,
+        )
         self.assertTrue((LEAKGATE_EVAL_DIR / "EVAL_ONLY").is_file())
         rel = "apps/dottie-os/tests/fixtures/leakgate_eval/"
         listed = subprocess.check_output(
@@ -4256,26 +4266,28 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
         self.assertEqual(tracked, expected)
 
     def test_source_json_is_synthetic(self) -> None:
-        """Radar: allow synthetic-NNN uuid keys; forbid real UltraData / hex ids.
+        """Mill source.json is synthetic; do not grep a bare ``uuid`` key.
 
-        Do not grep for a bare ``uuid`` substring — Mill's source.json has 16
-        ``"uuid"`` keys with values ``synthetic-001`` … ``synthetic-016``.
+        The wrapper is ``{"synthetic": true, "rows": [...]}`` with 16
+        ``"uuid"`` values matching ``synthetic-NNN``. Forbid UltraData
+        text and uuid-like (RFC4122 / 10+ hex) ids.
         """
         raw = (LEAKGATE_EVAL_DIR / "source.json").read_text(encoding="utf-8")
         self.assertFalse(
             "ultradata" in raw.lower(),
             "source.json must not contain an ultradata substring",
         )
-        rows = json.loads(raw)
+        payload = json.loads(raw)
+        self.assertIsInstance(payload, dict)
+        self.assertIs(payload.get("synthetic"), True)
+        rows = payload.get("rows")
         self.assertIsInstance(rows, list)
-        uuids = _source_uuid_values(rows)
+        self.assertEqual(len(rows), 16)
+        uuids = _source_uuid_values(payload)
         self.assertEqual(len(uuids), 16)
         self.assertEqual(len(set(uuids)), 16)
         for value in uuids:
             self.assertRegex(value, SYNTHETIC_UUID_RE)
-        self.assertEqual(
-            set(uuids), {f"synthetic-{idx:03d}" for idx in range(1, 17)}
-        )
         rfc = RFC4122_UUID_RE.findall(raw)
         self.assertEqual(rfc, [], msg=f"rfc4122 uuids: {rfc[:5]}")
         hex_ids = HEX_ID_10_RE.findall(raw)
@@ -4284,6 +4296,16 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
     def test_mill_leakgate_fixtures_end_to_end(self) -> None:
         cases = self.index["case_list"]
         self.assertEqual(len(cases), 56)
+        refuse_n = sum(1 for spec in cases if spec["expect"] == "refuse")
+        twin_n = sum(1 for spec in cases if str(spec.get("case") or "").startswith("twin_"))
+        clean_n = sum(
+            1
+            for spec in cases
+            if spec["expect"] == "accept" and not spec.get("twin_of")
+        )
+        self.assertEqual(refuse_n, 25)
+        self.assertEqual(twin_n, 25)
+        self.assertEqual(clean_n, 6)
         results: list[dict[str, object]] = []
         for spec in cases:
             case_id = spec["case"]
