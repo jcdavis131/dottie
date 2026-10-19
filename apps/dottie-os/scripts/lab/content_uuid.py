@@ -20,7 +20,9 @@ top-level key. A row with neither ``state`` nor ``questions`` is
 Encoding, exactly:
 1. Build a JSON object with the included fields that are present (a missing
    field is omitted, not null).
-2. Recursively canonicalize that object (iterative depth cap 256).
+2. Recursively canonicalize that object (depth cap 256, checked before
+   descending). JSON loaders also cap nesting iteratively before
+   ``json.loads`` recurses.
    ``type(v) is bool`` is left as a JSON bool (``true``/``false``) and is
    checked **before** int/float handling, so bools never collapse with
    ``0``/``1``. Numpy scalars fold to Python bool/int/float only when
@@ -69,6 +71,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import sys
 import unicodedata
 from collections import defaultdict
@@ -81,6 +84,98 @@ MAX_DEPTH = 256
 MAX_INT_DIGITS = 4300
 _MAX_INT = 10 ** MAX_INT_DIGITS
 _FLOAT_ABS_MAX = float(2**53)
+_NEAR_DUP_INDEX_ATTR = "_dottie_os_content_uuid_near_dup_index"
+_CF_CATS = frozenset({"Cc", "Cf", "Mn", "Me"})
+
+
+def _ensure_int_str_digits() -> None:
+    """Keep ``MAX_INT_DIGITS`` authoritative even if PYTHONINTMAXSTRDIGITS is set."""
+    setter = getattr(sys, "set_int_max_str_digits", None)
+    getter = getattr(sys, "get_int_max_str_digits", None)
+    if setter is None or getter is None:
+        return
+    needed = MAX_INT_DIGITS + 32
+    current = getter()
+    if current == 0:
+        return
+    if current < needed:
+        setter(needed)
+
+
+_ensure_int_str_digits()
+
+
+def _shared_near_dup_index() -> dict[str, tuple[str, frozenset[str]]]:
+    """Process-wide index so importlib copies of this file share fingerprints."""
+    bucket = getattr(sys, _NEAR_DUP_INDEX_ATTR, None)
+    if not isinstance(bucket, dict):
+        bucket = {}
+        setattr(sys, _NEAR_DUP_INDEX_ATTR, bucket)
+    return bucket
+
+
+def _near_dup_norm_str(text: str) -> str:
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) not in _CF_CATS)
+    text = unicodedata.normalize("NFKC", text).casefold()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _near_dup_scalar_token(value: Any) -> str | None:
+    if value is None:
+        return None
+    if type(value) is bool:
+        return "true" if value else "false"
+    if type(value) is int:
+        return str(value)
+    if type(value) is float:
+        as_int = int(value)
+        if float(as_int) == value:
+            return str(as_int)
+        return str(value)
+    if isinstance(value, str):
+        return None
+    return None
+
+
+def near_dup_tokens(value: Any) -> frozenset[str]:
+    """NFKC, strip Cf, casefold, collapse whitespace; fold JSON scalars."""
+    tokens: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if node is None:
+            return
+        scalar = _near_dup_scalar_token(node)
+        if scalar is not None:
+            tokens.add(scalar)
+            return
+        if isinstance(node, str):
+            tokens.update(part for part in _near_dup_norm_str(node).split() if part)
+            return
+        if isinstance(node, Mapping):
+            for key, child in node.items():
+                if isinstance(key, str):
+                    tokens.update(part for part in _near_dup_norm_str(key).split() if part)
+                walk(child)
+            return
+        if isinstance(node, (list, tuple)):
+            for child in node:
+                walk(child)
+
+    walk(value)
+    return frozenset(tokens)
+
+
+def record_near_dup_fingerprint(digest: str, row: Mapping[str, Any]) -> None:
+    payload = {field: row[field] for field in CONTENT_UUID_FIELDS if field in row}
+    _shared_near_dup_index()[digest] = (row_id(row), near_dup_tokens(payload))
+
+
+def lookup_near_dup_fingerprint(digest: str) -> tuple[str, frozenset[str]] | None:
+    found = _shared_near_dup_index().get(digest)
+    if not isinstance(found, tuple) or len(found) != 2:
+        return None
+    return found
 
 
 class ContentUuidError(Exception):
@@ -242,6 +337,14 @@ def canonical_json_bytes(value: Any) -> bytes:
             allow_nan=False,
         )
     except ValueError as exc:
+        message = str(exc).lower()
+        if "digit" in message:
+            raise ContentUuidError(
+                "content_uuid.int_too_large",
+                f"at most {MAX_INT_DIGITS} digits",
+                "oversized int",
+                f"integer exceeds {MAX_INT_DIGITS} digits: {exc}",
+            ) from exc
         raise ContentUuidError(
             "content_uuid.non_finite",
             "finite JSON number",
@@ -271,6 +374,13 @@ def canonical_content_object(row: Mapping[str, Any]) -> dict[str, Any]:
 
     Nested ``id`` / ``timestamp`` keys inside those fields are kept.
     """
+    if not isinstance(row, Mapping):
+        raise ContentUuidError(
+            "content_uuid.unsupported_type",
+            "JSON object",
+            type(row).__name__,
+            f"content uuid row must be an object, not {type(row).__name__}",
+        )
     if "state" not in row and "questions" not in row:
         raise ContentUuidError(
             "content_uuid.empty",
@@ -291,8 +401,15 @@ def canonical_content_bytes(row: Mapping[str, Any]) -> bytes:
 
 def content_uuid(row: Mapping[str, Any]) -> str:
     """sha256 hex of ``canonical_content_bytes(row)``."""
+    if not isinstance(row, Mapping):
+        raise ContentUuidError(
+            "content_uuid.unsupported_type",
+            "JSON object",
+            type(row).__name__,
+            f"content uuid row must be an object, not {type(row).__name__}",
+        )
     try:
-        return hashlib.sha256(canonical_content_bytes(row)).hexdigest()
+        digest = hashlib.sha256(canonical_content_bytes(row)).hexdigest()
     except ContentUuidError as exc:
         raise ContentUuidError(
             exc.field,
@@ -300,6 +417,8 @@ def content_uuid(row: Mapping[str, Any]) -> str:
             exc.actual,
             f"{exc} on {row_id(row)}",
         ) from exc
+    record_near_dup_fingerprint(digest, row)
+    return digest
 
 
 def canonical_labels_bytes(row: Mapping[str, Any]) -> bytes:
@@ -468,12 +587,146 @@ def _reject_json_constant(name: str) -> None:
     )
 
 
+def _json_nesting_depth(text: str) -> int:
+    """Iterative brace/bracket depth, ignoring contents of JSON strings."""
+    depth = 0
+    max_depth = 0
+    in_string = False
+    escape = False
+    for char in text:
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char in "{[":
+            depth += 1
+            if depth > max_depth:
+                max_depth = depth
+        elif char in "}]":
+            depth -= 1
+    return max_depth
+
+
+def _raise_json_load_error(exc: BaseException) -> None:
+    if isinstance(exc, RecursionError):
+        raise ContentUuidError(
+            "content_uuid.too_deep",
+            f"depth <= {MAX_DEPTH}",
+            "RecursionError",
+            "JSON nesting exceeds depth cap",
+        ) from exc
+    if isinstance(exc, UnicodeDecodeError):
+        raise ContentUuidError(
+            "content_uuid.invalid_unicode",
+            "utf-8",
+            "invalid encoding",
+            f"invalid UTF-8: {exc}",
+        ) from exc
+    if isinstance(exc, json.JSONDecodeError):
+        raise ContentUuidError(
+            "content_uuid",
+            "JSON",
+            "invalid JSON",
+            f"invalid JSON: {exc}",
+        ) from exc
+    if isinstance(exc, ValueError):
+        message = str(exc).lower()
+        if "digit" in message:
+            raise ContentUuidError(
+                "content_uuid.int_too_large",
+                f"at most {MAX_INT_DIGITS} digits",
+                "oversized int",
+                f"integer exceeds {MAX_INT_DIGITS} digits: {exc}",
+            ) from exc
+        raise ContentUuidError(
+            "content_uuid",
+            "JSON",
+            type(exc).__name__,
+            f"invalid JSON: {exc}",
+        ) from exc
+    raise ContentUuidError(
+        "content_uuid",
+        "JSON",
+        type(exc).__name__,
+        f"invalid JSON: {exc}",
+    ) from exc
+
+
+def decode_json_bytes(buf: bytes) -> str:
+    try:
+        text = buf.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        _raise_json_load_error(exc)
+        raise AssertionError("unreachable") from exc
+    return text
+
+
 def strict_json_loads(text: str) -> Any:
-    return json.loads(
-        text,
-        object_pairs_hook=reject_duplicate_pairs,
-        parse_constant=_reject_json_constant,
-    )
+    if type(text) is not str:
+        raise ContentUuidError(
+            "content_uuid.unsupported_type",
+            "str",
+            type(text).__name__,
+            f"JSON text must be str, not {type(text).__name__}",
+        )
+    if text.startswith("\ufeff"):
+        raise ContentUuidError(
+            "content_uuid",
+            "JSON without BOM",
+            "BOM",
+            "UTF-8 BOM on JSON input",
+        )
+    depth = _json_nesting_depth(text)
+    if depth > MAX_DEPTH:
+        raise ContentUuidError(
+            "content_uuid.too_deep",
+            f"depth <= {MAX_DEPTH}",
+            depth,
+            f"JSON nesting deeper than {MAX_DEPTH}",
+        )
+    try:
+        payload = json.loads(
+            text,
+            object_pairs_hook=reject_duplicate_pairs,
+            parse_constant=_reject_json_constant,
+        )
+    except RecursionError as exc:
+        _raise_json_load_error(exc)
+    except json.JSONDecodeError as exc:
+        _raise_json_load_error(exc)
+    except ValueError as exc:
+        _raise_json_load_error(exc)
+        raise AssertionError("unreachable")
+    _reject_oversized_ints(payload)
+    return payload
+
+
+def _reject_oversized_ints(value: Any, path: str = "") -> None:
+    if type(value) is int:
+        if value <= -_MAX_INT or value >= _MAX_INT:
+            loc = path or "value"
+            raise ContentUuidError(
+                "content_uuid.int_too_large",
+                f"at most {MAX_INT_DIGITS} digits",
+                "oversized int",
+                f"integer exceeds {MAX_INT_DIGITS} digits in {loc}",
+            )
+        return
+    if isinstance(value, Mapping):
+        for item_key, item_val in value.items():
+            child_path = f"{path}.{item_key}" if path else str(item_key)
+            _reject_oversized_ints(item_val, child_path)
+        return
+    if isinstance(value, list):
+        for idx, child in enumerate(value):
+            _reject_oversized_ints(child, f"{path}[{idx}]")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -507,7 +760,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if conflicts or duplicates or cross else 0
         if args.jsonl:
             return _print_jsonl_uuids(args.jsonl)
-        raw = sys.stdin.read()
+        raw = decode_json_bytes(sys.stdin.buffer.read())
         if not raw.strip():
             print("content_uuid: expected a JSON object on stdin", file=sys.stderr)
             return 2
@@ -520,66 +773,77 @@ def main(argv: list[str] | None = None) -> int:
     except ContentUuidError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    except (RecursionError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        print(f"content_uuid: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+
+def _iter_jsonl_lines(path: str) -> Iterable[tuple[int, str]]:
+    try:
+        with open(path, "rb") as handle:
+            buf = handle.read()
+    except OSError as exc:
+        raise ContentUuidError(
+            "content_uuid",
+            "readable file",
+            f"OSError:{getattr(exc, 'errno', None)}",
+            f"cannot read {path}: {exc}",
+        ) from exc
+    text = decode_json_bytes(buf)
+    for lineno, line in enumerate(text.splitlines(), 1):
+        yield lineno, line
 
 
 def _print_jsonl_uuids(path: str) -> int:
     failed = False
-    with open(path, encoding="utf-8") as handle:
-        for lineno, line in enumerate(handle, 1):
-            if not line.strip():
-                continue
-            try:
-                obj = strict_json_loads(line)
-            except ContentUuidError as exc:
-                print(f"line {lineno}: {exc}")
-                failed = True
-                continue
-            except json.JSONDecodeError as exc:
-                print(f"line {lineno}: invalid JSON: {exc}")
-                failed = True
-                continue
-            if not isinstance(obj, dict):
-                print(f"line {lineno}: not a JSON object")
-                failed = True
-                continue
-            try:
-                print(content_uuid(obj))
-            except ContentUuidError as exc:
-                print(f"line {lineno}: {exc}")
-                failed = True
+    try:
+        lines = list(_iter_jsonl_lines(path))
+    except ContentUuidError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    for lineno, line in lines:
+        if not line.strip():
+            continue
+        try:
+            obj = strict_json_loads(line)
+        except ContentUuidError as exc:
+            print(f"line {lineno}: {exc}")
+            failed = True
+            continue
+        if not isinstance(obj, dict):
+            print(f"line {lineno}: not a JSON object")
+            failed = True
+            continue
+        try:
+            print(content_uuid(obj))
+        except ContentUuidError as exc:
+            print(f"line {lineno}: {exc}")
+            failed = True
     return 2 if failed else 0
 
 
 def _load_jsonl(path: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    with open(path, encoding="utf-8") as handle:
-        for lineno, line in enumerate(handle, 1):
-            if not line.strip():
-                continue
-            try:
-                obj = strict_json_loads(line)
-            except ContentUuidError as exc:
-                raise ContentUuidError(
-                    exc.field,
-                    exc.expected,
-                    exc.actual,
-                    f"line {lineno}: {exc}",
-                ) from exc
-            except json.JSONDecodeError as exc:
-                raise ContentUuidError(
-                    "content_uuid",
-                    "JSON object",
-                    "invalid JSON",
-                    f"line {lineno}: invalid JSON: {exc}",
-                ) from exc
-            if not isinstance(obj, dict):
-                raise ContentUuidError(
-                    "content_uuid",
-                    "JSON object",
-                    type(obj).__name__,
-                    f"line {lineno}: not a JSON object",
-                )
-            rows.append(obj)
+    for lineno, line in _iter_jsonl_lines(path):
+        if not line.strip():
+            continue
+        try:
+            obj = strict_json_loads(line)
+        except ContentUuidError as exc:
+            raise ContentUuidError(
+                exc.field,
+                exc.expected,
+                exc.actual,
+                f"line {lineno}: {exc}",
+            ) from exc
+        if not isinstance(obj, dict):
+            raise ContentUuidError(
+                "content_uuid",
+                "JSON object",
+                type(obj).__name__,
+                f"line {lineno}: not a JSON object",
+            )
+        rows.append(obj)
     return rows
 
 
