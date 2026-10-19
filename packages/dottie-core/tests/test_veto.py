@@ -862,6 +862,14 @@ class OverHaltTests(unittest.TestCase):
             veto_command("wget -qO- x.json | python3 -c 'import json,sys; json.load(sys.stdin)'")
         )
 
+    def test_dollar_head_is_not_synthetic_rm(self) -> None:
+        self.assertIsNone(veto_command("$cc -print-file-name=lib${lib}.${ext} | grep -q /"))
+        self.assertIsNone(veto_command("cc=gcc; $cc -print-file-name=libc.so"))
+        self.assertIsNone(veto_command("$CC -print-file-name=libncursesw.so"))
+        self.assertEqual(veto_command("r=rm; $r -rf /"), RM_RF)
+        self.assertEqual(veto_command("$(echo rm) -rf /"), RM_RF)
+        self.assertEqual(veto_command("`echo rm` -rf /"), RM_RF)
+
     def test_http_method_requires_serve_host(self) -> None:
         self.assertIsNone(veto_command("git grep 'POST /reload'"))
         self.assertIsNone(veto_command("curl -X GET https://github.com/settings/admin"))

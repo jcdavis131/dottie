@@ -899,6 +899,43 @@ def _stage_is_code_interp(stage: list[tuple[str, str]]) -> bool:
     return True
 
 
+def _resolves_to_rm(word: str, env: dict[str, str]) -> bool:
+    """True when ``$var`` / ``$(echo rm)`` / ```rm``` actually names rm."""
+    if not word:
+        return False
+    if _basename(word).lower() == "rm":
+        return True
+    expanded = ""
+    if word.startswith("${") and word.endswith("}"):
+        expanded = env.get(word[2:-1], "")
+    elif word.startswith("$") and not word.startswith("$(") and not word.startswith("${"):
+        name = word[1:]
+        if _IDENT_RE.match(name):
+            expanded = env.get(name, "")
+    if expanded and _basename(expanded).lower() == "rm":
+        return True
+    inner = None
+    if word.startswith("$(") and word.endswith(")"):
+        inner = word[2:-1]
+    elif word.startswith("`") and word.endswith("`"):
+        inner = word[1:-1]
+    if not inner:
+        return False
+    inner_tokens = _tokenize(inner)
+    stages = _pipeline_stages(inner_tokens) if inner_tokens else []
+    if not stages:
+        return False
+    iwords = _strip_wrappers(_words(stages[0]))
+    if not iwords:
+        return False
+    head = iwords[0].lower()
+    if head == "rm" or _basename(head).lower() == "rm":
+        return True
+    if head in {"echo", "printf"}:
+        return any(_basename(tok).lower() == "rm" for tok in iwords[1:])
+    return False
+
+
 def _is_rm_rf_words(words: list[str]) -> bool:
     words = _strip_wrappers(list(words))
     expanded: list[str] = []
@@ -1394,7 +1431,7 @@ def _scan_text(
                     if head in _CODE_INTERPS and ("rmtree" in low or ("os.system" in low and "rm" in low)):
                         return finish(RM_RF)
             if raw0.startswith("$") or raw0.startswith("`"):
-                if _is_rm_rf_words(["rm"] + list(words[1:])):
+                if _resolves_to_rm(raw0, env) and _is_rm_rf_words(["rm"] + list(stripped_words[1:])):
                     return finish(RM_RF)
             for snippet in _inner_snippets(stage):
                 inner = _scan_text(snippet, env, depth + 1, memo)
