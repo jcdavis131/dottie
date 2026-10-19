@@ -86,6 +86,10 @@ _MAX_INT = 10 ** MAX_INT_DIGITS
 _FLOAT_ABS_MAX = float(2**53)
 _NEAR_DUP_INDEX_ATTR = "_dottie_os_content_uuid_near_dup_index"
 _CF_CATS = frozenset({"Cc", "Cf", "Mn", "Me"})
+# Mill N membership. One formula for raw source.uuid and for uuid-less
+# content_uuid hex: int(sha256(ascii key).hexdigest(), 16) % 10 in {0, 5}.
+RESERVED_EVAL_PARTITION_N = 10
+RESERVED_EVAL_PARTITION_RESIDUES: frozenset[int] = frozenset({0, 5})
 
 
 def _ensure_int_str_digits() -> None:
@@ -176,6 +180,21 @@ def lookup_near_dup_fingerprint(digest: str) -> tuple[str, frozenset[str]] | Non
     if not isinstance(found, tuple) or len(found) != 2:
         return None
     return found
+
+
+def eval_partition_residue(key: str) -> int:
+    """Mill reserved-eval residue: ``sha256(ascii key) % n``.
+
+    Used for raw ``source.uuid`` and for the lowercase 64-hex
+    ``content_uuid`` of a uuid-less allowlisted row. Do not treat the
+    content uuid hex itself as the integer.
+    """
+    digest = hashlib.sha256(key.encode("ascii")).hexdigest()
+    return int(digest, 16) % RESERVED_EVAL_PARTITION_N
+
+
+def in_reserved_eval_partition(key: str) -> bool:
+    return eval_partition_residue(key) in RESERVED_EVAL_PARTITION_RESIDUES
 
 
 class ContentUuidError(Exception):

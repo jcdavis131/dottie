@@ -153,13 +153,16 @@ STAGED_PIN_NAME = "cam-pin-v2.json"
 PINS_JSON_MAX_BYTES = 64 * 1024
 _GATE_OK = object()
 _UNSET = object()
-RESERVED_EVAL_PARTITION: dict[str, object] = {"n": 10, "residues": [0, 5]}
+RESERVED_EVAL_PARTITION: dict[str, object] = {
+    "n": content_uuid.RESERVED_EVAL_PARTITION_N,
+    "residues": sorted(content_uuid.RESERVED_EVAL_PARTITION_RESIDUES),
+}
 # Per-entry uuid-less allowlist. Keys are (source.hf, source.config) or
 # (source.hf, source.config, source.revision). A 3-tuple requires an exact
 # source.revision match. MANIFEST cannot add, remove, or edit entries.
 # v3 Math rows carry no revision, so the live key is the 2-tuple.
 ULTRADATA_MATH_L1_SHAPE: dict[str, object] = {
-    "schema": "jev-decision-schema-1.0.0",
+    "schema": "dottie-os-decision-schema-1.0.0",
     "tier": "L2",
     "top_keys": frozenset(
         {"schema", "id", "tier", "source", "state", "questions", "labels", "consent"}
@@ -230,7 +233,10 @@ RESERVED_CONTENT_UUIDS_NAME = "reserved_content_uuids.jsonl"
 RESERVED_CONTENT_UUIDS_SHA256 = (
     "bc8926d5a18adf4105372c528fcbcfd32ca898e6235c1701859b837be435163c"
 )
-_SHAPE_CF_CATS = frozenset({"Cc", "Cf", "Mn", "Me"})
+# Strip format/combining marks and non-whitespace controls. Keep \t \n \r
+# so they collapse as whitespace (``$\\tls`` → ``$ ls``).
+_SHAPE_STRIP_CATS = frozenset({"Cf", "Mn", "Me"})
+_SHAPE_KEEP_CC = frozenset("\t\n\r")
 _UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
 TRAINER_PATH_FILES: dict[str, str] = {
     "pack": PACK_FILE,
@@ -2673,18 +2679,28 @@ def _mapping_keys(value: object) -> set[object] | None:
     return set(value)
 
 
+def _shape_strip_marks(text: str) -> str:
+    kept: list[str] = []
+    for ch in text:
+        cat = unicodedata.category(ch)
+        if cat in _SHAPE_STRIP_CATS:
+            continue
+        if cat == "Cc" and ch not in _SHAPE_KEEP_CC:
+            continue
+        kept.append(ch)
+    return "".join(kept)
+
+
 def _shape_scan_text(text: str) -> str:
     """NFKC, strip Cf/zero-width, decode \\uXXXX and HTML entities, casefold, collapse ws."""
-    text = unicodedata.normalize("NFKC", text)
-    text = "".join(ch for ch in text if unicodedata.category(ch) not in _SHAPE_CF_CATS)
+    text = _shape_strip_marks(unicodedata.normalize("NFKC", text))
 
     def _unescape_hex(match: re.Match[str]) -> str:
         return chr(int(match.group(1), 16))
 
     text = _UNICODE_ESCAPE_RE.sub(_unescape_hex, text)
     text = html.unescape(text)
-    text = unicodedata.normalize("NFKC", text)
-    text = "".join(ch for ch in text if unicodedata.category(ch) not in _SHAPE_CF_CATS)
+    text = _shape_strip_marks(unicodedata.normalize("NFKC", text))
     text = text.casefold()
     return re.sub(r"\s+", " ", text).strip()
 
@@ -2767,6 +2783,11 @@ def _uuidless_shape_mismatch(
     extra_source = [key for key in source_keys if key not in allowed_source]
     if extra_source:
         return f"extra source key {extra_source[0]!r}"
+    source_obj = row.get("source")
+    if isinstance(source_obj, Mapping) and "record_id" in source_obj:
+        record_id = source_obj.get("record_id")
+        if type(record_id) is not str or not record_id:
+            return "source.record_id not non-empty str"
     state_keys = _mapping_keys(row.get("state"))
     if state_keys is None:
         return "state not object"
@@ -2906,22 +2927,18 @@ def collect_reserved_partition(
 ) -> list[tuple[str, str]]:
     """Refuse training rows in Mill's reserved eval partition N.
 
-    Partition membership is always derived from ``content_uuid`` as
-    ``int(content_uuid, 16) % 10 in {0, 5}``. When ``source.uuid`` is present,
-    Mill's trajectory formula ``sha256(source.uuid) % 10`` is also applied.
-    A missing ``source.uuid`` is not a bypass. The modulus and residues live
-    in ``RESERVED_EVAL_PARTITION``; a pack MANIFEST cannot remove them or
-    disagree on ``n``/``modulus``. Content membership uses the gate-pinned
-    reserved-content-uuid list plus extra MANIFEST shas. Near-dups of N
-    (token Jaccard >= 0.5 after NFKC/Cf/casefold/whitespace/scalar fold)
-    are ``reserved_eval_partition.near_dup``.
+    One residue helper, ``content_uuid.eval_partition_residue``:
+    ``int(sha256(ascii key).hexdigest(), 16) % 10``. A row WITH
+    ``source.uuid`` uses the raw uuid as the key. A row WITHOUT
+    ``source.uuid`` must be allowlisted and shape-clean (else
+    ``uuid_missing``) and uses the lowercase 64-hex ``content_uuid`` as
+    the key. A missing uuid is never a pass. Exact-content match and
+    near-dup Jaccard >= 0.5 against N apply to every row.
 
-    Uuid-less rows are ``reserved_eval_partition.uuid_missing`` unless
-    ``(source.hf, source.config)`` exactly matches ``UUIDLESS_SOURCE_ALLOWLIST``
-    (and ``source.revision`` when that entry pins one). An allowlisted
-    uuid-less row must match that entry's shape spec, require a verified
-    ``source.content_uuid``, require a non-empty reserved list, and still
-    run uuid_mod on the derived content uuid.
+    The modulus and residues live in ``RESERVED_EVAL_PARTITION``; a pack
+    MANIFEST cannot remove them or disagree on ``n``/``modulus``. Content
+    membership uses the gate-pinned reserved-content-uuid list plus extra
+    MANIFEST shas. Near-dups of N are ``reserved_eval_partition.near_dup``.
     """
     cfg = _reserved_partition_cfg(manifest, pinned_content_shas)
     hits: list[tuple[str, str]] = []
@@ -2988,8 +3005,19 @@ def collect_reserved_partition(
                     return hits
                 continue
         else:
-            digest = hashlib.sha256(uuid_text.encode()).hexdigest()
-            residue = int(digest, 16) % modulus
+            try:
+                residue = content_uuid.eval_partition_residue(uuid_text)
+            except UnicodeEncodeError:
+                hits.append(
+                    (
+                        "reserved_eval_partition.uuid_malformed",
+                        f"{rid}:source.uuid is not ascii",
+                    )
+                )
+                if len(hits) >= 10:
+                    return hits
+                continue
+            residue = residue % modulus
             if residue in residues:
                 hits.append(
                     (
@@ -3005,7 +3033,7 @@ def collect_reserved_partition(
                 return hits
             continue
         if uuid_text is None:
-            cuuid_residue = int(content_sha, 16) % modulus
+            cuuid_residue = content_uuid.eval_partition_residue(content_sha) % modulus
             if cuuid_residue in residues:
                 hits.append(
                     (
