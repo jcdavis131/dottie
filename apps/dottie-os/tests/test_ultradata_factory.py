@@ -12,6 +12,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -4074,6 +4075,50 @@ class SwarmHqPinContractTests(unittest.TestCase):
 
 LEAKGATE_EVAL_DIR = TESTS / "fixtures" / "leakgate_eval"
 LEAKGATE_MANIFEST_SHA256 = "888645987a1d7e605a1d11046aa08a9e79b997ec602cf929c8333b9d18e068ec"
+LEAKGATE_FIXTURES_JSONL_SHA256 = "e415a0ea5dae1e1cf3ddd21573a798041e46351d5e6e9ff68c40f39ea480b99d"
+LEAKGATE_GEN_TS = "20261018-230457"
+LEAKGATE_GEN_PRODUCED_AT = "2026-10-18T23:04:57-05:00"
+
+
+def _generate_leakgate_fixtures(dest: Path) -> Path:
+    """Run Mill's vendored gen.py into dest. Fail loudly on hash mismatch."""
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(LEAKGATE_EVAL_DIR / "gen.py"),
+            "--src",
+            str(LEAKGATE_EVAL_DIR / "source.json"),
+            "--out",
+            str(dest),
+            "--ts",
+            LEAKGATE_GEN_TS,
+            "--produced-at",
+            LEAKGATE_GEN_PRODUCED_AT,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            f"leakgate gen.py failed rc={proc.returncode}\n"
+            f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        )
+    fx = dest / "fixtures.jsonl"
+    man = dest / "MANIFEST.json"
+    fx_sha = hashlib.sha256(fx.read_bytes()).hexdigest()
+    man_sha = hashlib.sha256(man.read_bytes()).hexdigest()
+    if fx_sha != LEAKGATE_FIXTURES_JSONL_SHA256:
+        raise AssertionError(
+            f"generated fixtures.jsonl sha256 {fx_sha} != {LEAKGATE_FIXTURES_JSONL_SHA256}"
+        )
+    if man_sha != LEAKGATE_MANIFEST_SHA256:
+        raise AssertionError(
+            f"generated MANIFEST.json sha256 {man_sha} != {LEAKGATE_MANIFEST_SHA256}"
+        )
+    return dest
 
 
 def _write_action_pack(dest: Path, rows: list[dict], *, pack_id: str) -> dict:
@@ -4104,6 +4149,22 @@ def _write_action_pack(dest: Path, rows: list[dict], *, pack_id: str) -> dict:
 class HelperFtLeakGateEvalTests(unittest.TestCase):
     """Mill leak-gate fixtures: 25 refuse + 25 twins + 6 clean, eval-only."""
 
+    fixture_root: Path
+    _fixture_tmp: tempfile.TemporaryDirectory[str]
+    index: dict
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._fixture_tmp = tempfile.TemporaryDirectory()
+        cls.fixture_root = _generate_leakgate_fixtures(Path(cls._fixture_tmp.name))
+        cls.index = json.loads(
+            (cls.fixture_root / "MANIFEST.json").read_text(encoding="utf-8")
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._fixture_tmp.cleanup()
+
     def setUp(self) -> None:
         self.kickoff_calls: list[dict] = []
         _start_hq_http_mock(self)
@@ -4127,20 +4188,32 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
         return pin
 
     def test_fixture_manifest_sha256(self) -> None:
-        path = LEAKGATE_EVAL_DIR / "MANIFEST.json"
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        self.assertEqual(digest, LEAKGATE_MANIFEST_SHA256)
+        generated = self.fixture_root / "MANIFEST.json"
+        fixtures = self.fixture_root / "fixtures.jsonl"
+        self.assertEqual(
+            hashlib.sha256(generated.read_bytes()).hexdigest(),
+            LEAKGATE_MANIFEST_SHA256,
+        )
+        self.assertEqual(
+            hashlib.sha256(fixtures.read_bytes()).hexdigest(),
+            LEAKGATE_FIXTURES_JSONL_SHA256,
+        )
+        committed = LEAKGATE_EVAL_DIR / "MANIFEST.json"
+        self.assertEqual(
+            hashlib.sha256(committed.read_bytes()).hexdigest(),
+            LEAKGATE_MANIFEST_SHA256,
+        )
         self.assertTrue((LEAKGATE_EVAL_DIR / "EVAL_ONLY").is_file())
+        self.assertFalse((LEAKGATE_EVAL_DIR / "packs").exists())
 
     def test_mill_leakgate_fixtures_end_to_end(self) -> None:
-        index = json.loads((LEAKGATE_EVAL_DIR / "MANIFEST.json").read_text(encoding="utf-8"))
-        cases = index["case_list"]
+        cases = self.index["case_list"]
         self.assertEqual(len(cases), 56)
         results: list[dict[str, object]] = []
         for spec in cases:
             case_id = spec["case"]
             expect = spec["expect"]
-            src = LEAKGATE_EVAL_DIR / "packs" / case_id
+            src = self.fixture_root / "packs" / case_id
             with self.subTest(case=case_id):
                 with tempfile.TemporaryDirectory() as tmp:
                     dest = Path(tmp) / case_id
@@ -4184,6 +4257,75 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
         lines.append(f"Total {ok_n}/56")
         artifact.write_text("\n".join(lines) + "\n", encoding="utf-8")
         self.assertEqual(ok_n, 56)
+
+
+PACK_GUARD_PATTERN = r"curated_pack_.*\.(jsonl|json)$|ultradata_harvest_"
+PACK_GUARD_RE = re.compile(PACK_GUARD_PATTERN)
+REPO_ROOT = APP.parents[1]
+CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+
+
+class TrackedPackArtifactGuardTests(unittest.TestCase):
+    """CI pack guard is path-wide; a gitignore allowlist cannot hide a commit."""
+
+    def test_ci_pack_guard_regex_unchanged(self) -> None:
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("git ls-files | grep -E '" + PACK_GUARD_PATTERN + "'", text)
+        self.assertNotIn("leakgate_eval", text.split("Refuse tracked pack artifacts")[1].split("atlas-outcomes:")[0])
+
+    def test_gitignore_allowlist_commit_still_trips_guard(self) -> None:
+        """Even with a `!` gitignore exception, a tracked curated_pack_*.jsonl trips the guard."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            env = {
+                **os.environ,
+                "GIT_AUTHOR_NAME": "pack-guard-test",
+                "GIT_AUTHOR_EMAIL": "pack-guard-test@example.com",
+                "GIT_COMMITTER_NAME": "pack-guard-test",
+                "GIT_COMMITTER_EMAIL": "pack-guard-test@example.com",
+            }
+            subprocess.run(
+                ["git", "init", "-b", "main"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                env=env,
+            )
+            (repo / ".gitignore").write_text(
+                "curated_pack_*.jsonl\n"
+                "!anywhere/curated_pack_v2.jsonl\n",
+                encoding="utf-8",
+            )
+            dest = repo / "anywhere"
+            dest.mkdir()
+            pack = dest / "curated_pack_v2.jsonl"
+            pack.write_text('{"eval_only": true}\n', encoding="utf-8")
+            subprocess.run(["git", "add", ".gitignore", str(pack)], cwd=repo, check=True, capture_output=True, env=env)
+            subprocess.run(
+                ["git", "commit", "-m", "allowlisted pack jsonl"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                env=env,
+            )
+            listed = subprocess.check_output(["git", "ls-files"], cwd=repo, text=True, env=env)
+            hits = [line for line in listed.splitlines() if PACK_GUARD_RE.search(line)]
+            self.assertEqual(hits, ["anywhere/curated_pack_v2.jsonl"])
+            grep = subprocess.run(
+                ["bash", "-lc", "git ls-files | grep -E '" + PACK_GUARD_PATTERN + "'"],
+                cwd=repo,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(grep.returncode, 0, msg=grep.stderr)
+            self.assertIn("curated_pack_v2.jsonl", grep.stdout)
+
+    def test_this_tree_has_no_tracked_pack_artifacts(self) -> None:
+        listed = subprocess.check_output(["git", "ls-files"], cwd=REPO_ROOT, text=True)
+        hits = [line for line in listed.splitlines() if PACK_GUARD_RE.search(line)]
+        self.assertEqual(hits, [])
 
 
 class HelperFtLeakGateSyntheticTests(unittest.TestCase):

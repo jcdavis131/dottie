@@ -3,7 +3,11 @@
 **eval-only / `not_for_train: true`.** These packs exist to score the leak gate.
 Do not train, GPU-kick, or score a checkpoint on them.
 
-Each mini-pack under packs/<case_id>/ is a runnable curated_pack_v2 (pack/train/holdout[/sidecar]).
+Packs are **not tracked**. `gen.py` rebuilds them into a temp dir at test time
+from `source.json` (16 BASE rows). Timestamp pins: `--ts 20261018-230457`
+and `--produced-at 2026-10-18T23:04:57-05:00` (Mill's production clock).
+
+Each generated mini-pack under packs/<case_id>/ is a runnable curated_pack_v2 (pack/train/holdout[/sidecar]).
 A leak = a NON-message field whose VALUE predicts the gold label (action for L3, domain for L2) across the whole pack.
 Detection must be VALUE-based and PACK-level: refuse when a field's values predict gold across rows; accept when the
 same key exists but its values are constant/mixed/uncorrelated. Single-row coincidences must ACCEPT.
