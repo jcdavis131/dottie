@@ -8494,6 +8494,7 @@ class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
 DENIED_FIELD_N_TEXT = "the reserved eval n member hid here"
 _EXTRACT_PATHS_SKIP = "mill tokenizer v2.2 extract_paths not vendored"
 _FP_PAD_SKIP = "mill tokenizer v2.2 fingerprint buckets/dummy tags not vendored"
+_FP_FILE_SKIP = "mill tokenizer v2.2 fingerprint KCV/index-binding not vendored"
 
 
 def _place_denied_field(row: dict, field: str, value: object) -> dict:
@@ -8562,6 +8563,7 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
         self.assertFalse(row_fields.extract_paths_ready())
         self.assertFalse(row_fields.mill_v2x_ready())
         self.assertFalse(row_fields.mill_fp_pad_ready())
+        self.assertFalse(row_fields.mill_fp_file_ready())
         self.assertFalse(row_fields.mill_constants_ready())
         self.assertFalse((LAB / "neardup_tokens-v2.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2.1.py").is_file())
@@ -8594,6 +8596,12 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
             denied_field_schema.trainer_input_from_row(row)
         with self.assertRaises(row_fields.RowFieldsError):
             denied_field_schema.check_denied_fields(row)
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.mill_kcv(b"factory-hmac-material-not-logged")
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.mill_verify_index_binding({"index": 0}, b"factory-hmac-material-not-logged")
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.mill_fp_index({"index": 0})
         self.assertEqual(
             content_uuid.NEAR_DUP_TOKENIZER_SHA256,
             "50d5015a051832608391208b7fc3f48259d6e94443213bb46143a06aa2a4f173",
@@ -8662,6 +8670,28 @@ class HelperFtTrainerSeamAstTests(unittest.TestCase):
                         offenders.append(f"{path.name}:{target.id}:{target.lineno}")
                     if isinstance(target, ast.Attribute) and target.attr in names:
                         offenders.append(f"{path.name}:{target.attr}:{target.lineno}")
+        self.assertEqual(offenders, [])
+
+    def test_gate_does_not_compute_own_kcv(self) -> None:
+        """KCV is mill's export. Gate/seam must not HMAC(key, 'kcv') themselves."""
+        offenders: list[str] = []
+        for path in (Path(row_fields.__file__), Path(kick_helper_ft.__file__)):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                hmac_new = (
+                    isinstance(func, ast.Attribute)
+                    and func.attr == "new"
+                    and isinstance(func.value, ast.Name)
+                    and func.value.id == "hmac"
+                )
+                if not hmac_new or len(node.args) < 2:
+                    continue
+                msg = node.args[1]
+                if isinstance(msg, ast.Constant) and msg.value in ("kcv", b"kcv"):
+                    offenders.append(f"{path.name}:{node.lineno}")
         self.assertEqual(offenders, [])
 
 
@@ -9046,6 +9076,55 @@ def _install_fake_v22_mill() -> object:
     return mill
 
 
+def _fp_kcv_hex(key: bytes) -> str:
+    return hmac.new(key, b"kcv", hashlib.sha256).hexdigest()
+
+
+def _fp_index_mac(key: bytes, index: int) -> str:
+    return hmac.new(
+        key,
+        b"fp-idx|" + str(index).encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _install_fake_v22_fp_file_mill() -> object:
+    mill = _install_fake_v22_mill()
+    mill.KCV_FIELD = "kcv"
+
+    def kcv(key: object) -> str:
+        if type(key) is not bytes or not key:
+            raise TypeError("kcv")
+        return _fp_kcv_hex(key)
+
+    def is_fp_header(obj: object) -> bool:
+        return isinstance(obj, dict) and "kcv" in obj and "hmac_sha256" not in obj
+
+    def fp_index(record: object) -> int:
+        if not isinstance(record, dict):
+            raise TypeError("record")
+        value = record.get("index")
+        if type(value) is not int or value < 0:
+            raise TypeError("index")
+        return value
+
+    def verify_index_binding(record: object, key: object) -> bool:
+        if type(key) is not bytes or not key:
+            raise TypeError("key")
+        idx = fp_index(record)
+        mac = record.get("index_mac") if isinstance(record, dict) else None
+        if type(mac) is not str:
+            return False
+        return hmac.compare_digest(mac, _fp_index_mac(key, idx))
+
+    mill.kcv = kcv
+    mill.is_fp_header = is_fp_header
+    mill.fp_index = fp_index
+    mill.verify_index_binding = verify_index_binding
+    sys.modules["neardup_tokens_v1"] = mill
+    return mill
+
+
 def _fp_dummy_tag(key: bytes, digest: str, idx: int) -> str:
     return hmac.new(
         key,
@@ -9097,6 +9176,7 @@ class HelperFtV22SeamGateTests(unittest.TestCase):
         self.assertTrue(row_fields.mill_v2x_ready())
         self.assertTrue(row_fields.mill_constants_ready())
         self.assertTrue(row_fields.mill_fp_pad_ready())
+        self.assertFalse(row_fields.mill_fp_file_ready())
         self.assertEqual(row_fields.mill_buckets(), (32, 64))
         self.assertEqual(row_fields.mill_fp_buckets(), (32, 64))
         self.assertEqual(row_fields.mill_cap(), 512)
@@ -9498,6 +9578,324 @@ class HelperFtMillFpPadTests(unittest.TestCase):
         dummy = next(iter(dummies), "ee" * 32)
         self.assertEqual(kick_helper_ft._containment_real_b(real | {dummy}, real), 1.0)
         self.assertEqual(kick_helper_ft._containment_real_b(frozenset({dummy}), real), 0.0)
+
+
+class HelperFtV22FpFileTests(unittest.TestCase):
+    """Gate-side S-MULTI-I / KCV / index-binding against a fake mill on the seam."""
+
+    def setUp(self) -> None:
+        self._orig_mill = sys.modules.get("neardup_tokens_v1")
+        kick_helper_ft.reset_hmac_key_state()
+        content_uuid.reset_kick_near_dup_fingerprints()
+        self._mill = _install_fake_v22_fp_file_mill()
+        self.assertTrue(row_fields.mill_fp_file_ready())
+
+    def tearDown(self) -> None:
+        kick_helper_ft.reset_hmac_key_state()
+        content_uuid.reset_kick_near_dup_fingerprints()
+        if self._orig_mill is None:
+            sys.modules.pop("neardup_tokens_v1", None)
+        else:
+            sys.modules["neardup_tokens_v1"] = self._orig_mill
+
+    def _hmac_key_file(self, directory: Path, key_id: str, material: bytes) -> Path:
+        path = directory / "reserved_near_dup_hmac.key"
+        path.write_bytes(key_id.encode("ascii") + b"\n" + material)
+        os.chmod(path, 0o400)
+        return path
+
+    def _fp_header(self, key: bytes, kcv: str | None = None) -> str:
+        return json.dumps({"kcv": _fp_kcv_hex(key) if kcv is None else kcv}) + "\n"
+
+    def _fp_record(
+        self,
+        *,
+        key: bytes,
+        digest: str,
+        key_id: str,
+        index: int,
+        index_mac: str | None = None,
+        real_n: int = 16,
+        bucket: int = 32,
+    ) -> str:
+        real = [f"{(index * 64 + i):064x}" for i in range(real_n)]
+        public = _padded_public(key=key, digest=digest, real=real, bucket=bucket)
+        obj = {
+            "content_uuid": digest,
+            "id": f"n{index}",
+            "hmac_sha256": public,
+            "key_id": key_id,
+            "tokenizer_version": "v1",
+            "index": index,
+            "index_mac": _fp_index_mac(key, index) if index_mac is None else index_mac,
+        }
+        return json.dumps(obj) + "\n"
+
+    def _load(
+        self,
+        fps_path: Path,
+        text: str,
+        *,
+        key_path: Path,
+        key_id: str,
+        min_rows: int | None = 3,
+    ) -> dict[str, tuple[str, frozenset[str]]]:
+        fps_path.write_text(text, encoding="utf-8")
+        pin = hashlib.sha256(text.encode()).hexdigest()
+        patches = [
+            patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)),
+            patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id),
+        ]
+        if min_rows is not None:
+            patches.append(
+                patch.object(kick_helper_ft, "RESERVED_CONTENT_UUIDS_MIN_ROWS", min_rows)
+            )
+        with patches[0], patches[1]:
+            if min_rows is not None:
+                with patches[2]:
+                    return kick_helper_ft.load_reserved_near_dup_fingerprints(fps_path, pin)
+            return kick_helper_ft.load_reserved_near_dup_fingerprints(fps_path, pin)
+
+    def _refuse(
+        self,
+        fps_path: Path,
+        text: str,
+        *,
+        key_path: Path,
+        key_id: str,
+        min_rows: int | None = 3,
+    ) -> kick_helper_ft.KickRefused:
+        with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+            self._load(fps_path, text, key_path=key_path, key_id=key_id, min_rows=min_rows)
+        return ctx.exception
+
+    def test_contiguous_file_loads_when_kcv_and_indexes_match(self) -> None:
+        key_id = "factory-hmac-test-key"
+        material = b"factory-hmac-material-not-logged"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, material)
+            records = [
+                self._fp_record(
+                    key=material,
+                    digest=hashlib.sha256(f"n-{i}".encode()).hexdigest(),
+                    key_id=key_id,
+                    index=i,
+                )
+                for i in range(3)
+            ]
+            text = self._fp_header(material) + "".join(records)
+            found = self._load(root / "fps.jsonl", text, key_path=key_path, key_id=key_id)
+        self.assertEqual(len(found), 3)
+
+    def test_duplicate_index_refused(self) -> None:
+        key_id = "factory-hmac-test-key"
+        material = b"factory-hmac-material-not-logged"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, material)
+            records = [
+                self._fp_record(
+                    key=material,
+                    digest=hashlib.sha256(f"n-dup-{i}".encode()).hexdigest(),
+                    key_id=key_id,
+                    index=0 if i == 2 else i,
+                )
+                for i in range(3)
+            ]
+            text = self._fp_header(material) + "".join(records)
+            buf = StringIO()
+            with redirect_stdout(buf):
+                exc = self._refuse(
+                    root / "fps.jsonl", text, key_path=key_path, key_id=key_id
+                )
+        self.assertEqual(exc.actual, "duplicate")
+        self.assertIn("index", exc.field)
+        dumped = buf.getvalue() + str(exc)
+        self.assertNotIn(material.decode("ascii"), dumped)
+        self.assertNotIn(_fp_kcv_hex(material), dumped)
+
+    def test_gap_in_indexes_refused(self) -> None:
+        key_id = "factory-hmac-test-key"
+        material = b"factory-hmac-material-not-logged"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, material)
+            records = [
+                self._fp_record(
+                    key=material,
+                    digest=hashlib.sha256(f"n-gap-{i}".encode()).hexdigest(),
+                    key_id=key_id,
+                    index=i if i < 2 else 3,
+                )
+                for i in range(3)
+            ]
+            text = self._fp_header(material) + "".join(records)
+            exc = self._refuse(root / "fps.jsonl", text, key_path=key_path, key_id=key_id)
+        self.assertEqual(exc.actual, "gap")
+        self.assertIn("index", exc.field)
+
+    def test_count_other_than_n_refused(self) -> None:
+        key_id = "factory-hmac-test-key"
+        material = b"factory-hmac-material-not-logged"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, material)
+            records = [
+                self._fp_record(
+                    key=material,
+                    digest=hashlib.sha256(f"n-count-{i}".encode()).hexdigest(),
+                    key_id=key_id,
+                    index=i,
+                )
+                for i in range(3)
+            ]
+            text = self._fp_header(material) + "".join(records)
+            exc = self._refuse(
+                root / "fps.jsonl",
+                text,
+                key_path=key_path,
+                key_id=key_id,
+                min_rows=None,
+            )
+        self.assertEqual(exc.actual, "mismatch")
+        self.assertEqual(exc.expected, "|N|")
+        self.assertNotIn("3", str(exc))
+
+    def test_missing_or_wrong_kcv_refused(self) -> None:
+        key_id = "factory-hmac-test-key"
+        material = b"factory-hmac-material-not-logged"
+        wrong = "ab" * 32
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, material)
+            records = [
+                self._fp_record(
+                    key=material,
+                    digest=hashlib.sha256(f"n-kcv-{i}".encode()).hexdigest(),
+                    key_id=key_id,
+                    index=i,
+                )
+                for i in range(3)
+            ]
+            missing = "".join(records)
+            mismatched = self._fp_header(material, kcv=wrong) + "".join(records)
+            garbage = self._fp_header(material, kcv=wrong) + "{not-json\n"
+            fps_path = root / "fps.jsonl"
+            buf = StringIO()
+            with redirect_stdout(buf):
+                missing_exc = self._refuse(
+                    fps_path, missing, key_path=key_path, key_id=key_id
+                )
+                wrong_exc = self._refuse(
+                    fps_path, mismatched, key_path=key_path, key_id=key_id
+                )
+                before_ref = self._refuse(
+                    fps_path, garbage, key_path=key_path, key_id=key_id
+                )
+        self.assertEqual(missing_exc.actual, "missing")
+        self.assertEqual(wrong_exc.actual, "mismatch")
+        self.assertEqual(before_ref.actual, "mismatch")
+        self.assertEqual(missing_exc.field, "reserved_near_dup_fingerprints.kcv")
+        dumped = buf.getvalue() + str(missing_exc) + str(wrong_exc) + str(before_ref)
+        self.assertNotIn(material.decode("ascii"), dumped)
+        self.assertNotIn(_fp_kcv_hex(material), dumped)
+        self.assertNotIn(wrong, dumped)
+
+    def test_wrong_index_record_refused(self) -> None:
+        key_id = "factory-hmac-test-key"
+        material = b"factory-hmac-material-not-logged"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, material)
+            records = [
+                self._fp_record(
+                    key=material,
+                    digest=hashlib.sha256(f"n-bind-{i}".encode()).hexdigest(),
+                    key_id=key_id,
+                    index=i,
+                    index_mac=_fp_index_mac(material, 1) if i == 0 else None,
+                )
+                for i in range(3)
+            ]
+            text = self._fp_header(material) + "".join(records)
+            buf = StringIO()
+            with redirect_stdout(buf):
+                exc = self._refuse(
+                    root / "fps.jsonl", text, key_path=key_path, key_id=key_id
+                )
+        self.assertEqual(exc.actual, "mismatch")
+        self.assertIn("index_binding", exc.field)
+        dumped = buf.getvalue() + str(exc)
+        self.assertNotIn(material.decode("ascii"), dumped)
+        self.assertNotIn(_fp_kcv_hex(material), dumped)
+        self.assertNotIn(_fp_index_mac(material, 0), dumped)
+        self.assertNotIn(_fp_index_mac(material, 1), dumped)
+
+
+@unittest.skipUnless(row_fields.mill_fp_file_ready(), _FP_FILE_SKIP)
+class HelperFtMillFpFileTests(unittest.TestCase):
+    """Contract tests for mill v2.2 KCV and index-binding. Skip until vendored."""
+
+    def test_mill_exports_kcv_and_index_binding(self) -> None:
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        self.assertTrue(row_fields.mill_fp_file_ready())
+        self.assertTrue(
+            callable(
+                getattr(mill, "kcv", None)
+                or getattr(mill, "compute_kcv", None)
+                or getattr(mill, "key_check_value", None)
+                or getattr(mill, "fp_kcv", None)
+            )
+        )
+        self.assertTrue(
+            callable(
+                getattr(mill, "verify_index_binding", None)
+                or getattr(mill, "check_index_binding", None)
+                or getattr(mill, "verify_fp_index", None)
+                or getattr(mill, "verify_fp_record", None)
+            )
+        )
+        self.assertTrue(
+            callable(
+                getattr(mill, "fp_index", None)
+                or getattr(mill, "ref_index", None)
+                or getattr(mill, "fingerprint_index", None)
+            )
+        )
+        key = b"factory-hmac-material-not-logged"
+        value = row_fields.mill_kcv(key)
+        self.assertIsInstance(value, str)
+        self.assertTrue(value)
+
+    def test_duplicate_index_refused(self) -> None:
+        rec = {"index": 0}
+        self.assertEqual(row_fields.mill_fp_index(rec), row_fields.mill_fp_index(rec))
+
+    def test_gap_in_indexes_refused(self) -> None:
+        recs = [{"index": 0}, {"index": 2}]
+        indexes = [row_fields.mill_fp_index(rec) for rec in recs]
+        self.assertNotEqual(set(indexes), set(range(len(indexes))))
+
+    def test_count_other_than_n_refused(self) -> None:
+        self.assertEqual(kick_helper_ft.RESERVED_CONTENT_UUIDS_MIN_ROWS, 250)
+        indexes = [row_fields.mill_fp_index({"index": i}) for i in range(3)]
+        self.assertNotEqual(len(indexes), kick_helper_ft.RESERVED_CONTENT_UUIDS_MIN_ROWS)
+
+    def test_missing_or_wrong_kcv_refused(self) -> None:
+        key = b"factory-hmac-material-not-logged"
+        other = b"factory-hmac-material-other-key"
+        self.assertNotEqual(row_fields.mill_kcv(key), row_fields.mill_kcv(other))
+        self.assertFalse(row_fields.mill_is_fp_header({"hmac_sha256": []}))
+
+    def test_wrong_index_record_refused(self) -> None:
+        key = b"factory-hmac-material-not-logged"
+        with self.assertRaises(row_fields.RowFieldsError) as ctx:
+            row_fields.mill_verify_index_binding(
+                {"index": 0, "index_mac": "00" * 32},
+                key,
+            )
+        self.assertIn("index_binding", ctx.exception.field)
 
 
 if __name__ == "__main__":

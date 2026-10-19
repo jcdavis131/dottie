@@ -98,6 +98,46 @@ def mill_fp_pad_ready() -> bool:
     return mill_constants_ready() and _mill_dummy_fn(mill) is not None
 
 
+def _mill_kcv_fn(mill: Any) -> Any:
+    for name in ("kcv", "compute_kcv", "key_check_value", "fp_kcv"):
+        fn = getattr(mill, name, None)
+        if callable(fn):
+            return fn
+    return None
+
+
+def _mill_index_bind_fn(mill: Any) -> Any:
+    for name in (
+        "verify_index_binding",
+        "check_index_binding",
+        "verify_fp_index",
+        "verify_fp_record",
+    ):
+        fn = getattr(mill, name, None)
+        if callable(fn):
+            return fn
+    return None
+
+
+def _mill_fp_index_fn(mill: Any) -> Any:
+    for name in ("fp_index", "ref_index", "fingerprint_index"):
+        fn = getattr(mill, name, None)
+        if callable(fn):
+            return fn
+    return None
+
+
+def mill_fp_file_ready() -> bool:
+    """True when mill v2.2 exports KCV and the index-binding verifier."""
+    mill = _pinned_mill()
+    return (
+        mill_fp_pad_ready()
+        and _mill_kcv_fn(mill) is not None
+        and _mill_index_bind_fn(mill) is not None
+        and _mill_fp_index_fn(mill) is not None
+    )
+
+
 def mill_cap() -> int:
     mill = _require_v22()
     cap = getattr(mill, "CAP", None)
@@ -185,6 +225,123 @@ def mill_dummy_tags(key: bytes, digest: str, public: frozenset[str]) -> frozense
             raise AssertionError("unreachable")
         out.add(item)
     return frozenset(out)
+
+
+def mill_kcv(key: bytes) -> str:
+    """Mill KCV = HMAC(key, 'kcv'). Never logs the key or the value."""
+    mill = _require_v22()
+    fn = _mill_kcv_fn(mill)
+    if not callable(fn):
+        _refuse("extract_paths", "mill KCV function is missing")
+        raise AssertionError("unreachable")
+    if type(key) is not bytes or not key:
+        _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher missing")
+        raise AssertionError("unreachable")
+    try:
+        value = fn(key)
+    except TypeError:
+        try:
+            value = fn(key=key)
+        except Exception:
+            _refuse("extract_paths", "mill KCV function failed")
+            raise AssertionError("unreachable")
+    except Exception:
+        _refuse("extract_paths", "mill KCV function failed")
+        raise AssertionError("unreachable")
+    if type(value) is bytes:
+        value = value.hex()
+    if type(value) is not str or not value:
+        _refuse("extract_paths", "mill KCV is invalid")
+        raise AssertionError("unreachable")
+    return value
+
+
+def mill_is_fp_header(obj: object) -> bool:
+    mill = _require_v22()
+    fn = getattr(mill, "is_fp_header", None)
+    if callable(fn):
+        try:
+            return bool(fn(obj))
+        except Exception:
+            _refuse("extract_paths", "mill header check failed")
+            raise AssertionError("unreachable")
+    field = getattr(mill, "KCV_FIELD", "kcv")
+    return isinstance(obj, dict) and field in obj and "hmac_sha256" not in obj
+
+
+def mill_header_kcv(obj: Mapping[str, Any]) -> str | None:
+    mill = _require_v22()
+    fn = getattr(mill, "fp_header_kcv", None)
+    if callable(fn):
+        try:
+            value = fn(obj)
+        except Exception:
+            _refuse("extract_paths", "mill header KCV failed")
+            raise AssertionError("unreachable")
+        if value is None:
+            return None
+        if type(value) is bytes:
+            value = value.hex()
+        if type(value) is not str:
+            _refuse("extract_paths", "mill header KCV is invalid")
+            raise AssertionError("unreachable")
+        return value
+    field = getattr(mill, "KCV_FIELD", "kcv")
+    value = obj.get(field) if isinstance(obj, Mapping) else None
+    if value is None:
+        return None
+    if type(value) is not str:
+        _refuse("extract_paths", "mill header KCV is invalid")
+        raise AssertionError("unreachable")
+    return value
+
+
+def mill_verify_index_binding(record: object, key: bytes) -> None:
+    """Call mill's index-binding verifier only. Re-implement nothing."""
+    mill = _require_v22()
+    fn = _mill_index_bind_fn(mill)
+    if not callable(fn):
+        _refuse("extract_paths", "mill index-binding verifier is missing")
+        raise AssertionError("unreachable")
+    if type(key) is not bytes or not key:
+        _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher missing")
+        raise AssertionError("unreachable")
+    try:
+        result = fn(record, key)
+    except TypeError:
+        try:
+            result = fn(record=record, key=key)
+        except Exception:
+            _refuse("reserved_near_dup_fingerprints.index_binding", "mill index-binding failed")
+            raise AssertionError("unreachable")
+    except Exception:
+        _refuse("reserved_near_dup_fingerprints.index_binding", "mill index-binding failed")
+        raise AssertionError("unreachable")
+    if result is False:
+        _refuse("reserved_near_dup_fingerprints.index_binding", "mill index-binding failed")
+
+
+def mill_fp_index(record: object) -> int:
+    mill = _require_v22()
+    fn = _mill_fp_index_fn(mill)
+    if not callable(fn):
+        _refuse("extract_paths", "mill fingerprint index function is missing")
+        raise AssertionError("unreachable")
+    try:
+        value = fn(record)
+    except TypeError:
+        try:
+            value = fn(record=record)
+        except Exception:
+            _refuse("extract_paths", "mill fingerprint index is invalid")
+            raise AssertionError("unreachable")
+    except Exception:
+        _refuse("extract_paths", "mill fingerprint index is invalid")
+        raise AssertionError("unreachable")
+    if type(value) is not int or value < 0:
+        _refuse("extract_paths", "mill fingerprint index is invalid")
+        raise AssertionError("unreachable")
+    return value
 
 
 def no_text_error_types() -> tuple[type, ...]:

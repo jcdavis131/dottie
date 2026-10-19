@@ -79,7 +79,7 @@ from datetime import datetime, timezone
 import io
 from io import StringIO
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, NoReturn
+from typing import Any, Callable, Iterator, Mapping, NoReturn, Sequence
 
 _MODULE_FILE = str(globals().get("__file__") or "")
 _LAB = str(Path(_MODULE_FILE).resolve().parent) if _MODULE_FILE else "/var/empty"
@@ -2950,6 +2950,56 @@ def load_reserved_near_dup_hmac_key(path: object, expected_key_id: object) -> by
     return material
 
 
+def _refuse_fp_kcv(actual: str) -> None:
+    """KCV refusal. Never interpolates the KCV, the key, or the computed value."""
+    _refuse("reserved_near_dup_fingerprints.kcv", "kcv", actual)
+
+
+def _check_fp_file_header_kcv(obj: Mapping[str, Any], key: bytes) -> None:
+    """Mill KCV before any reference. Missing or mismatch refuses; values are never logged."""
+    try:
+        is_header = row_fields.mill_is_fp_header(obj)
+    except row_fields.RowFieldsError:
+        _refuse_fp_kcv("missing")
+        raise AssertionError("unreachable")
+    if not is_header:
+        _refuse_fp_kcv("missing")
+    try:
+        header = row_fields.mill_header_kcv(obj)
+    except row_fields.RowFieldsError:
+        _refuse_fp_kcv("missing")
+        raise AssertionError("unreachable")
+    if header is None or type(header) is not str or not header:
+        _refuse_fp_kcv("missing")
+    try:
+        computed = row_fields.mill_kcv(key)
+    except row_fields.RowFieldsError:
+        _refuse_fp_kcv("mismatch")
+        raise AssertionError("unreachable")
+    if type(computed) is not str or not computed:
+        _refuse_fp_kcv("mismatch")
+    try:
+        matched = hmac.compare_digest(header, computed)
+    except (TypeError, ValueError):
+        matched = False
+    if not matched:
+        _refuse_fp_kcv("mismatch")
+
+
+def _check_fp_indexes(indexes: Sequence[int]) -> None:
+    """S-MULTI-I: unique contiguous 0..n-1 with n equal to signed |N|. No partial load."""
+    seen: set[int] = set()
+    for idx in indexes:
+        if idx in seen:
+            _refuse("reserved_near_dup_fingerprints.index", "unique", "duplicate")
+        seen.add(idx)
+    n = len(indexes)
+    if seen != set(range(n)):
+        _refuse("reserved_near_dup_fingerprints.index", "0..n-1", "gap")
+    if n != RESERVED_CONTENT_UUIDS_MIN_ROWS:
+        _refuse("reserved_near_dup_fingerprints.index", "|N|", "mismatch")
+
+
 def load_reserved_near_dup_fingerprints(
     path: object,
     expected_sha256: object,
@@ -2973,6 +3023,12 @@ def load_reserved_near_dup_fingerprints(
         RESERVED_NEAR_DUP_HMAC_KEY_PATH,
         RESERVED_NEAR_DUP_HMAC_KEY_ID,
     )
+    fp_file = row_fields.mill_fp_file_ready()
+    key = _HMAC_KEY_BYTES
+    if key is None:
+        _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher", "missing")
+    header_ok = False
+    indexes: list[int] = []
     found: dict[str, tuple[str, frozenset[str]]] = {}
     for idx, line in enumerate(text.splitlines()):
         stripped = line.strip()
@@ -2994,6 +3050,27 @@ def load_reserved_near_dup_fingerprints(
                 "JSON object",
                 type(obj).__name__,
             )
+        if fp_file and not header_ok:
+            _check_fp_file_header_kcv(obj, key)
+            header_ok = True
+            continue
+        if fp_file:
+            try:
+                row_fields.mill_verify_index_binding(obj, key)
+            except row_fields.RowFieldsError:
+                _refuse(
+                    "reserved_near_dup_fingerprints.index_binding",
+                    "mill index-binding",
+                    "mismatch",
+                )
+            try:
+                indexes.append(row_fields.mill_fp_index(obj))
+            except row_fields.RowFieldsError:
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].index",
+                    "mill fingerprint index",
+                    "invalid",
+                )
         if row_fields.extract_paths_ready():
             leak = _fingerprint_length_field(obj)
             if leak is not None:
@@ -3146,6 +3223,10 @@ def load_reserved_near_dup_fingerprints(
             found[digest] = (rid, real)
         else:
             found[digest] = (rid, public)
+    if fp_file:
+        if not header_ok:
+            _refuse_fp_kcv("missing")
+        _check_fp_indexes(indexes)
     return found
 
 
