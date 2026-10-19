@@ -4402,6 +4402,40 @@ class HelperFtLeakGateSyntheticTests(unittest.TestCase):
                 kick_helper_ft.kick(dest)
         self.assertEqual(ctx.exception.field, "state.leak")
 
+    def test_bool_label_column_refused(self) -> None:
+        actions = ["execute"] * 6 + ["halt"] * 6
+        rows = [_row(rid=f"bool-leak-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row, action in zip(rows, actions, strict=True):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"m": action == "halt"},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-bool-leak")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+        self.assertTrue(any("m" in str(item) for item in ctx.exception.actual))
+
+    def test_bool_column_uncorrelated_twin_accepted(self) -> None:
+        actions = ["execute"] * 6 + ["halt"] * 6
+        rows = [_row(rid=f"bool-twin-{idx}", action=action) for idx, action in enumerate(actions)]
+        for idx, row in enumerate(rows):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"m": idx % 2 == 0},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-bool-twin")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
     def test_small_n_constant_and_unique_fields_pass(self) -> None:
         actions = ["execute", "execute", "halt", "halt"]
         rows = [_row(rid=f"ok-{idx}", action=action) for idx, action in enumerate(actions)]

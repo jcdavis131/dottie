@@ -101,6 +101,8 @@ LEAK_LIFT_MARGIN = 0.20
 LEAK_NEAR_PERFECT_ACC = 0.999
 LEAK_B64_MIN_LEN = 8
 LEAK_B64_MAX_DECODED = 256
+LEAK_BOOL_TRUE = "__bool__:true"
+LEAK_BOOL_FALSE = "__bool__:false"
 _LEAK_BOOKKEEPING_KEYS = frozenset(
     {
         "schema",
@@ -811,13 +813,15 @@ def _row_gold_noul(row: Mapping[str, Any]) -> float | None:
 
 
 def _canonical_leak_value(value: object) -> object:
-    if isinstance(value, float) and type(value) is not bool:
+    if type(value) is bool:
+        return LEAK_BOOL_TRUE if value else LEAK_BOOL_FALSE
+    if isinstance(value, float):
         return round(value, 6)
-    if isinstance(value, int) and type(value) is not bool:
+    if isinstance(value, int):
         return value
     if isinstance(value, str):
         return value
-    if value is None or type(value) is bool:
+    if value is None:
         return None
     return str(value)
 
