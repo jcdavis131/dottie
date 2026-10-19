@@ -208,12 +208,17 @@ ULTRADATA_MATH_L1_SHAPE: dict[str, object] = {
             "bash",
             "tool",
             "cmd",
+            "toolname",
+            "function",
+            "arguments",
+            "exec",
+            "run",
+            "subprocess",
+            "sh",
         }
     ),
     "forbidden_string_patterns": (
-        r"(?m)^\s*\$\s+\S+",
         r"\$\(",
-        r"`",
         r"\b(?:ba)?sh\s+-c\b",
         r"\b(?:curl|wget)\b[\s\S]{0,120}\|\s*(?:ba)?sh\b",
         r"\bbase64\b[\s\S]{0,120}\|\s*(?:ba)?sh\b",
@@ -223,8 +228,9 @@ ULTRADATA_MATH_L1_SHAPE: dict[str, object] = {
         r"(?:```|~~~)\s*(?:ba)?sh\b",
         r"(?:```|~~~)\s*zsh\b",
         r"\bpython(?:3)?\s+-c\b",
-        r"\brm\s+-",
+        r"(?<!\\)\brm\s+-",
         r"\btool\s*=",
+        r"`[A-Za-z][A-Za-z0-9_./-]*`",
     ),
 }
 UUIDLESS_SOURCE_ALLOWLIST: dict[tuple[str, ...], dict[str, object]] = {
@@ -236,11 +242,113 @@ RESERVED_CONTENT_UUIDS_NAME = "reserved_content_uuids.jsonl"
 RESERVED_CONTENT_UUIDS_SHA256 = (
     "bc8926d5a18adf4105372c528fcbcfd32ca898e6235c1701859b837be435163c"
 )
+RESERVED_CONTENT_UUIDS_MIN_ROWS = 1
+RESERVED_NEAR_DUP_FPS_REL = "apps/dottie-os/trust/reserved_near_dup_fingerprints.jsonl"
+RESERVED_NEAR_DUP_FPS_NAME = "reserved_near_dup_fingerprints.jsonl"
+RESERVED_NEAR_DUP_FPS_SHA256 = (
+    "9ce40baf0bbdc30f78a88282a6ab833b3b0adf820315d441f77c9a8e7f16aae5"
+)
+_PLACEHOLDER_MARKERS = (
+    "PLACEHOLDER",
+    "NOT_A_LIVE_ROW",
+    "RESERVED_EVAL_PARTITION_PLACEHOLDER_NOT_A_LIVE_ROW",
+    "RESERVED_NEAR_DUP_FINGERPRINTS_PLACEHOLDER_NOT_A_LIVE_ROW",
+)
 # Strip format/combining marks and non-whitespace controls. Keep \t \n \r
 # so they collapse as whitespace (``$\\tls`` → ``$ ls``).
 _SHAPE_STRIP_CATS = frozenset({"Cf", "Mn", "Me"})
-_SHAPE_KEEP_CC = frozenset("\t\n\r")
-_UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
+_SHAPE_KEEP_CC = frozenset("\t\n\r\x0b\x0c\u0085")
+_SHAPE_LINE_TERMINATORS = frozenset("\n\r\u2028\u2029\u0085\x0b\x0c")
+_UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})|\\U([0-9a-fA-F]{8})")
+_HEX_ESCAPE_RE = re.compile(r"\\x([0-9a-fA-F]{2})")
+_PERCENT_ESCAPE_RE = re.compile(r"%([0-9a-fA-F]{2})")
+_SHAPE_COMMAND_WORDS = frozenset(
+    {
+        "ls",
+        "cat",
+        "rm",
+        "curl",
+        "wget",
+        "bash",
+        "sh",
+        "zsh",
+        "dash",
+        "python",
+        "python3",
+        "sudo",
+        "chmod",
+        "chown",
+        "dd",
+        "nc",
+        "ncat",
+        "exec",
+        "eval",
+        "kill",
+        "pkill",
+        "apt",
+        "yum",
+        "dnf",
+        "pip",
+        "npm",
+        "find",
+        "xargs",
+        "tee",
+        "touch",
+        "mv",
+        "cp",
+        "ln",
+        "head",
+        "tail",
+        "less",
+        "more",
+        "vi",
+        "vim",
+        "nano",
+        "ssh",
+        "scp",
+        "rsync",
+        "mount",
+        "umount",
+        "systemctl",
+        "service",
+        "docker",
+        "kubectl",
+    }
+)
+_CYRILLIC_LATIN = str.maketrans(
+    {
+        "а": "a",
+        "е": "e",
+        "о": "o",
+        "р": "p",
+        "с": "c",
+        "у": "y",
+        "х": "x",
+        "і": "i",
+        "ј": "j",
+        "ѕ": "s",
+        "һ": "h",
+        "г": "r",
+        "м": "m",
+        "т": "t",
+        "к": "k",
+        "н": "h",
+        "в": "b",
+        "А": "A",
+        "Е": "E",
+        "О": "O",
+        "Р": "P",
+        "С": "C",
+        "У": "Y",
+        "Х": "X",
+        "Г": "R",
+        "М": "M",
+        "Т": "T",
+        "К": "K",
+        "Н": "H",
+        "В": "B",
+    }
+)
 TRAINER_PATH_FILES: dict[str, str] = {
     "pack": PACK_FILE,
     "train": TRAIN_FILE,
@@ -623,6 +731,11 @@ def trainer_fd_paths(fds: Mapping[str, int]) -> dict[str, str]:
     return {key: f"{PROC_SELF_FD_PREFIX}{fd}" for key, fd in fds.items()}
 
 
+def trainer_local_fd_paths(fds: Mapping[str, int]) -> dict[str, str]:
+    """Same-process fd names. Never ``/proc/self/fd/N`` (that name is process-local)."""
+    return {key: f"/dev/fd/{int(fd)}" for key, fd in fds.items()}
+
+
 def _hash_held_fd(fd: int, field: str) -> str:
     try:
         os.lseek(fd, 0, os.SEEK_SET)
@@ -650,7 +763,7 @@ def rehash_held_fds(
     pin: Mapping[str, Any],
     manifest_shas: Mapping[str, str],
     host: str,
-    refuse_on_mismatch: bool = False,
+    refuse_on_mismatch: bool = True,
 ) -> dict[str, Any]:
     """Informational re-hash of the same fds handed to the trainer. Never reopens paths."""
     post: dict[str, str] = {}
@@ -841,6 +954,14 @@ def load_pinned_copy_mode(script: Path | None = None) -> dict[str, Any] | None:
     if root is None:
         return None
     pins_path = root / PINS_JSON_NAME
+    try:
+        pins_stat = os.lstat(pins_path)
+    except OSError as exc:
+        _refuse(PINS_JSON_NAME, "readable regular file", f"OSError:{exc.errno}")
+    if stat.S_ISLNK(pins_stat.st_mode):
+        _refuse(PINS_JSON_NAME, "regular file", "symlink")
+    if pins_stat.st_mode & 0o222:
+        _refuse(PINS_JSON_NAME, "mode 0400", oct(pins_stat.st_mode & 0o777))
     raw = _read_capped_file(pins_path, field=PINS_JSON_NAME, max_bytes=PINS_JSON_MAX_BYTES)
     file_sha = hashlib.sha256(raw).hexdigest()
     try:
@@ -1672,7 +1793,13 @@ def _require_cam_pin(record: object, pack_id: str, *, run_id: str | None = None)
         "nonce": parsed.get("nonce"),
         "code_pins": dict(parsed["code_pins"]),
         "git_commit": parsed.get("git_commit"),
+        "head": parsed.get("head"),
         "expires_at": parsed.get("expires_at"),
+        "reserved_content_uuids_sha256": parsed.get("reserved_content_uuids_sha256"),
+        "reserved_content_uuids_min_rows": parsed.get("reserved_content_uuids_min_rows"),
+        "rows_total": parsed.get("rows_total"),
+        "rows_train": parsed.get("rows_train"),
+        "rows_holdout": parsed.get("rows_holdout"),
         "recordedAt": parsed.get("recordedAt"),
         "kid": parsed.get("kid"),
         "cam_key_id": parsed.get("cam_key_id"),
@@ -1693,16 +1820,6 @@ def _require_cam_pin(record: object, pack_id: str, *, run_id: str | None = None)
 def _parse_hq_pin_payload(payload: object) -> dict[str, Any]:
     try:
         return cam_pin_spec.parse_hq_pin_payload(payload)
-    except cam_pin_spec.CamPinError as exc:
-        _refuse(exc.field, exc.expected, exc.actual)
-
-
-def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
-    """Historical HQ GET. Kicks must not call this; they verify a staged v2 pin."""
-    if type(pack_id) is not str or not pack_id:
-        _refuse("pack_id", "present", "missing")
-    try:
-        return cam_pin_spec.fetch_signed_pin(pack_id)
     except cam_pin_spec.CamPinError as exc:
         _refuse(exc.field, exc.expected, exc.actual)
 
@@ -2352,6 +2469,32 @@ def _fields_from_sidecar(path: Path) -> dict[str, dict[str, object]]:
 def _load_jsonl_rows(raw: object) -> list[dict[str, Any]]:
     if type(raw) is not str or not raw:
         return []
+    if is_proc_self_fd_path(raw):
+        fd = _dup_proc_self_fd(raw)
+        try:
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+                buf = _read_fd_bytes(fd)
+                os.lseek(fd, 0, os.SEEK_SET)
+            except OSError as exc:
+                _refuse("paths", "seekable fd", f"OSError:{exc.errno}")
+        finally:
+            _close_quietly(fd)
+        try:
+            text = content_uuid.decode_json_bytes(buf)
+        except content_uuid.ContentUuidError as exc:
+            _refuse(exc.field, exc.expected, f"{raw}: {exc}")
+        rows: list[dict[str, Any]] = []
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                obj = content_uuid.strict_json_loads(line)
+            except content_uuid.ContentUuidError as exc:
+                _refuse(exc.field, exc.expected, f"{raw}: {exc}")
+            if isinstance(obj, dict):
+                rows.append(obj)
+        return rows
     path = Path(raw)
     if not path.is_file():
         return []
@@ -2531,8 +2674,77 @@ def reserved_content_uuids_path() -> Path:
     return Path(__file__).resolve().parents[2] / "trust" / RESERVED_CONTENT_UUIDS_NAME
 
 
+def reserved_near_dup_fingerprints_path() -> Path:
+    if cam_pin_spec.PINNED_COPY_ROOT is not None:
+        return Path(cam_pin_spec.PINNED_COPY_ROOT) / RESERVED_NEAR_DUP_FPS_REL
+    return Path(__file__).resolve().parents[2] / "trust" / RESERVED_NEAR_DUP_FPS_NAME
+
+
+def _line_is_placeholder(text: str) -> bool:
+    upper = text.upper()
+    return any(marker in text or marker in upper for marker in _PLACEHOLDER_MARKERS)
+
+
+def load_reserved_near_dup_fingerprints(
+    path: object,
+    expected_sha256: object,
+) -> dict[str, tuple[str, frozenset[str]]]:
+    """Load sha-pinned N fingerprints for this kick. Placeholder files yield no fps."""
+    if path is None or path is _UNSET or (type(path) is str and not path):
+        return {}
+    pin = _require_sha256_hex("reserved_near_dup_fingerprints.sha256", expected_sha256)
+    buf = _read_file_buffer(Path(str(path)), "reserved_near_dup_fingerprints")
+    actual = hashlib.sha256(buf).hexdigest()
+    if actual != pin:
+        _refuse("reserved_near_dup_fingerprints.sha256", pin, actual)
+    try:
+        text = buf.decode("utf-8")
+    except UnicodeDecodeError:
+        _refuse("reserved_near_dup_fingerprints", "utf-8 text", "invalid encoding")
+    if _line_is_placeholder(text):
+        return {}
+    found: dict[str, tuple[str, frozenset[str]]] = {}
+    for idx, line in enumerate(text.splitlines()):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if _line_is_placeholder(stripped):
+            _refuse(
+                "reserved_near_dup_fingerprints",
+                "live fingerprints",
+                f"placeholder at line {idx}",
+            )
+        try:
+            obj = content_uuid.strict_json_loads(stripped)
+        except content_uuid.ContentUuidError as exc:
+            _refuse(exc.field, exc.expected, f"reserved_near_dup_fingerprints[{idx}]: {exc}")
+        if not isinstance(obj, dict):
+            _refuse(
+                f"reserved_near_dup_fingerprints[{idx}]",
+                "JSON object",
+                type(obj).__name__,
+            )
+        digest = obj.get("content_uuid") or obj.get("sha256")
+        tokens = obj.get("tokens")
+        rid = obj.get("id") if type(obj.get("id")) is str else "n"
+        if type(digest) is not str or len(digest) != SHA256_LEN:
+            _refuse(
+                f"reserved_near_dup_fingerprints[{idx}].content_uuid",
+                "64-hex",
+                digest,
+            )
+        if not isinstance(tokens, list) or not all(type(tok) is str for tok in tokens):
+            _refuse(
+                f"reserved_near_dup_fingerprints[{idx}].tokens",
+                "list of str",
+                type(tokens).__name__,
+            )
+        found[digest] = (rid, frozenset(tokens))
+    return found
+
+
 def load_reserved_content_uuids(path: object, expected_sha256: object) -> set[str]:
-    """Load the pinned reserved content-uuid list. Missing file, empty, or sha mismatch refuses."""
+    """Load the pinned reserved content-uuid list. Placeholder/synthetic lists refuse."""
     if path is None or path is _UNSET or (type(path) is str and not path):
         _refuse("reserved_content_uuids", "path", "missing")
     pin = _require_sha256_hex("reserved_content_uuids.sha256", expected_sha256)
@@ -2544,37 +2756,47 @@ def load_reserved_content_uuids(path: object, expected_sha256: object) -> set[st
         text = buf.decode("utf-8")
     except UnicodeDecodeError:
         _refuse("reserved_content_uuids", "utf-8 text", "invalid encoding")
+    if _line_is_placeholder(text):
+        _refuse("reserved_content_uuids", "live 64-hex content_uuid rows", "placeholder")
     shas: set[str] = set()
+    hex_only: set[str] = set()
     for idx, line in enumerate(text.splitlines()):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
+        if _line_is_placeholder(stripped):
+            _refuse(
+                "reserved_content_uuids",
+                "live 64-hex content_uuid rows",
+                f"placeholder at line {idx}",
+            )
         if stripped.startswith("{"):
-            try:
-                obj = content_uuid.strict_json_loads(stripped)
-            except content_uuid.ContentUuidError as exc:
-                _refuse(exc.field, exc.expected, f"reserved_content_uuids[{idx}]: {exc}")
-            except RecursionError:
-                _refuse(
-                    "content_uuid.too_deep",
-                    f"depth <= {content_uuid.MAX_DEPTH}",
-                    f"reserved_content_uuids[{idx}]: RecursionError",
-                )
-            if not isinstance(obj, dict):
-                _refuse(
-                    f"reserved_content_uuids[{idx}]",
-                    "JSON object or sha256 hex",
-                    type(obj).__name__,
-                )
-            try:
-                digest = content_uuid.content_uuid(obj)
-            except content_uuid.ContentUuidError as exc:
-                _refuse(exc.field, exc.expected, f"reserved_content_uuids[{idx}]: {exc}")
-            shas.add(digest)
-            continue
-        shas.add(_require_sha256_hex(f"reserved_content_uuids[{idx}]", stripped))
+            _refuse(
+                "reserved_content_uuids",
+                "64-hex content_uuid rows",
+                f"json object at line {idx}",
+            )
+        digest = _require_sha256_hex(f"reserved_content_uuids[{idx}]", stripped)
+        shas.add(digest)
+        hex_only.add(digest)
     if not shas:
         _refuse("reserved_content_uuids", "non-empty list", "empty")
+    min_rows = RESERVED_CONTENT_UUIDS_MIN_ROWS
+    if len(shas) < min_rows:
+        _refuse("reserved_content_uuids.min_rows", min_rows, len(shas))
+    sidecar = load_reserved_near_dup_fingerprints(
+        reserved_near_dup_fingerprints_path(),
+        RESERVED_NEAR_DUP_FPS_SHA256,
+    )
+    fps = dict(sidecar)
+    missing = [digest for digest in hex_only if digest not in fps]
+    if missing:
+        _refuse(
+            "reserved_eval_partition.fingerprint_missing",
+            "sha-pinned fingerprint per reserved sha",
+            missing[0],
+        )
+    content_uuid.install_kick_near_dup_fingerprints(fps)
     return shas
 
 
@@ -2658,7 +2880,7 @@ def _uuidless_source_allowed(
 
 
 def _forbidden_key_name(key: object, forbidden: frozenset[str]) -> bool:
-    stem = normalize_leak_key(key)
+    stem = normalize_leak_key(_fold_confusables(str(key)))
     if stem in forbidden:
         return True
     if "trajectory" in stem:
@@ -2688,18 +2910,75 @@ def _shape_strip_marks(text: str) -> str:
     return "".join(kept)
 
 
-def _shape_scan_text(text: str) -> str:
-    """NFKC, strip Cf/zero-width, decode \\uXXXX and HTML entities, casefold, collapse ws."""
-    text = _shape_strip_marks(unicodedata.normalize("NFKC", text))
+def _fold_confusables(text: str) -> str:
+    return text.translate(_CYRILLIC_LATIN)
+
+
+def _decode_shape_escapes(text: str) -> str:
+    def _unescape_unicode(match: re.Match[str]) -> str:
+        hex_digits = match.group(1) or match.group(2)
+        return chr(int(hex_digits, 16))
 
     def _unescape_hex(match: re.Match[str]) -> str:
         return chr(int(match.group(1), 16))
 
-    text = _UNICODE_ESCAPE_RE.sub(_unescape_hex, text)
+    text = _UNICODE_ESCAPE_RE.sub(_unescape_unicode, text)
+    text = _HEX_ESCAPE_RE.sub(_unescape_hex, text)
+    text = _PERCENT_ESCAPE_RE.sub(_unescape_hex, text)
     text = html.unescape(text)
+    return text
+
+
+def _shape_normalize_keep_lines(text: str) -> str:
+    """NFKC, fold confusables, decode escapes, strip ZWSP/soft hyphen. Keep line breaks."""
+    text = unicodedata.normalize("NFKC", text)
+    text = _fold_confusables(text)
+    text = _decode_shape_escapes(text)
     text = _shape_strip_marks(unicodedata.normalize("NFKC", text))
-    text = text.casefold()
-    return re.sub(r"\s+", " ", text).strip()
+    return text.casefold()
+
+
+def _shape_split_lines(text: str) -> list[str]:
+    lines: list[str] = []
+    buf: list[str] = []
+    for ch in text:
+        if ch in _SHAPE_LINE_TERMINATORS:
+            lines.append("".join(buf))
+            buf = []
+            continue
+        buf.append(ch)
+    lines.append("".join(buf))
+    return lines
+
+
+def _shape_line_prompt_hit(line: str) -> bool:
+    """True when a line starts with ``$ `` plus a command word (not LaTeX ``$ x$``)."""
+    stripped = line.lstrip(" \t")
+    if not stripped.startswith("$"):
+        return False
+    rest = stripped[1:]
+    if not rest or rest[0] not in " \t":
+        return False
+    token = rest.lstrip(" \t").split(None, 1)[0] if rest.lstrip(" \t") else ""
+    if not token:
+        return False
+    word = token.strip("`'\"")
+    if word in _SHAPE_COMMAND_WORDS:
+        return True
+    return False
+
+
+def _shape_scan_text(text: str) -> str:
+    """Normalized collapsed text for key/pattern contains-checks (not line-start)."""
+    text = _shape_normalize_keep_lines(text)
+    collapsed = "".join(" " if ch in _SHAPE_LINE_TERMINATORS else ch for ch in text)
+    return re.sub(r"\s+", " ", collapsed).strip()
+
+
+def _shape_prompt_hit(text: str) -> bool:
+    """Normalize first, then line-start ``$ `` + command word on every terminator."""
+    normalized = _shape_normalize_keep_lines(text)
+    return any(_shape_line_prompt_hit(line) for line in _shape_split_lines(normalized))
 
 
 def _labels_value_mismatch(
@@ -2835,6 +3114,16 @@ def _uuidless_shape_mismatch(
         expected_type = questions_types.get(name)
         if expected_type is not None and child.get("type") != expected_type:
             return f"questions.{name}.type mismatch"
+        if isinstance(child, Mapping) and "criteria" in child:
+            criteria = child.get("criteria")
+            if isinstance(criteria, Mapping):
+                early_forbidden = spec["forbidden_keys"]
+                if isinstance(early_forbidden, frozenset):
+                    for crit_key in criteria:
+                        if _forbidden_key_name(crit_key, early_forbidden):
+                            return f"forbidden key {crit_key!r}"
+                        if _shape_prompt_hit(str(crit_key)):
+                            return "forbidden string marker"
     labels_fields = spec["labels_fields"]
     labels = row["labels"]
     if not isinstance(labels_fields, Mapping):
@@ -2866,6 +3155,8 @@ def _uuidless_shape_mismatch(
                     return f"forbidden key {key!r}"
                 if type(key) is str:
                     scanned_key = _shape_scan_text(key)
+                    if _shape_prompt_hit(key):
+                        return "forbidden string marker"
                     for regex in string_res:
                         if regex.search(key) or regex.search(scanned_key):
                             return "forbidden string marker"
@@ -2875,6 +3166,75 @@ def _uuidless_shape_mismatch(
             stack.extend(cur)
             continue
         if type(cur) is str:
+            if _shape_prompt_hit(cur):
+                return "forbidden string marker"
+            scanned = _shape_scan_text(cur)
+            for regex in string_res:
+                if regex.search(cur) or regex.search(scanned):
+                    return "forbidden string marker"
+    return None
+
+
+_EXECUTION_ONLY_KEYS = frozenset(
+    {
+        "toolname",
+        "function",
+        "arguments",
+        "exec",
+        "run",
+        "subprocess",
+        "sh",
+        "cmd",
+        "shell",
+        "bash",
+        "toolcall",
+        "toolcalls",
+        "tooluse",
+        "functioncall",
+        "step",
+        "steps",
+    }
+)
+# Agent rows keep ``tool=`` / ``"tool":`` schema vocabulary. Math shape
+# still uses the broader ``forbidden_string_patterns`` set.
+_EXECUTION_STRING_PATTERNS = (
+    r"\$\(",
+    r"\b(?:ba)?sh\s+-c\b",
+    r"\b(?:curl|wget)\b[\s\S]{0,120}\|\s*(?:ba)?sh\b",
+    r"\bbase64\b[\s\S]{0,120}\|\s*(?:ba)?sh\b",
+    r"(?:```|~~~)\s*(?:ba)?sh\b",
+    r"(?:```|~~~)\s*zsh\b",
+    r"\bpython(?:3)?\s+-c\b",
+    r"(?<!\\)\brm\s+-",
+    r"`[A-Za-z][A-Za-z0-9_./-]*`",
+)
+
+
+def _execution_pattern_mismatch(row: Mapping[str, Any]) -> str | None:
+    """Prompt + exec-key scan for rows that are not Math-allowlisted.
+
+    Agent rows keep legitimate ``action`` / ``tool`` schema keys; Math
+    shape still uses the broader ``forbidden_keys`` set.
+    """
+    forbidden = _EXECUTION_ONLY_KEYS
+    string_res = tuple(re.compile(pattern, re.I) for pattern in _EXECUTION_STRING_PATTERNS)
+    stack: list[object] = [row]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, Mapping):
+            for key, child in cur.items():
+                if _forbidden_key_name(key, forbidden):
+                    return f"forbidden key {key!r}"
+                if type(key) is str and _shape_prompt_hit(key):
+                    return "forbidden string marker"
+                stack.append(child)
+            continue
+        if isinstance(cur, list):
+            stack.extend(cur)
+            continue
+        if type(cur) is str:
+            if _shape_prompt_hit(cur):
+                return "forbidden string marker"
             scanned = _shape_scan_text(cur)
             for regex in string_res:
                 if regex.search(cur) or regex.search(scanned):
@@ -2958,8 +3318,57 @@ def collect_reserved_partition(
             if len(hits) >= 10:
                 return hits
             continue
+        spec = _uuidless_allowlist_spec(row)
+        if uuid_text is not None:
+            try:
+                residue = content_uuid.eval_partition_residue(uuid_text)
+            except UnicodeEncodeError:
+                hits.append(
+                    (
+                        "reserved_eval_partition.uuid_malformed",
+                        f"{rid}:source.uuid is not ascii",
+                    )
+                )
+                if len(hits) >= 10:
+                    return hits
+                continue
+            residue = residue % modulus
+            folded = uuid_text.casefold()
+            folded_residue = residue
+            # Case-only variants of an N uuid (all-upper / all-lower) still hit.
+            # Mixed-case dataset ids keep their own residue (Mill golden vectors).
+            if folded != uuid_text and (uuid_text.isupper() or uuid_text.islower()):
+                try:
+                    folded_residue = content_uuid.eval_partition_residue(folded) % modulus
+                except UnicodeEncodeError:
+                    folded_residue = residue
+            if residue in residues or folded_residue in residues:
+                shown = residue if residue in residues else folded_residue
+                hits.append(
+                    (
+                        "reserved_eval_partition.uuid_mod",
+                        f"{rid}:uuid_mod=={shown}",
+                    )
+                )
+        if spec is not None:
+            mismatch = _uuidless_shape_mismatch(row, spec)
+            if mismatch:
+                field = (
+                    "reserved_eval_partition.uuid_missing.shape_mismatch"
+                    if uuid_text is None
+                    else "reserved_eval_partition.shape_mismatch"
+                )
+                hits.append((field, f"{rid}:{mismatch}"))
+        else:
+            pattern_hit = _execution_pattern_mismatch(row)
+            if pattern_hit:
+                hits.append(
+                    (
+                        "reserved_eval_partition.shape_mismatch",
+                        f"{rid}:{pattern_hit}",
+                    )
+                )
         if uuid_text is None:
-            spec = _uuidless_allowlist_spec(row)
             if spec is None:
                 hits.append(
                     (
@@ -2968,14 +3377,6 @@ def collect_reserved_partition(
                     )
                 )
             else:
-                mismatch = _uuidless_shape_mismatch(row, spec)
-                if mismatch:
-                    hits.append(
-                        (
-                            "reserved_eval_partition.uuid_missing.shape_mismatch",
-                            f"{rid}:{mismatch}",
-                        )
-                    )
                 if verified is None:
                     hits.append(
                         (
@@ -2992,27 +3393,6 @@ def collect_reserved_partition(
                     )
             if len(hits) >= 10:
                 return hits
-        else:
-            try:
-                residue = content_uuid.eval_partition_residue(uuid_text)
-            except UnicodeEncodeError:
-                hits.append(
-                    (
-                        "reserved_eval_partition.uuid_malformed",
-                        f"{rid}:source.uuid is not ascii",
-                    )
-                )
-                if len(hits) >= 10:
-                    return hits
-                continue
-            residue = residue % modulus
-            if residue in residues:
-                hits.append(
-                    (
-                        "reserved_eval_partition.uuid_mod",
-                        f"{rid}:uuid_mod=={residue}",
-                    )
-                )
         try:
             content_sha = content_uuid.content_uuid(row)
         except content_uuid.ContentUuidError as exc:
@@ -3043,6 +3423,14 @@ def collect_reserved_partition(
             for reserved_sha in reserved:
                 indexed = content_uuid.lookup_near_dup_fingerprint(reserved_sha)
                 if indexed is None:
+                    if content_uuid.kick_near_dup_fingerprints_loaded():
+                        hits.append(
+                            (
+                                "reserved_eval_partition.near_dup_fingerprint_missing",
+                                f"{rid}:no fingerprint for {reserved_sha}",
+                            )
+                        )
+                        break
                     continue
                 n_id, n_tokens = indexed
                 if not n_tokens:
@@ -3084,6 +3472,7 @@ def enforce_pack_gates(
     forged = collect_forged_content_uuids(recorded_paths)
     if forged:
         _refuse("content_uuid", "recomputed digest", forged[:10])
+    content_uuid.reset_kick_near_dup_fingerprints()
     pinned_shas = load_reserved_content_uuids(
         reserved_content_uuids_path(),
         RESERVED_CONTENT_UUIDS_SHA256,
@@ -3644,13 +4033,19 @@ def verify_and_stage(
             _refuse("champion_touched", False, manifest.get("champion_touched"))
         pin = _require_cam_pin(pin_record, pack_id, run_id=run_id)
         claimed_reserved = pin.get("reserved_content_uuids_sha256")
-        if claimed_reserved is not None:
-            if claimed_reserved != RESERVED_CONTENT_UUIDS_SHA256:
-                _refuse(
-                    "cam-pin.reserved_content_uuids_sha256",
-                    RESERVED_CONTENT_UUIDS_SHA256,
-                    claimed_reserved,
-                )
+        if claimed_reserved != RESERVED_CONTENT_UUIDS_SHA256:
+            _refuse(
+                "cam-pin.reserved_content_uuids_sha256",
+                RESERVED_CONTENT_UUIDS_SHA256,
+                claimed_reserved,
+            )
+        claimed_min = pin.get("reserved_content_uuids_min_rows")
+        if claimed_min != RESERVED_CONTENT_UUIDS_MIN_ROWS:
+            _refuse(
+                "cam-pin.reserved_content_uuids_min_rows",
+                RESERVED_CONTENT_UUIDS_MIN_ROWS,
+                claimed_min,
+            )
 
         computed_shas: dict[str, str] = {}
         manifest_shas: dict[str, str] = {}
@@ -4358,6 +4753,7 @@ def kick(
             verified["manifest"] = _verify_manifest_copy(run_private, manifest_sha)
         sealed_fds = seal_verified_buffers(verified)
         fd_paths = trainer_fd_paths(sealed_fds)
+        local_fd_paths = trainer_local_fd_paths(sealed_fds)
         trainer_config = {"host": evidence["host"], "paths": fd_paths}
         trainer_argv = build_trainer_argv(fd_paths)
         evidence["trainer_config"] = trainer_config
@@ -4382,7 +4778,7 @@ def kick(
             "expected_shas": dict(evidence["expected_shas"]),
             "pin": dict(evidence["pin"]),
             "run_private_dir": evidence["run_private_dir"],
-            "paths": fd_paths,
+            "paths": dict(staged_paths),
             "trainer_config": trainer_config,
             "trainer_argv": trainer_argv,
             "evidence": hook_evidence,
@@ -4395,7 +4791,9 @@ def kick(
             body["smoke"] = True
         with guard_trainer_fd_writes(fd_paths, evidence["pin"]):
             if kickoff is not None:
-                result = kickoff(body)
+                hook_body = dict(body)
+                hook_body["paths"] = dict(local_fd_paths)
+                result = kickoff(hook_body)
                 if not isinstance(result, dict) or result.get("ok") is not True:
                     if isinstance(result, dict) and result.get("field"):
                         _refuse(result.get("field"), result.get("expected"), result.get("actual"))
@@ -4443,7 +4841,7 @@ def kick(
             pin=evidence["pin"],
             manifest_shas=evidence["manifest_shas"],
             host=host,
-            refuse_on_mismatch=False,
+            refuse_on_mismatch=True,
         )
         apply_trainer_exit(record, exit_info)
         if smoke:

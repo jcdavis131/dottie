@@ -13,7 +13,7 @@ in the request body is not provenance. ``build_command`` always passes
 a dir-fd walk). This handler hashes the exact fd it will pass to the
 trainer and never reopens that file by path; the trainer receives sealed
 memfds or held ``/proc/self/fd/N`` descriptors. An end-of-training re-hash
-is informational and uses those same fds. Does not promote, does not touch
+mismatch is REFUSED and uses those same fds. Does not promote, does not touch
 serve, :8770, or champion files.
 """
 from __future__ import annotations
@@ -220,50 +220,6 @@ def _parse_hq_pin_payload(payload: object) -> dict[str, Any]:
         return cam_pin_spec.parse_hq_pin_payload(payload)
     except cam_pin_spec.CamPinError as exc:
         return _bad(exc.field, exc.expected, exc.actual)
-
-
-def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
-    """GET the pinned-origin pin and verify Cam's Ed25519 signature."""
-    if type(pack_id) is not str or not pack_id:
-        return _bad("pack_id", "present", "missing")
-    try:
-        parsed = cam_pin_spec.fetch_signed_pin(pack_id)
-    except cam_pin_spec.CamPinError as exc:
-        return _bad(exc.field, exc.expected, exc.actual)
-    return {"ok": True, "pin": parsed}
-
-
-def require_hq_cam_pin(pack_id: str) -> dict[str, Any]:
-    """Historical HQ GET. Kickoff must not call this; it verifies a staged v2 pin."""
-    fetched = fetch_cam_pin(pack_id)
-    if fetched.get("ok") is not True:
-        return fetched
-    record = fetched.get("pin")
-    if not isinstance(record, dict) or not record:
-        return _bad("cam-pin", "present", "missing")
-    pin_pack = record.get("pack_id")
-    if type(pin_pack) is not str or not pin_pack:
-        return _bad("cam-pin.pack_id", "present", "missing")
-    if pin_pack != pack_id:
-        return _bad("cam-pin.pack_id", pack_id, pin_pack)
-    pin: dict[str, Any] = {
-        "pack_id": pack_id,
-        "source": PIN_SOURCE,
-        "recordedAt": record.get("recordedAt"),
-        "kid": record.get("kid"),
-        "cam_key_id": record.get("cam_key_id"),
-        "cam_sig": record.get("cam_sig"),
-    }
-    for sha_field, _filename, _manifest_rows, pin_rows_field in ARTIFACTS:
-        required = _require_sha(f"cam-pin.{sha_field}", record.get(sha_field))
-        if isinstance(required, dict):
-            return required
-        pin[sha_field] = required
-        rows = _require_int(f"cam-pin.{pin_rows_field}", record.get(pin_rows_field))
-        if isinstance(rows, dict):
-            return rows
-        pin[pin_rows_field] = rows
-    return {"ok": True, "pin": pin}
 
 
 def build_command(
@@ -570,12 +526,11 @@ def handle_train_kickoff(
         if cam_pin_spec.PINNED_COPY_ROOT is None:
             blobs = cam_pin_spec.require_committed_trust()
         else:
-            incoming = body.get("evidence") if isinstance(body.get("evidence"), dict) else {}
-            blobs = incoming.get("trust_blobs")
-            if not isinstance(blobs, dict) or not blobs:
-                return _bad("trust_blobs", "pinned-copy map", "missing")
-    except cam_pin_spec.CamPinError as exc:
-        return _bad(exc.field, exc.expected, exc.actual)
+            pins = cam_pin_spec.live_code_pins(root=cam_pin_spec.PINNED_COPY_ROOT)
+            blobs = dict(pins)
+            blobs["HEAD"] = "pinned-copy"
+    except cam_pin_spec.CamPinError as trans_exc:
+        return _bad(trans_exc.field, trans_exc.expected, trans_exc.actual)
     try:
         kick_helper_ft.refuse_inbox_latest(body)
     except kick_helper_ft.KickRefused as exc:
@@ -608,21 +563,10 @@ def handle_train_kickoff(
     age = (datetime.now(timezone.utc) - checked).total_seconds()
     if age > MAX_EVIDENCE_AGE_SECONDS or age < -60:
         return _bad("checked_at", f"age<={MAX_EVIDENCE_AGE_SECONDS}s", f"age={int(age)}s")
-    evidence_path = body.get("evidence_path") or evidence.get("evidence_path")
-    if isinstance(evidence_path, str) and evidence_path:
-        disk_path = Path(evidence_path)
-        if not disk_path.is_file():
-            return _bad("evidence_path", "present", "missing")
-        try:
-            disk_ev = json.loads(disk_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, ValueError) as exc:
-            return _bad("evidence_path", "readable JSON", type(exc).__name__)
-        if not isinstance(disk_ev, dict):
-            return _bad("evidence_path", "object", type(disk_ev).__name__)
-        if disk_ev.get("run_id") != run_id:
-            return _bad("evidence.run_id", run_id, disk_ev.get("run_id"))
-        if disk_ev.get("ok") is False:
-            return _bad("evidence.ok", True, False)
+    # Never take evidence_path, trust_blobs, or fd names from the request body.
+    evidence_path = None
+    if isinstance(evidence, dict):
+        evidence.pop("trust_blobs", None)
     pin = body.get("pin")
     if not isinstance(pin, dict) or not pin:
         return _bad("pin", "present", "missing")
@@ -660,20 +604,12 @@ def handle_train_kickoff(
         return _bad("evidence.pin", hq_id, ev_id)
     fetched_pin = {"ok": True, "pin": hq_pin, "source": PIN_SOURCE, "staged": True}
     evidence["kickoff_pin_fetch"] = fetched_pin
-    staged_paths = kick_helper_ft.trainer_input_paths(root)
     claimed_paths = body.get("paths")
     if isinstance(claimed_paths, dict):
         pack_dir_claim = claimed_paths.get("pack_dir")
         if pack_dir_claim:
             return _bad("paths.pack_dir", "absent (run-dir copies only)", pack_dir_claim)
-        for key, expected in staged_paths.items():
-            got = claimed_paths.get(key)
-            if type(got) is not str:
-                return _bad(f"paths.{key}", expected, "missing")
-            if kick_helper_ft.is_proc_self_fd_path(got):
-                continue
-            if str(Path(got).resolve()) != expected:
-                return _bad(f"paths.{key}", expected, got)
+        # Body path names (including /proc/self/fd/N) are not used. Open from dir_fd.
     held_fds: dict[str, int] = {}
     sealed_fds: dict[str, int] = {}
     verified_bufs: dict[str, bytes] = {}
@@ -703,25 +639,16 @@ def handle_train_kickoff(
                     return _bad(sha_field, hq_sha, man_sha)
                 manifest_shas[sha_field] = man_sha
                 path_key = kick_helper_ft.PATH_KEY_BY_SHA[sha_field]
-                claimed = None
-                if isinstance(claimed_paths, dict):
-                    claimed = claimed_paths.get(path_key)
-                if type(claimed) is str and kick_helper_ft.is_proc_self_fd_path(claimed):
-                    try:
-                        fd = kick_helper_ft._dup_proc_self_fd(claimed)
-                    except kick_helper_ft.KickRefused as exc:
-                        return _bad(exc.field, exc.expected, exc.actual)
-                else:
-                    try:
-                        fd = os.open(
-                            filename,
-                            kick_helper_ft._open_flags_read(),
-                            dir_fd=dir_fd,
-                        )
-                    except OSError as exc:
-                        if getattr(exc, "errno", None) in (errno.ELOOP, getattr(errno, "EPERM", None)):
-                            return _bad(sha_field, "regular file", "symlink")
-                        return _bad(filename, "readable regular file", f"OSError:{exc.errno}")
+                try:
+                    fd = os.open(
+                        filename,
+                        kick_helper_ft._open_flags_read(),
+                        dir_fd=dir_fd,
+                    )
+                except OSError as exc:
+                    if getattr(exc, "errno", None) in (errno.ELOOP, getattr(errno, "EPERM", None)):
+                        return _bad(sha_field, "regular file", "symlink")
+                    return _bad(filename, "readable regular file", f"OSError:{exc.errno}")
                 held_fds[path_key] = fd
                 try:
                     info = os.fstat(fd)
@@ -763,32 +690,15 @@ def handle_train_kickoff(
             verified_bufs["manifest"] = man_buf
         finally:
             kick_helper_ft._close_quietly(dir_fd)
-        incoming_already_held = bool(
-            isinstance(claimed_paths, dict)
-            and all(
-                kick_helper_ft.is_proc_self_fd_path(claimed_paths.get(key))
-                for key in ("pack", "train", "holdout", "manifest")
-            )
-        )
-        if incoming_already_held:
-            fd_paths = {
-                key: claimed_paths[key]
-                for key in ("pack", "train", "holdout", "manifest")
-            }
-            sealed_fds = {
-                key: kick_helper_ft._dup_proc_self_fd(fd_paths[key])
-                for key in fd_paths
-            }
-        else:
-            try:
-                sealed_fds = kick_helper_ft.seal_verified_buffers(verified_bufs)
-            except kick_helper_ft.KickRefused as exc:
-                return _bad(exc.field, exc.expected, exc.actual)
-            fd_paths = kick_helper_ft.trainer_fd_paths(sealed_fds)
+        try:
+            sealed_fds = kick_helper_ft.seal_verified_buffers(verified_bufs)
+        except kick_helper_ft.KickRefused as exc:
+            return _bad(exc.field, exc.expected, exc.actual)
+        fd_paths = kick_helper_ft.trainer_fd_paths(sealed_fds)
         try:
             kick_helper_ft.enforce_pack_gates(
                 manifest,
-                staged_paths,
+                fd_paths,
                 smoke=smoke,
                 pack_dir=str(root),
             )
@@ -818,7 +728,7 @@ def handle_train_kickoff(
             pin=hq_pin,
             manifest_shas=manifest_shas,
             host=host,
-            refuse_on_mismatch=False,
+            refuse_on_mismatch=True,
         )
         kick_helper_ft.apply_trainer_exit(record, exit_info)
         ckpt_id = launched.get("checkpoint_id")

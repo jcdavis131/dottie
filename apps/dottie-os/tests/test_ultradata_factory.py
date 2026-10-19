@@ -13,6 +13,7 @@ import decimal
 import hashlib
 import importlib.util
 import json
+import multiprocessing
 import os
 import re
 import shutil
@@ -24,6 +25,7 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata
 import unittest
 import urllib.error
 import urllib.parse
@@ -108,8 +110,45 @@ finalize_manifest = _load("finalize_manifest", LAB / "finalize_manifest.py")
 kick_helper_ft = _load("kick_helper_ft", LAB / "kick_helper_ft.py")
 helper_ft_kickoff = _load("helper_ft_kickoff", LAB / "helper_ft_kickoff.py")
 content_uuid = _load("content_uuid", LAB / "content_uuid.py")
+kick_helper_ft.content_uuid = content_uuid
+if helper_ft_kickoff.kick_helper_ft is not kick_helper_ft:
+    helper_ft_kickoff.kick_helper_ft.content_uuid = content_uuid
 labeled_data_guard = _load("labeled_data_guard", SCRIPTS / "labeled_data_guard.py")
 cam_pin_spec = kick_helper_ft.cam_pin_spec
+
+
+def _mill_standin_near_dup_tokens(value: object) -> frozenset[str]:
+    """Test-only Mill tokenizer stand-in: NFKC, strip format chars, casefold, message-only."""
+    cats = frozenset({"Cc", "Cf", "Mn", "Me"})
+    texts: list[str] = []
+
+    def walk(node: object, *, message: bool = False) -> None:
+        if isinstance(node, dict):
+            for key, child in node.items():
+                walk(child, message=message or key == "message")
+            return
+        if isinstance(node, (list, tuple)):
+            for child in node:
+                walk(child, message=message)
+            return
+        if isinstance(node, str) and (message or not isinstance(value, dict)):
+            texts.append(node)
+
+    walk(value)
+    tokens: set[str] = set()
+    for text in texts:
+        folded = unicodedata.normalize("NFKC", text)
+        folded = "".join(ch for ch in folded if unicodedata.category(ch) not in cats)
+        folded = unicodedata.normalize("NFKC", folded).casefold()
+        tokens.update(part for part in folded.split() if part)
+    return frozenset(tokens)
+
+
+content_uuid.install_test_near_dup_tokenizer(_mill_standin_near_dup_tokens)
+if helper_ft_kickoff.kick_helper_ft is not kick_helper_ft:
+    helper_ft_kickoff.kick_helper_ft.content_uuid.install_test_near_dup_tokenizer(
+        _mill_standin_near_dup_tokens
+    )
 
 ULTRADATA_MATH_HF = "openbmb/UltraData-Math"
 ULTRADATA_MATH_CONFIG = "UltraData-Math-L1"
@@ -467,6 +506,8 @@ def _write_helper_pack(dest: Path) -> dict:
     write_jsonl(pack, rows)
     write_jsonl(train_path, train)
     write_jsonl(hold_path, hold)
+    # Trailing blank line so reversing a 1-row train file is a byte-level change.
+    train_path.write_bytes(train_path.read_bytes() + b"\n")
     manifest = {
         "pack_id": "curated_pack_v2-test",
         "rows": 2,
@@ -503,8 +544,10 @@ _TEST_TRUST_BLOBS = {
     "apps/dottie-os/trust/cam_pin_ed25519.pub": "test-pub-blob",
     "apps/dottie-os/trust/cam_pin_key_id": "test-key-id-blob",
     "apps/dottie-os/trust/reserved_content_uuids.jsonl": "test-reserved-blob",
+    "apps/dottie-os/trust/reserved_near_dup_fingerprints.jsonl": "test-fps-blob",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py": "test-spec-blob",
     "apps/dottie-os/scripts/lab/content_uuid.py": "test-uuid-blob",
+    "apps/dottie-os/scripts/lab/near_dup_tokenizer.py": "test-tok-blob",
     "HEAD": "test-head-sha",
 }
 _STAGED_PIN_STATE: dict[str, object] = {
@@ -661,9 +704,19 @@ def _cam_pin(manifest: dict, **overrides: object) -> dict:
         pin["expires_at"] = pin["not_after"]
     if "git_commit" not in overrides:
         pin["git_commit"] = _default_pin_git_commit()
+    else:
+        pin["git_commit"] = overrides["git_commit"]
+    if "head" not in overrides:
+        pin["head"] = pin["git_commit"]
     if "code_pins" not in overrides:
         pin["code_pins"] = _live_entrypoint_pins()
+    if "reserved_content_uuids_sha256" not in overrides:
+        pin["reserved_content_uuids_sha256"] = kick_helper_ft.RESERVED_CONTENT_UUIDS_SHA256
+    if "reserved_content_uuids_min_rows" not in overrides:
+        pin["reserved_content_uuids_min_rows"] = kick_helper_ft.RESERVED_CONTENT_UUIDS_MIN_ROWS
     pin.update(overrides)
+    if "head" not in overrides and type(pin.get("git_commit")) is str:
+        pin["head"] = pin["git_commit"]
     if "not_after" in overrides and "expires_at" not in overrides:
         pin["expires_at"] = pin["not_after"]
     binding = pin.get("binding")
@@ -904,6 +957,36 @@ def _start_hq_http_mock(owner: unittest.TestCase) -> None:
             raise _hq_http_error(str(url), 404)
         return _FakeHqHttpResponse(json.dumps(pin).encode("utf-8"))
 
+    owner._orig_load_reserved = kick_helper_ft.load_reserved_content_uuids
+
+    def _fake_load_reserved(path: object, expected_sha: object) -> set[str]:
+        try:
+            raw = Path(str(path)).read_bytes()
+        except OSError:
+            return owner._orig_load_reserved(path, expected_sha)
+        if b"RESERVED_EVAL_PARTITION_PLACEHOLDER_NOT_A_LIVE_ROW" in raw:
+            dummy = "f" * 64
+            fps = {dummy: ("placeholder-n", frozenset({"__no_overlap__"}))}
+            content_uuid.install_kick_near_dup_fingerprints(fps)
+            if helper_ft_kickoff.kick_helper_ft is not kick_helper_ft:
+                helper_ft_kickoff.kick_helper_ft.content_uuid.install_kick_near_dup_fingerprints(
+                    fps
+                )
+            return {dummy}
+        return owner._orig_load_reserved(path, expected_sha)
+
+    owner._reserved_patcher = patch.object(
+        kick_helper_ft, "load_reserved_content_uuids", side_effect=_fake_load_reserved
+    )
+    owner._reserved_patcher.start()
+    owner._reserved_patcher_kickoff = None
+    if helper_ft_kickoff.kick_helper_ft is not kick_helper_ft:
+        owner._reserved_patcher_kickoff = patch.object(
+            helper_ft_kickoff.kick_helper_ft,
+            "load_reserved_content_uuids",
+            side_effect=_fake_load_reserved,
+        )
+        owner._reserved_patcher_kickoff.start()
     owner._urlopen_patcher = patch.object(cam_pin_spec, "open_hq", side_effect=fake_open_hq)
     owner._urlopen_patcher.start()
     test_pub = Ed25519PublicKey.from_public_bytes(
@@ -942,6 +1025,9 @@ def _start_hq_http_mock(owner: unittest.TestCase) -> None:
 
 def _stop_hq_http_mock(owner: unittest.TestCase) -> None:
     kick_helper_ft.kick = owner._orig_kick  # type: ignore[method-assign]
+    owner._reserved_patcher.stop()
+    if getattr(owner, "_reserved_patcher_kickoff", None) is not None:
+        owner._reserved_patcher_kickoff.stop()
     owner._urlopen_patcher.stop()
     owner._key_patcher.stop()
     owner._trust_patcher.stop()
@@ -968,6 +1054,16 @@ def _stage_run_private(dest: Path) -> Path:
 
 def _is_held_trainer_fd(path: object) -> bool:
     return kick_helper_ft.is_proc_self_fd_path(path)
+
+
+def _xproc_child_check(paths: dict, queue: multiprocessing.Queue) -> None:
+    queue.put(
+        [
+            path
+            for path in paths.values()
+            if type(path) is str and path.startswith("/proc/self/fd/")
+        ]
+    )
 
 
 def _wrap_hash_fns(*targets: tuple[object, str]) -> tuple[list[str], list[tuple[object, str, object]]]:
@@ -1114,16 +1210,54 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(set(kickoff_body["paths"]), {"pack", "train", "holdout", "manifest"})
         self.assertNotIn("pack_dir", kickoff_body["paths"])
         for path in kickoff_body["paths"].values():
-            self.assertTrue(_is_held_trainer_fd(path), path)
+            self.assertFalse(_is_held_trainer_fd(path), path)
+            self.assertTrue(str(Path(path).resolve()).startswith(str(run_private)), path)
             self.assertNotEqual(Path(run_private).resolve(), dest.resolve())
-        self.assertEqual(kickoff_body["trainer_config"]["paths"], kickoff_body["paths"])
-        self.assertEqual(kickoff_body["trainer_argv"], kick_helper_ft.build_trainer_argv(kickoff_body["paths"]))
+        trainer_fds = kickoff_body["trainer_config"]["paths"]
+        self.assertNotEqual(trainer_fds, kickoff_body["paths"])
+        for path in trainer_fds.values():
+            self.assertTrue(_is_held_trainer_fd(path), path)
+        self.assertEqual(kickoff_body["trainer_argv"], kick_helper_ft.build_trainer_argv(trainer_fds))
         self.assertEqual(on_disk["trainer_argv"], kickoff_body["trainer_argv"])
         self.assertEqual(rec["status"], "MATCH")
         self.assertEqual(rec["host"], on_disk["host"])
-        self.assertEqual(rec["paths"], kickoff_body["paths"])
+        self.assertEqual(rec["paths"], trainer_fds)
         self.assertEqual(rec["computed_shas"], on_disk["computed_shas"])
         self.assertTrue(rec["match"])
+
+    def test_kick_never_sends_proc_self_fd_to_another_process(self) -> None:
+        """kick() must not send /proc/self/fd/N names to another process.
+
+        Uses a spawned child (no inherited fds) so /dev/fd/N in the child is
+        not the parent's sealed memfd table.
+        """
+        ctx = multiprocessing.get_context("spawn")
+        queue = ctx.Queue()
+        captured: dict[str, object] = {}
+
+        def kickoff(body: dict) -> dict:
+            paths = dict(body.get("paths") or {})
+            captured["parent_proc_fds"] = [
+                path
+                for path in paths.values()
+                if kick_helper_ft.is_proc_self_fd_path(path)
+            ]
+            proc = ctx.Process(target=_xproc_child_check, args=(paths, queue))
+            proc.start()
+            proc.join(15)
+            captured["child_exit"] = proc.exitcode
+            captured["child_proc_fds"] = queue.get(timeout=5)
+            return {"ok": True, "checkpoint_id": "ckpt-xproc", "exit_code": 0}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            kick_helper_ft.kick(dest, kickoff=kickoff)
+        self.assertEqual(captured.get("parent_proc_fds"), [])
+        self.assertEqual(captured.get("child_exit"), 0)
+        self.assertEqual(captured.get("child_proc_fds"), [])
 
     def test_one_byte_change_in_any_file_refuses(self) -> None:
         files = (
@@ -1444,19 +1578,18 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(ctx.exception.actual, 2)
 
     def test_pin_api_unreachable_refuses(self) -> None:
+        self.assertFalse(hasattr(kick_helper_ft, "fetch_cam_pin"))
+        self.assertFalse(hasattr(helper_ft_kickoff, "fetch_cam_pin"))
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             _write_helper_pack(dest)
             self.hq_error = "timed out"
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.fetch_cam_pin("curated_pack_v2-test")
+                kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
-        self.assertEqual(len(self.hq_requests), 1)
-        self.assertTrue(self.hq_requests[0].startswith("https://swarm-hq.test/api/packs/"))
+        self.assertEqual(self.hq_requests, [])
         self.assertEqual(ctx.exception.field, "cam-pin")
-        self.assertEqual(ctx.exception.expected, "HTTPS Swarm HQ pin")
-        self.assertIn("unreachable", str(ctx.exception.actual))
 
     def test_pin_fetch_is_https_swarm_hq_not_redis_or_paste(self) -> None:
         spec_src = Path(cam_pin_spec.__file__).read_text(encoding="utf-8")
@@ -1476,10 +1609,11 @@ class HelperFtIntegrityTests(unittest.TestCase):
             for flag in action.option_strings
         ]
         self.assertNotIn("--cam-pin", option_strings)
+        self.assertFalse(hasattr(kick_helper_ft, "fetch_cam_pin"))
         cam_pin_spec.SWARM_HQ_ORIGIN = "http://swarm-hq.test"
         before = list(self.hq_requests)
-        with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-            kick_helper_ft.fetch_cam_pin("curated_pack_v2-test")
+        with self.assertRaises(cam_pin_spec.CamPinError) as ctx:
+            cam_pin_spec.pinned_origin()
         self.assertEqual(self.hq_requests, before)
         self.assertEqual(ctx.exception.field, "SWARM_HQ_ORIGIN")
         self.assertEqual(ctx.exception.expected, "https URL")
@@ -2098,6 +2232,10 @@ def _stage_pinned_copy(root: Path, *, omit: str | None = None) -> dict:
         APP / "trust" / "reserved_content_uuids.jsonl",
         trust_dst / "reserved_content_uuids.jsonl",
     )
+    shutil.copy2(
+        APP / "trust" / "reserved_near_dup_fingerprints.jsonl",
+        trust_dst / "reserved_near_dup_fingerprints.jsonl",
+    )
     files: dict[str, str] = {}
     for py in sorted(lab_dst.glob("*.py")):
         rel = f"apps/dottie-os/scripts/lab/{py.name}"
@@ -2110,6 +2248,9 @@ def _stage_pinned_copy(root: Path, *, omit: str | None = None) -> dict:
     )
     files[kick_helper_ft.PINNED_COPY_RESERVED_REL] = kick_helper_ft.sha256_file(
         trust_dst / "reserved_content_uuids.jsonl"
+    )
+    files["apps/dottie-os/trust/reserved_near_dup_fingerprints.jsonl"] = (
+        kick_helper_ft.sha256_file(trust_dst / "reserved_near_dup_fingerprints.jsonl")
     )
     if omit is not None:
         files.pop(omit, None)
@@ -2779,35 +2920,29 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(self.launches, [])
 
     def test_https_to_http_redirect_refuses_and_never_sends_token(self) -> None:
-        self.hq_redirect = (302, "http://127.0.0.2/api/packs/x/pin")
+        self.assertFalse(hasattr(kick_helper_ft, "fetch_cam_pin"))
+        self.assertFalse(hasattr(helper_ft_kickoff, "fetch_cam_pin"))
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
             self._pin(manifest)
-            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.fetch_cam_pin(manifest["pack_id"])
-        self.assertEqual(ctx.exception.field, "cam-pin")
-        self.assertEqual(ctx.exception.expected, "no redirect")
-        self.assertEqual(self.kickoff_calls, [])
-        self.assertEqual(len(self.hq_requests), 1)
-        self.assertTrue(self.hq_requests[0].startswith(PINNED_HQ_ORIGIN))
+            evidence = kick_helper_ft.kick(dest)
+        self.assertTrue(evidence["ok"])
+        self.assertEqual(self.hq_requests, [])
         self.assertFalse(any("127.0.0.2" in url for url, _tok in self.hq_tokens_by_url))
         self.assertFalse(any(url.startswith("http://") for url, _tok in self.hq_tokens_by_url))
 
     def test_https_to_other_host_redirect_refuses_and_never_sends_token(self) -> None:
-        self.hq_redirect = (302, "https://evil.example/api/packs/x/pin")
+        self.assertFalse(hasattr(kick_helper_ft, "fetch_cam_pin"))
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
             self._pin(manifest)
-            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.fetch_cam_pin(manifest["pack_id"])
-        self.assertEqual(ctx.exception.field, "cam-pin")
-        self.assertEqual(ctx.exception.expected, "no redirect")
-        self.assertEqual(self.launches, [])
-        self.assertTrue(all(u.startswith(PINNED_HQ_ORIGIN) for u in self.hq_requests))
+            evidence = kick_helper_ft.kick(dest)
+        self.assertTrue(evidence["ok"])
+        self.assertEqual(self.hq_requests, [])
         self.assertFalse(any("evil.example" in url for url, _tok in self.hq_tokens_by_url))
         self.assertEqual(manifest["pack_id"], "curated_pack_v2-test")
 
@@ -3020,13 +3155,12 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             old = sys.stdout
             sys.stdout = buf
             try:
-                rc2 = sign.main(["--private-key", str(priv), "--pin", str(pin_path)])
+                with self.assertRaises(SystemExit) as v1_exc:
+                    sign.main(["--private-key", str(priv), "--pin", str(pin_path)])
             finally:
                 sys.stdout = old
-            self.assertEqual(rc2, 0)
-            out = buf.getvalue()
-            self.assertNotIn(priv.read_bytes().hex(), out)
-            self.assertTrue(out.strip())
+            self.assertIn("v2 only", str(v1_exc.exception))
+            self.assertNotIn(priv.read_bytes().hex(), buf.getvalue())
             v2_path = Path(tmp) / "pin-v2.json"
             issued, not_before, not_after = _v2_window()
             v2_path.write_text(
@@ -3044,11 +3178,17 @@ class HelperFtCritic3dacTests(unittest.TestCase):
                         "not_after": _rfc3339_z(not_after),
                         "expires_at": _rfc3339_z(not_after),
                         "git_commit": "ab" * 20,
+                        "head": "ab" * 20,
                         "code_pins": {rel: "11" * 32 for rel in cam_pin_spec.CODE_PINS},
                         "nonce": "ab" * 32,
                         "sha256_pack": "11" * 32,
                         "sha256_train": "22" * 32,
                         "sha256_holdout": "33" * 32,
+                        "rows_total": 1,
+                        "rows_train": 1,
+                        "rows_holdout": 0,
+                        "reserved_content_uuids_sha256": kick_helper_ft.RESERVED_CONTENT_UUIDS_SHA256,
+                        "reserved_content_uuids_min_rows": kick_helper_ft.RESERVED_CONTENT_UUIDS_MIN_ROWS,
                     }
                 ),
                 encoding="utf-8",
@@ -3231,12 +3371,15 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(len(captured), 1)
         self.assertEqual(set(body["paths"]), {"pack", "train", "holdout", "manifest"})
         self.assertNotIn("pack_dir", body["paths"])
-        self.assertEqual(body["trainer_config"]["paths"], body["paths"])
-        self.assertEqual(body["trainer_argv"], kick_helper_ft.build_trainer_argv(body["paths"]))
-        for path in (*body["paths"].values(), *body["trainer_argv"][1::2]):
+        trainer_fds = body["trainer_config"]["paths"]
+        self.assertNotEqual(trainer_fds, body["paths"])
+        self.assertEqual(body["trainer_argv"], kick_helper_ft.build_trainer_argv(trainer_fds))
+        for path in body["paths"].values():
+            self.assertFalse(_is_held_trainer_fd(path), path)
+        for path in (*trainer_fds.values(), *body["trainer_argv"][1::2]):
             self.assertTrue(_is_held_trainer_fd(path), path)
             self.assertFalse(str(path).startswith(str(dest.resolve()) + os.sep))
-        self.assertEqual(rec["paths"], body["paths"])
+        self.assertEqual(rec["paths"], trainer_fds)
         self.assertEqual(rec["paths"], evidence["paths"])
         self.assertNotEqual(run_private, dest.resolve())
         self.assertEqual(rec["host"], evidence["host"])
@@ -4530,7 +4673,7 @@ class HelperFtCritic3dacTests(unittest.TestCase):
                 self.assertIn(DENIED_VECTOR_PUB_B64, spec.DENIED_PUBLIC_KEYS_B64)
 
     def test_cli_and_8765_hard_refuse_vector_test_key_even_if_loaded(self) -> None:
-        """Production fetch must deny the HQ vector key even if load_cam_public_key returned it."""
+        """Production verify must deny the HQ vector key even if load_cam_public_key returned it."""
         vector = json.loads(HQ_VECTOR_PATH.read_text(encoding="utf-8"))
         denied_pub = Ed25519PublicKey.from_public_bytes(
             base64.b64decode(vector["public_key_b64"], validate=True)
@@ -4547,12 +4690,9 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             with patch.object(
                 cam_pin_spec, "load_cam_public_key", return_value=(vector["cam_key_id"], denied_pub)
             ):
-                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                    kick_helper_ft.fetch_cam_pin(pin["pack_id"])
+                with self.assertRaises(cam_pin_spec.CamPinError) as ctx:
+                    cam_pin_spec.parse_hq_pin_payload(pin)
                 self.assertEqual(ctx.exception.actual, "denied test key")
-                result = helper_ft_kickoff.fetch_cam_pin(pin["pack_id"])
-                self.assertFalse(result.get("ok"))
-                self.assertEqual(result["actual"], "denied test key")
         finally:
             test_pub = Ed25519PublicKey.from_public_bytes(
                 cam_pin_spec.raw_public_from_private(TEST_CAM_PRIVATE)
@@ -4611,16 +4751,9 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         pin = dict(SWARM_HQ_PIN_FIXTURE)
         pin["cam_sig"] = good.rstrip("=")
         self.hq_pins[pin["pack_id"]] = pin
-        for name, fetch in (("cli", kick_helper_ft.fetch_cam_pin), ("handler", helper_ft_kickoff.fetch_cam_pin)):
-            with self.subTest(name=name):
-                if name == "cli":
-                    with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                        fetch(pin["pack_id"])
-                    self.assertEqual(ctx.exception.field, "cam-pin.cam_sig")
-                else:
-                    result = fetch(pin["pack_id"])
-                    self.assertFalse(result.get("ok"))
-                    self.assertEqual(result["field"], "cam-pin.cam_sig")
+        with self.assertRaises(cam_pin_spec.CamPinError) as ctx:
+            cam_pin_spec.parse_hq_pin_payload(pin)
+        self.assertEqual(ctx.exception.field, "cam-pin.cam_sig")
 
     def test_recorded_at_must_match_millis_z(self) -> None:
         with self.assertRaises(cam_pin_spec.CamPinError) as ctx:
@@ -4630,12 +4763,9 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         pin["recordedAt"] = "2026-10-19T00:00:00Z"
         pin = {**pin, "cam_sig": pin["cam_sig"]}
         self.hq_pins[pin["pack_id"]] = pin
-        with self.assertRaises(kick_helper_ft.KickRefused) as cli_ctx:
-            kick_helper_ft.fetch_cam_pin(pin["pack_id"])
+        with self.assertRaises(cam_pin_spec.CamPinError) as cli_ctx:
+            cam_pin_spec.parse_hq_pin_payload(pin)
         self.assertEqual(cli_ctx.exception.field, "cam-pin.recordedAt")
-        result = helper_ft_kickoff.fetch_cam_pin(pin["pack_id"])
-        self.assertFalse(result.get("ok"))
-        self.assertEqual(result["field"], "cam-pin.recordedAt")
 
     def test_pack_id_ascii_only(self) -> None:
         with self.assertRaises(cam_pin_spec.CamPinError):
@@ -4647,12 +4777,9 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         pin = dict(SWARM_HQ_PIN_FIXTURE)
         pin["pack_id"] = "bad/id"
         self.hq_pins["bad/id"] = pin
-        with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-            kick_helper_ft.fetch_cam_pin("bad/id")
+        with self.assertRaises(cam_pin_spec.CamPinError) as ctx:
+            cam_pin_spec.parse_hq_pin_payload(pin)
         self.assertEqual(ctx.exception.field, "cam-pin.pack_id")
-        result = helper_ft_kickoff.fetch_cam_pin("bad/id")
-        self.assertFalse(result.get("ok"))
-        self.assertEqual(result["field"], "cam-pin.pack_id")
 
     def test_rows_refuse_bool_float_and_over_int32(self) -> None:
         with self.assertRaises(cam_pin_spec.CamPinError) as bool_ctx:
@@ -4667,12 +4794,9 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         pin = dict(SWARM_HQ_PIN_FIXTURE)
         pin["rows_total"] = True
         self.hq_pins[pin["pack_id"]] = pin
-        with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-            kick_helper_ft.fetch_cam_pin(pin["pack_id"])
+        with self.assertRaises(cam_pin_spec.CamPinError) as ctx:
+            cam_pin_spec.parse_hq_pin_payload(pin)
         self.assertEqual(ctx.exception.field, "cam-pin.rows_total")
-        result = helper_ft_kickoff.fetch_cam_pin(pin["pack_id"])
-        self.assertFalse(result.get("ok"))
-        self.assertEqual(result["field"], "cam-pin.rows_total")
 
     def test_vector_helper_never_reads_trust(self) -> None:
         src = Path(cam_pin_vector_helper.__file__).read_text(encoding="utf-8")
@@ -4941,7 +5065,7 @@ class CamPinVectorTests(unittest.TestCase):
 
 
 class SwarmHqPinContractTests(unittest.TestCase):
-    """Freeze GET /api/packs/<pack_id>/pin for CLI and :8765 fetch_cam_pin."""
+    """Freeze HQ v1 pin payload parsing. Fetch is removed; kicks use staged v2."""
 
     def setUp(self) -> None:
         _start_hq_http_mock(self)
@@ -4949,25 +5073,17 @@ class SwarmHqPinContractTests(unittest.TestCase):
     def tearDown(self) -> None:
         _stop_hq_http_mock(self)
 
-    def _fetchers(self) -> tuple[tuple[str, object], ...]:
-        return (
-            ("cli", kick_helper_ft.fetch_cam_pin),
-            ("handler", helper_ft_kickoff.fetch_cam_pin),
-        )
-
-    def _result(self, name: str, fetch: object, pack_id: str) -> dict:
-        if name == "cli":
-            try:
-                pin = fetch(pack_id)
-            except kick_helper_ft.KickRefused as exc:
-                return {
-                    "ok": False,
-                    "field": exc.field,
-                    "expected": exc.expected,
-                    "actual": exc.actual,
-                }
-            return {"ok": True, "pin": pin}
-        return fetch(pack_id)
+    def _parse(self, payload: object) -> dict:
+        try:
+            pin = cam_pin_spec.parse_hq_pin_payload(payload)
+        except cam_pin_spec.CamPinError as exc:
+            return {
+                "ok": False,
+                "field": exc.field,
+                "expected": exc.expected,
+                "actual": exc.actual,
+            }
+        return {"ok": True, "pin": pin}
 
     def test_contract_keys_frozen_for_cli_and_handler(self) -> None:
         self.assertTrue(set(SWARM_HQ_PIN_CONTRACT_REQUIRED) <= set(SWARM_HQ_PIN_FIXTURE))
@@ -4976,36 +5092,26 @@ class SwarmHqPinContractTests(unittest.TestCase):
         self.assertEqual(helper_ft_kickoff.HQ_PIN_ALLOWED_KEYS, SWARM_HQ_PIN_CONTRACT_ALLOWED)
         self.assertEqual(kick_helper_ft.HQ_PIN_REQUIRED_KEYS, SWARM_HQ_PIN_CONTRACT_REQUIRED)
         self.assertEqual(helper_ft_kickoff.HQ_PIN_REQUIRED_KEYS, SWARM_HQ_PIN_CONTRACT_REQUIRED)
+        self.assertFalse(hasattr(kick_helper_ft, "fetch_cam_pin"))
+        self.assertFalse(hasattr(helper_ft_kickoff, "fetch_cam_pin"))
 
     def test_contract_fixture_accepted_by_cli_and_handler(self) -> None:
         fixture = dict(SWARM_HQ_PIN_FIXTURE)
-        self.hq_pins[fixture["pack_id"]] = fixture
-        for name, fetch in self._fetchers():
-            with self.subTest(name=name):
-                result = self._result(name, fetch, fixture["pack_id"])
-                self.assertTrue(result.get("ok"))
-                pin = result["pin"]
-                self.assertEqual(pin["pack_id"], fixture["pack_id"])
-                self.assertEqual(pin["sha256_pack"], fixture["sha256_pack"])
-                self.assertEqual(pin["rows_total"], 2)
-                self.assertEqual(pin["rows_train"], 1)
-                self.assertEqual(pin["rows_holdout"], 1)
-                self.assertIs(pin["pack_matches"], True)
-                self.assertEqual(pin["recordedAt"], fixture["recordedAt"])
-                self.assertEqual(pin["kid"], fixture["kid"])
-                self.assertTrue(pin["stampVerified"])
-                self.assertTrue(self.hq_saw_agent_token)
+        result = self._parse(fixture)
+        self.assertTrue(result.get("ok"))
+        pin = result["pin"]
+        self.assertEqual(pin["pack_id"], fixture["pack_id"])
+        self.assertEqual(pin["sha256_pack"], fixture["sha256_pack"])
+        self.assertEqual(pin["rows_total"], 2)
+        self.assertEqual(pin["rows_train"], 1)
+        self.assertEqual(pin["rows_holdout"], 1)
+        self.assertIs(pin["pack_matches"], True)
+        self.assertEqual(pin["recordedAt"], fixture["recordedAt"])
+        self.assertEqual(pin["kid"], fixture["kid"])
+        self.assertTrue(pin["stampVerified"])
 
     def test_contract_missing_agent_token_refused_by_cli_and_handler(self) -> None:
         os.environ.pop("SWARM_HQ_AGENT_TOKEN", None)
-        self.hq_pins[SWARM_HQ_PIN_FIXTURE["pack_id"]] = dict(SWARM_HQ_PIN_FIXTURE)
-        for name, fetch in self._fetchers():
-            with self.subTest(name=name):
-                result = self._result(name, fetch, SWARM_HQ_PIN_FIXTURE["pack_id"])
-                self.assertIsNot(result.get("ok"), True)
-                self.assertEqual(result["field"], "SWARM_HQ_AGENT_TOKEN")
-                self.assertEqual(result["expected"], "present")
-                self.assertEqual(result["actual"], "missing")
         self.assertEqual(self.hq_requests, [])
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -5015,59 +5121,41 @@ class SwarmHqPinContractTests(unittest.TestCase):
         self.assertEqual(rc, 1)
 
     def test_contract_401_refused_by_cli_and_handler(self) -> None:
-        self.hq_http_status = 401
-        self.hq_pins[SWARM_HQ_PIN_FIXTURE["pack_id"]] = dict(SWARM_HQ_PIN_FIXTURE)
-        for name, fetch in self._fetchers():
-            with self.subTest(name=name):
-                result = self._result(name, fetch, SWARM_HQ_PIN_FIXTURE["pack_id"])
-                self.assertIsNot(result.get("ok"), True)
-                self.assertEqual(result["field"], "cam-pin")
-                self.assertEqual(result["expected"], "authorized")
-                self.assertEqual(result["actual"], "HTTP 401")
+        self.assertFalse(hasattr(kick_helper_ft, "fetch_cam_pin"))
+        self.assertFalse(hasattr(helper_ft_kickoff, "fetch_cam_pin"))
 
     def test_contract_404_refused_by_cli_and_handler(self) -> None:
-        for name, fetch in self._fetchers():
-            with self.subTest(name=name):
-                result = self._result(name, fetch, SWARM_HQ_PIN_FIXTURE["pack_id"])
-                self.assertIsNot(result.get("ok"), True)
-                self.assertEqual(result["field"], "cam-pin")
-                self.assertEqual(result["expected"], "present")
-                self.assertEqual(result["actual"], "HTTP 404")
+        result = self._parse(None)
+        self.assertIsNot(result.get("ok"), True)
+        self.assertEqual(result["field"], "cam-pin")
+        self.assertEqual(result["expected"], "present")
+        self.assertEqual(result["actual"], "missing")
 
     def test_contract_unknown_key_refused_by_cli_and_handler(self) -> None:
         fixture = dict(SWARM_HQ_PIN_FIXTURE)
         fixture["extra"] = "nope"
-        self.hq_pins[fixture["pack_id"]] = fixture
-        for name, fetch in self._fetchers():
-            with self.subTest(name=name):
-                result = self._result(name, fetch, fixture["pack_id"])
-                self.assertIsNot(result.get("ok"), True)
-                self.assertEqual(result["field"], "cam-pin")
-                self.assertEqual(result["expected"], "HQ pin keys")
-                self.assertEqual(result["actual"], "unknown extra")
+        result = self._parse(fixture)
+        self.assertIsNot(result.get("ok"), True)
+        self.assertEqual(result["field"], "cam-pin")
+        self.assertEqual(result["expected"], "HQ pin keys")
+        self.assertEqual(result["actual"], "unknown extra")
 
     def test_contract_missing_required_key_refused_by_cli_and_handler(self) -> None:
         fixture = dict(SWARM_HQ_PIN_FIXTURE)
         del fixture["kid"]
-        self.hq_pins[fixture["pack_id"]] = fixture
-        for name, fetch in self._fetchers():
-            with self.subTest(name=name):
-                result = self._result(name, fetch, fixture["pack_id"])
-                self.assertIsNot(result.get("ok"), True)
-                self.assertEqual(result["field"], "cam-pin.kid")
-                self.assertEqual(result["expected"], "present")
-                self.assertEqual(result["actual"], "missing")
+        result = self._parse(fixture)
+        self.assertIsNot(result.get("ok"), True)
+        self.assertEqual(result["field"], "cam-pin.kid")
+        self.assertEqual(result["expected"], "present")
+        self.assertEqual(result["actual"], "missing")
 
     def test_contract_verified_alias_accepted_by_cli_and_handler(self) -> None:
         fixture = dict(SWARM_HQ_PIN_FIXTURE)
         del fixture["stampVerified"]
         fixture["verified"] = True
-        self.hq_pins[fixture["pack_id"]] = fixture
-        for name, fetch in self._fetchers():
-            with self.subTest(name=name):
-                result = self._result(name, fetch, fixture["pack_id"])
-                self.assertTrue(result.get("ok"))
-                self.assertIs(result["pin"]["stampVerified"], True)
+        result = self._parse(fixture)
+        self.assertTrue(result.get("ok"))
+        self.assertIs(result["pin"]["stampVerified"], True)
 
 
 LEAKGATE_EVAL_DIR = TESTS / "fixtures" / "leakgate_eval"
@@ -5866,6 +5954,7 @@ class HelperFtContentUuidTests(unittest.TestCase):
                 "5abd1a7b73f7e83869b2184f86df3b1291553c5f97e81ae3565156520ed90e47",
                 7,
             ),
+            ("123e4567-e89b-12d3-a456-426614174000", 5),
         )
         for key, residue in vectors:
             mill = (
@@ -5878,7 +5967,8 @@ class HelperFtContentUuidTests(unittest.TestCase):
                 content_uuid.in_reserved_eval_partition(key),
                 mill in content_uuid.RESERVED_EVAL_PARTITION_RESIDUES,
             )
-            self.assertNotEqual(int(key, 16) % 10, mill)
+            if all(ch in "0123456789abcdef" for ch in key) and len(key) == 64:
+                self.assertNotEqual(int(key, 16) % 10, mill)
 
     def test_canonical_bytes_are_nfc_sorted_compact_utf8(self) -> None:
         composed = {"state": {"message": "café"}, "questions": {"action": {"type": "choice"}}}
@@ -7289,6 +7379,9 @@ class HelperFtK1PinV2Tests(unittest.TestCase):
             "expires_at": "2026-10-19T18:00:00Z",
             "git_commit": "ab" * 20,
             "code_pins": {rel: "11" * 32 for rel in cam_pin_spec.CODE_PINS},
+            "head": "ab" * 20,
+            "reserved_content_uuids_sha256": kick_helper_ft.RESERVED_CONTENT_UUIDS_SHA256,
+            "reserved_content_uuids_min_rows": kick_helper_ft.RESERVED_CONTENT_UUIDS_MIN_ROWS,
             "rows_total": 0,
             "rows_train": 0,
             "rows_holdout": 0,
@@ -7541,17 +7634,14 @@ class HelperFtK1PinV2Tests(unittest.TestCase):
         self.assertEqual(self.hq_requests, [])
 
     def test_kick_never_fetches_pin(self) -> None:
+        self.assertFalse(hasattr(cam_pin_spec, "fetch_signed_pin"))
+        self.assertFalse(hasattr(kick_helper_ft, "fetch_cam_pin"))
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
             self._pin(manifest)
-            with patch.object(
-                cam_pin_spec,
-                "fetch_signed_pin",
-                side_effect=AssertionError("child must not fetch"),
-            ):
-                evidence = kick_helper_ft.kick(dest)
+            evidence = kick_helper_ft.kick(dest)
         self.assertTrue(evidence["ok"])
         self.assertEqual(self.hq_requests, [])
         self.assertFalse(any("/pin" in str(url) for url in self.hq_requests))
@@ -7645,9 +7735,11 @@ class HelperFtCodePinsTests(unittest.TestCase):
             "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
             "apps/dottie-os/scripts/lab/cam_pin_spec.py",
             "apps/dottie-os/scripts/lab/content_uuid.py",
+            "apps/dottie-os/scripts/lab/near_dup_tokenizer.py",
             "apps/dottie-os/trust/cam_pin_ed25519.pub",
             "apps/dottie-os/trust/cam_pin_key_id",
             "apps/dottie-os/trust/reserved_content_uuids.jsonl",
+            "apps/dottie-os/trust/reserved_near_dup_fingerprints.jsonl",
         }
         self.assertEqual(set(cam_pin_spec.CODE_PINS), required)
 
