@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import unicodedata
 import signal
 import socket
 import stat
@@ -3507,6 +3508,7 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertIn("apps/dottie-os/scripts/lab/cam_pin_spec.py", text)
         self.assertIn("apps/dottie-os/scripts/lab/kick_helper_ft.py", text)
         self.assertIn("apps/dottie-os/tests/cam_pin_vector_helper.py", text)
+        self.assertIn("/.github/", text)
         self.assertIn(".github/workflows/ci.yml", text)
         self.assertIn("@jcdavis131", text)
         self.assertIn("required code-owner review", text)
@@ -4124,6 +4126,26 @@ PACK_GUARD_JOB_KEYS = frozenset({"runs-on", "steps"})
 PACK_GUARD_JOB_FORBIDDEN_KEYS = frozenset(
     {"if", "continue-on-error", "needs", "strategy", "name"}
 )
+PACK_GUARD_RUNS_ON = "ubuntu-latest"
+PACK_GUARD_LOOKALIKE_RE = re.compile(r"pack[-_ ]?guard")
+PACK_GUARD_PATH_RE = r"curated[-_]?pack|ultradata[-_]?harvest"
+PACK_GUARD_GREP_RE = r"curated[-_]?pack|ultradata[-_]?harvest[-_]"
+PACK_GUARD_ENV_PATH = "/usr/bin:/bin"
+PACK_GUARD_ENV_HOME = "/nonexistent"
+PACK_GUARD_ENV_LC_ALL = "C"
+PACK_GUARD_ENV_SCRUB_RE = re.compile(
+    r"PATH=/usr/bin:/bin \\\n\s+HOME=/nonexistent \\\n\s+LC_ALL=C \\\n"
+)
+PACK_GUARD_ENV_INLINE = (
+    f"PATH={PACK_GUARD_ENV_PATH} HOME={PACK_GUARD_ENV_HOME} "
+    f"LC_ALL={PACK_GUARD_ENV_LC_ALL}"
+)
+PACK_GUARD_CODEOWNERS_GITHUB = "/.github/"
+PACK_GUARD_CODEOWNERS_FACTORY = (
+    "apps/dottie-os/tests/test_ultradata_factory.py"
+)
+PACK_GUARD_CODEOWNERS_CRITIC = "apps/dottie-os/tests/test_critic_91_*.py"
+PACK_GUARD_CODEOWNERS_OWNER = "@jcdavis131"
 PACK_GUARD_CHECKOUT_USES_RE = re.compile(
     r"^actions/checkout@[0-9a-fA-F]{40}$"
 )
@@ -4153,6 +4175,9 @@ CRITIC_91_MUTATIONS_SHA256 = (
 )
 CRITIC_91_136F_SHA256 = (
     "5bf36a2c791a9bde61e239ec4652ac32ae4c4d51cf483088a48846fe88724dd6"
+)
+CRITIC_91_AF2D_SHA256 = (
+    "f251c6c9b34b5add838b6f45e93fb538ccb61b0704b5652428440033a0ecfbc5"
 )
 LEAKGATE_TRACKED_NAMES = frozenset(
     {
@@ -4576,6 +4601,358 @@ class SourceJsonSyntheticRawTextTests(unittest.TestCase):
                                 case.test_source_json_is_synthetic()
 
 
+def _yaml_parse_fail(message: str) -> None:
+    raise AssertionError(f"workflow YAML parse failed: {message}")
+
+
+def _yaml_parse_quoted(s: str, i: int) -> tuple[str, int]:
+    quote = s[i]
+    i += 1
+    out: list[str] = []
+    while i < len(s):
+        ch = s[i]
+        if ch == quote:
+            return "".join(out), i + 1
+        if ch == "\\" and quote == '"' and i + 1 < len(s):
+            nxt = s[i + 1]
+            esc = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"'}
+            out.append(esc.get(nxt, nxt))
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    _yaml_parse_fail("unterminated quoted string")
+    raise AssertionError("unreachable")
+
+
+def _yaml_skip_flow_space(s: str, i: int) -> int:
+    while i < len(s) and s[i] in " \t\n\r":
+        i += 1
+    if i < len(s) and s[i] == "#":
+        while i < len(s) and s[i] not in "\n\r":
+            i += 1
+        return _yaml_skip_flow_space(s, i)
+    return i
+
+
+def _yaml_parse_plain_flow(s: str, i: int) -> tuple[object, int]:
+    start = i
+    while i < len(s) and s[i] not in ",]}#\n\r":
+        if s[i] == ":" and (i + 1 >= len(s) or s[i + 1] in " ,]}"):
+            break
+        i += 1
+    raw = s[start:i].strip()
+    return _parse_yaml_scalar(raw), i
+
+
+def _yaml_parse_flow(s: str, i: int) -> tuple[object, int]:
+    i = _yaml_skip_flow_space(s, i)
+    if i >= len(s):
+        _yaml_parse_fail("truncated flow YAML")
+    if s[i] in "'\"":
+        return _yaml_parse_quoted(s, i)
+    if s[i] == "{":
+        mapping: dict[str, object] = {}
+        i = _yaml_skip_flow_space(s, i + 1)
+        if i < len(s) and s[i] == "}":
+            return mapping, i + 1
+        while True:
+            i = _yaml_skip_flow_space(s, i)
+            if i < len(s) and s[i] in "'\"":
+                key, i = _yaml_parse_quoted(s, i)
+            else:
+                start = i
+                while i < len(s) and s[i] not in ",]}#\n\r":
+                    if s[i] == ":" and (i + 1 >= len(s) or s[i + 1] in " ,]}"):
+                        break
+                    i += 1
+                key = s[start:i].strip()
+            i = _yaml_skip_flow_space(s, i)
+            if i >= len(s) or s[i] != ":":
+                _yaml_parse_fail("flow mapping missing ':'")
+            i += 1
+            value, i = _yaml_parse_flow(s, i)
+            if key in mapping:
+                _yaml_parse_fail(f"duplicate YAML key {key!r}")
+            mapping[key] = value
+            i = _yaml_skip_flow_space(s, i)
+            if i < len(s) and s[i] == ",":
+                i += 1
+                continue
+            if i < len(s) and s[i] == "}":
+                return mapping, i + 1
+            _yaml_parse_fail("flow mapping not closed")
+    if s[i] == "[":
+        seq: list[object] = []
+        i = _yaml_skip_flow_space(s, i + 1)
+        if i < len(s) and s[i] == "]":
+            return seq, i + 1
+        while True:
+            value, i = _yaml_parse_flow(s, i)
+            seq.append(value)
+            i = _yaml_skip_flow_space(s, i)
+            if i < len(s) and s[i] == ",":
+                i += 1
+                continue
+            if i < len(s) and s[i] == "]":
+                return seq, i + 1
+            _yaml_parse_fail("flow sequence not closed")
+    return _yaml_parse_plain_flow(s, i)
+
+
+def _yaml_indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _yaml_strip_comment(line: str) -> str:
+    in_single = False
+    in_double = False
+    for idx, ch in enumerate(line):
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_double and not in_single:
+            in_double = not in_double
+        elif ch == "#" and not in_single and not in_double:
+            if idx == 0 or line[idx - 1] in " \t":
+                return line[:idx].rstrip()
+    return line.rstrip()
+
+
+def _yaml_skip_blanks(lines: list[str], idx: int) -> int:
+    while idx < len(lines):
+        stripped = lines[idx].strip()
+        if not stripped or stripped.startswith("#"):
+            idx += 1
+            continue
+        break
+    return idx
+
+
+def _yaml_parse_block_scalar(lines: list[str], idx: int, key_indent: int) -> tuple[str, int]:
+    idx += 1
+    block: list[str] = []
+    content_indent: int | None = None
+    while idx < len(lines):
+        line = lines[idx]
+        if not line.strip():
+            block.append("")
+            idx += 1
+            continue
+        indent = _yaml_indent(line)
+        if indent <= key_indent:
+            break
+        if content_indent is None:
+            content_indent = indent
+        block.append(line[content_indent:] if len(line) >= content_indent else "")
+        idx += 1
+    return "\n".join(block).rstrip("\n") + "\n", idx
+
+
+def _yaml_parse_value(
+    lines: list[str], idx: int, min_indent: int
+) -> tuple[object, int]:
+    idx = _yaml_skip_blanks(lines, idx)
+    if idx >= len(lines):
+        return None, idx
+    line = _yaml_strip_comment(lines[idx])
+    indent = _yaml_indent(line)
+    if indent < min_indent:
+        return None, idx
+    stripped = line.strip()
+    if stripped.startswith("- ") or stripped == "-":
+        return _yaml_parse_seq(lines, idx, indent)
+    return _yaml_parse_map(lines, idx, indent)
+
+
+def _yaml_parse_map(
+    lines: list[str], idx: int, map_indent: int
+) -> tuple[dict[str, object], int]:
+    mapping: dict[str, object] = {}
+    while idx < len(lines):
+        idx = _yaml_skip_blanks(lines, idx)
+        if idx >= len(lines):
+            break
+        raw_line = lines[idx]
+        line = _yaml_strip_comment(raw_line)
+        if not line.strip():
+            idx += 1
+            continue
+        indent = _yaml_indent(line)
+        if indent < map_indent:
+            break
+        if indent > map_indent:
+            _yaml_parse_fail(f"bad indent at {line!r}")
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            break
+        if ":" not in stripped:
+            _yaml_parse_fail(f"expected mapping key at {stripped!r}")
+        if stripped.startswith("{") or stripped.startswith("["):
+            value, consumed = _yaml_parse_flow(stripped, 0)
+            if not isinstance(value, dict):
+                _yaml_parse_fail("expected mapping")
+            for key, item in value.items():
+                if key in mapping:
+                    _yaml_parse_fail(f"duplicate YAML key {key!r}")
+                mapping[str(key)] = item
+            idx += 1
+            break
+        key_part, rest = stripped.split(":", 1)
+        if key_part.startswith("'") or key_part.startswith('"'):
+            key, _ = _yaml_parse_quoted(key_part, 0)
+        else:
+            key = key_part.strip()
+        rest = rest.strip()
+        if key in mapping:
+            _yaml_parse_fail(f"duplicate YAML key {key!r}")
+        if rest in ("|", "|-", "|+", ">", ">-", ">+"):
+            mapping[key], idx = _yaml_parse_block_scalar(lines, idx, indent)
+            continue
+        if rest.startswith("{") or rest.startswith("["):
+            mapping[key], _ = _yaml_parse_flow(rest, 0)
+            idx += 1
+            continue
+        if rest == "":
+            nxt = _yaml_skip_blanks(lines, idx + 1)
+            if nxt < len(lines):
+                nxt_line = _yaml_strip_comment(lines[nxt])
+                nxt_indent = _yaml_indent(nxt_line)
+                if nxt_indent > indent:
+                    mapping[key], idx = _yaml_parse_value(lines, nxt, nxt_indent)
+                    continue
+            mapping[key] = None
+            idx += 1
+            continue
+        mapping[key] = _parse_yaml_scalar(rest)
+        idx += 1
+    return mapping, idx
+
+
+def _yaml_parse_seq(
+    lines: list[str], idx: int, seq_indent: int
+) -> tuple[list[object], int]:
+    seq: list[object] = []
+    while idx < len(lines):
+        idx = _yaml_skip_blanks(lines, idx)
+        if idx >= len(lines):
+            break
+        line = _yaml_strip_comment(lines[idx])
+        indent = _yaml_indent(line)
+        if indent < seq_indent:
+            break
+        stripped = line.strip()
+        if not (stripped.startswith("- ") or stripped == "-"):
+            break
+        if indent != seq_indent:
+            _yaml_parse_fail(f"bad sequence indent at {stripped!r}")
+        payload = stripped[1:].strip()
+        if payload == "":
+            nxt = _yaml_skip_blanks(lines, idx + 1)
+            if nxt < len(lines) and _yaml_indent(_yaml_strip_comment(lines[nxt])) > seq_indent:
+                value, idx = _yaml_parse_value(
+                    lines, nxt, _yaml_indent(_yaml_strip_comment(lines[nxt]))
+                )
+            else:
+                value = None
+                idx += 1
+            seq.append(value)
+            continue
+        if payload.startswith("{") or payload.startswith("["):
+            value, _ = _yaml_parse_flow(payload, 0)
+            seq.append(value)
+            idx += 1
+            continue
+        if ":" in payload and not payload.startswith(("'", '"')):
+            nested_line = " " * (seq_indent + 2) + payload
+            nested_lines = [nested_line, *lines[idx + 1 :]]
+            value, consumed = _yaml_parse_map(nested_lines, 0, seq_indent + 2)
+            eaten = max(consumed - 1, 0)
+            idx = idx + 1 + eaten
+            seq.append(value)
+            continue
+        seq.append(_parse_yaml_scalar(payload))
+        idx += 1
+    return seq, idx
+
+
+def _minimal_yaml_load(text: str) -> object:
+    lines = [line.replace("\t", "  ").rstrip() for line in text.splitlines()]
+    idx = 0
+    saw_doc = False
+    while idx < len(lines):
+        stripped = lines[idx].strip()
+        if not stripped or stripped.startswith("#"):
+            idx += 1
+            continue
+        if stripped == "---":
+            if saw_doc:
+                _yaml_parse_fail("second YAML document")
+            saw_doc = True
+            idx += 1
+            continue
+        if stripped == "...":
+            _yaml_parse_fail("YAML document end marker")
+        break
+    if idx >= len(lines):
+        return {}
+    value, nxt = _yaml_parse_value(lines, idx, 0)
+    nxt = _yaml_skip_blanks(lines, nxt)
+    while nxt < len(lines):
+        stripped = lines[nxt].strip()
+        if not stripped or stripped.startswith("#"):
+            nxt += 1
+            continue
+        if stripped == "...":
+            break
+        if stripped == "---":
+            _yaml_parse_fail("second YAML document")
+        _yaml_parse_fail(f"trailing YAML content {stripped!r}")
+    return value if value is not None else {}
+
+
+def _load_workflow_yaml(text: str) -> object:
+    """PyYAML safe_load when present; vendored loader otherwise. Fail closed."""
+    if yaml is not None:
+        try:
+            loaded = yaml.safe_load(text)
+        except Exception as exc:
+            raise AssertionError(f"workflow YAML parse failed: {exc}") from exc
+        return {} if loaded is None else loaded
+    try:
+        return _minimal_yaml_load(text)
+    except AssertionError:
+        raise
+    except Exception as exc:
+        raise AssertionError(f"workflow YAML parse failed: {exc}") from exc
+
+
+def _pack_guard_lookalike_token(value: object) -> bool:
+    if value is None:
+        return False
+    text = value if isinstance(value, str) else str(value)
+    if text.casefold() == PACK_GUARD_JOB.casefold():
+        return True
+    folded = unicodedata.normalize("NFKC", text).casefold()
+    return PACK_GUARD_LOOKALIKE_RE.search(folded) is not None
+
+
+def _iter_parsed_jobs(doc: object) -> list[tuple[str, object | None]]:
+    if not isinstance(doc, dict):
+        _yaml_parse_fail("workflow YAML is not a mapping")
+    jobs = doc.get("jobs")
+    if jobs is None:
+        return []
+    if not isinstance(jobs, dict):
+        _yaml_parse_fail("jobs: is not a mapping")
+    found: list[tuple[str, object | None]] = []
+    for job_id, body in jobs.items():
+        name: object | None = None
+        if isinstance(body, dict) and "name" in body:
+            name = body.get("name")
+        found.append((str(job_id), name))
+    return found
+
+
 def _parse_yaml_scalar(raw: str) -> object:
     value = raw.strip()
     if value in ("true", "True", "yes", "Yes", "on"):
@@ -4879,108 +5256,81 @@ def _workflow_on_block(text: str) -> str:
     return "".join(lines[start:end]).rstrip("\n") + "\n"
 
 
+def _workflow_yaml_paths(repo_root: Path) -> list[Path]:
+    wf_dir = repo_root / ".github" / "workflows"
+    if not wf_dir.is_dir():
+        return []
+    return sorted(
+        path
+        for path in wf_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in {".yml", ".yaml"}
+    )
+
+
 def _assert_workflow_job_unique(
     job: str, repo_root: Path | None = None
 ) -> None:
     root = REPO_ROOT if repo_root is None else repo_root
-    wf_dir = root / ".github" / "workflows"
-    job_re = re.compile(rf"^  {re.escape(job)}:\s*$", re.MULTILINE)
+    ci_rel = str(Path(".github") / "workflows" / "ci.yml")
     hits: list[str] = []
-    paths = sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml"))
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
+    for path in _workflow_yaml_paths(root):
         rel = str(path.relative_to(root))
-        hits.extend([rel] * len(job_re.findall(text)))
-    expected = [str(Path(".github") / "workflows" / "ci.yml")]
+        doc = _load_workflow_yaml(path.read_text(encoding="utf-8"))
+        for job_id, _name in _iter_parsed_jobs(doc):
+            if job_id == job:
+                hits.append(rel)
+    expected = [ci_rel]
     if hits != expected:
         raise AssertionError(
             f"{job!r} job name must appear only in ci.yml, found {hits}"
         )
 
 
-def _iter_gha_jobs(text: str) -> list[tuple[str, str]]:
-    """(job_id, display_name) for each job under top-level jobs:."""
-    lines = text.splitlines()
-    jobs_at: int | None = None
-    for idx, line in enumerate(lines):
-        if re.match(r"^jobs:\s*$", line):
-            jobs_at = idx
-            break
-    if jobs_at is None:
-        return []
-    found: list[tuple[str, str]] = []
-    job_id: str | None = None
-    name_ov: str | None = None
-
-    def _flush() -> None:
-        nonlocal job_id, name_ov
-        if job_id is None:
-            return
-        display = name_ov if name_ov is not None else job_id
-        found.append((job_id, display))
-        job_id = None
-        name_ov = None
-
-    for line in lines[jobs_at + 1 :]:
-        if (
-            line.strip()
-            and not line.lstrip().startswith("#")
-            and line[:1] not in " \t"
-        ):
-            break
-        header = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
-        if header:
-            _flush()
-            job_id = header.group(1)
-            name_ov = None
-            continue
-        named = re.match(r"^    name:\s*(.+?)\s*$", line)
-        if named and job_id is not None and name_ov is None:
-            name_ov = named.group(1).strip().strip("\"'")
-    _flush()
-    return found
-
-
 def _assert_pack_guard_check_name_unique(
     text: str, repo_root: Path | None = None
 ) -> None:
-    """Job id and GitHub check/display name are exactly pack-guard, once."""
+    """B4: YAML-parse every workflow; refuse spoofed pack-guard check names."""
     root = REPO_ROOT if repo_root is None else repo_root
     ci_rel = str(Path(".github") / "workflows" / "ci.yml")
-    id_hits: list[tuple[str, str, str]] = []
-    display_hits: list[tuple[str, str, str]] = []
-    wf_dir = root / ".github" / "workflows"
-    paths = sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml"))
-    for path in paths:
+    allowed: tuple[str, str] | None = None
+    spoofs: list[str] = []
+    for path in _workflow_yaml_paths(root):
         rel = str(path.relative_to(root))
         body = text if rel == ci_rel else path.read_text(encoding="utf-8")
-        for job_id, display in _iter_gha_jobs(body):
-            if job_id == PACK_GUARD_JOB:
-                id_hits.append((rel, job_id, display))
-            if display == PACK_GUARD_JOB:
-                display_hits.append((rel, job_id, display))
-    expected = [(ci_rel, PACK_GUARD_JOB, PACK_GUARD_JOB)]
-    if id_hits != expected:
+        doc = _load_workflow_yaml(body)
+        for job_id, name in _iter_parsed_jobs(doc):
+            id_hit = _pack_guard_lookalike_token(job_id)
+            name_hit = name is not None and _pack_guard_lookalike_token(name)
+            if name is not None and "${{" in str(name):
+                spoofs.append(f"{rel} job {job_id!r} name has ${{{{")
+            if id_hit:
+                if rel == ci_rel and job_id == PACK_GUARD_JOB:
+                    if allowed is not None:
+                        spoofs.append(f"duplicate ci.yml job id {job_id!r}")
+                    allowed = (rel, job_id)
+                else:
+                    spoofs.append(f"{rel} job id {job_id!r}")
+            if name_hit:
+                spoofs.append(f"{rel} job {job_id!r} name {name!r}")
+    if allowed is None:
         raise AssertionError(
-            f"job id {PACK_GUARD_JOB!r} must be unique, with display name "
-            f"{PACK_GUARD_JOB!r}; found {id_hits}"
+            f"missing the single ci.yml job id {PACK_GUARD_JOB!r}"
         )
-    if display_hits != expected:
+    if spoofs:
         raise AssertionError(
-            f"check/display name {PACK_GUARD_JOB!r} must be unique across "
-            f"every workflow file; found {display_hits}"
+            "pack-guard check name is spoofable; refuse "
+            f"{spoofs}"
         )
 
 
 def _assert_pack_guard_names_unique(repo_root: Path | None = None) -> None:
     root = REPO_ROOT if repo_root is None else repo_root
-    wf_dir = root / ".github" / "workflows"
     step_re = re.compile(
         rf"^\s+- name:\s*{re.escape(PACK_GUARD_STEP_NAME)}\s*$",
         re.MULTILINE,
     )
     step_hits: list[str] = []
-    paths = sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml"))
+    paths = _workflow_yaml_paths(root)
     for path in paths:
         text = path.read_text(encoding="utf-8")
         rel = str(path.relative_to(root))
@@ -5124,6 +5474,20 @@ def _assert_pack_guard_context(text: str) -> dict[str, object]:
             f"pack-guard job has forbidden keys {sorted(banned)} "
             "(no if:/continue-on-error/needs:/strategy/name:)"
         )
+    pack_doc = _load_workflow_yaml(text)
+    if not isinstance(pack_doc, dict):
+        raise AssertionError("ci.yml is not a YAML mapping")
+    pack_jobs = pack_doc.get("jobs")
+    if not isinstance(pack_jobs, dict):
+        raise AssertionError("ci.yml jobs: is not a mapping")
+    pack_job = pack_jobs.get(PACK_GUARD_JOB)
+    if not isinstance(pack_job, dict):
+        raise AssertionError(f"missing job {PACK_GUARD_JOB!r}")
+    if pack_job.get("runs-on") != PACK_GUARD_RUNS_ON:
+        raise AssertionError(
+            f"pack-guard runs-on must be {PACK_GUARD_RUNS_ON!r}, "
+            f"got {pack_job.get('runs-on')!r}"
+        )
     _assert_job_keys_exact(text, DOTTIE_OS_SMOKE_JOB)
     _assert_smoke_job_has_no_hollowing_steps(text)
     blocks = _job_step_blocks_from_text(text)
@@ -5179,6 +5543,42 @@ def _assert_pack_guard_context(text: str) -> dict[str, object]:
     if guard.get("shell") != PACK_GUARD_SHELL:
         raise AssertionError(
             f"pack-guard shell {guard.get('shell')!r} != {PACK_GUARD_SHELL!r}"
+        )
+    run_text = str(guard.get("run") or "")
+    if f"PATH={PACK_GUARD_ENV_PATH}" not in run_text:
+        raise AssertionError(
+            f"pack-guard PATH must be exactly {PACK_GUARD_ENV_PATH!r}"
+        )
+    if f"HOME={PACK_GUARD_ENV_HOME}" not in run_text:
+        raise AssertionError(
+            f"pack-guard HOME must be exactly {PACK_GUARD_ENV_HOME!r}"
+        )
+    if f"LC_ALL={PACK_GUARD_ENV_LC_ALL} " not in run_text:
+        raise AssertionError(
+            f"pack-guard LC_ALL must be exactly {PACK_GUARD_ENV_LC_ALL!r}"
+        )
+    if PACK_GUARD_ENV_SCRUB_RE.search(run_text) is None:
+        raise AssertionError(
+            "pack-guard git_scrub env pin must be "
+            f"PATH={PACK_GUARD_ENV_PATH} HOME={PACK_GUARD_ENV_HOME} "
+            f"LC_ALL={PACK_GUARD_ENV_LC_ALL}"
+        )
+    if PACK_GUARD_ENV_INLINE not in run_text:
+        raise AssertionError(
+            "pack-guard env -i pin must be "
+            f"{PACK_GUARD_ENV_INLINE}"
+        )
+    if "LC_ALL=C.UTF-8" in run_text:
+        raise AssertionError("pack-guard LC_ALL=C.UTF-8 is forbidden")
+    if 'HOME="$HOME"' in run_text or "HOME=$HOME" in run_text:
+        raise AssertionError("pack-guard must not keep the runner HOME")
+    if PACK_GUARD_GREP_RE not in run_text:
+        raise AssertionError(
+            f"pack-guard path match must include {PACK_GUARD_GREP_RE!r}"
+        )
+    if PACK_GUARD_PATH_RE not in run_text:
+        raise AssertionError(
+            f"pack-guard path match must include {PACK_GUARD_PATH_RE!r}"
         )
     return guard
 
@@ -5360,6 +5760,16 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         self.assertIn("/usr/bin/git", str(step.get("run")))
         self.assertIn("/usr/bin/grep -zEi", str(step.get("run")))
         run_text = str(step.get("run"))
+        self.assertIn(f"PATH={PACK_GUARD_ENV_PATH}", run_text)
+        self.assertIn(f"HOME={PACK_GUARD_ENV_HOME}", run_text)
+        self.assertIn(f"LC_ALL={PACK_GUARD_ENV_LC_ALL} ", run_text)
+        self.assertIn(PACK_GUARD_ENV_INLINE, run_text)
+        self.assertRegex(run_text, PACK_GUARD_ENV_SCRUB_RE)
+        self.assertNotIn("LC_ALL=C.UTF-8", run_text)
+        self.assertNotIn('HOME="$HOME"', run_text)
+        self.assertNotIn("HOME=$HOME", run_text)
+        self.assertIn(PACK_GUARD_PATH_RE, run_text)
+        self.assertIn(PACK_GUARD_GREP_RE, run_text)
         self.assertIn(
             'ls-tree -r -z --full-tree --name-only "$GITHUB_SHA"', run_text
         )
@@ -5370,7 +5780,6 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         self.assertIn("core.fsmonitor=false", run_text)
         self.assertIn("core.hooksPath=/dev/null", run_text)
         self.assertIn("/usr/bin/env -i", run_text)
-        self.assertIn("curated_pack_|ultradata_harvest_", run_text)
         self.assertNotIn("ls-tree -r --name-only -z HEAD", run_text)
         stdlib_step = _pack_guard_step_from_text(text)
         self.assertEqual(set(stdlib_step), PACK_GUARD_STEP_KEYS)
@@ -5389,6 +5798,99 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             job = jobs.get(PACK_GUARD_JOB)
             self.assertIsInstance(job, dict)
             self.assertEqual(set(job), PACK_GUARD_JOB_KEYS)
+            self.assertEqual(job.get("runs-on"), PACK_GUARD_RUNS_ON)
+
+    def test_codeowners_cover_github_and_guard_tests(self) -> None:
+        path = REPO_ROOT / ".github" / "CODEOWNERS"
+        raw = path.read_text(encoding="utf-8")
+        owned = [
+            line.split()[0]
+            for line in raw.splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+        self.assertIn(PACK_GUARD_CODEOWNERS_GITHUB, owned)
+        self.assertIn(PACK_GUARD_CODEOWNERS_FACTORY, raw)
+        self.assertIn(PACK_GUARD_CODEOWNERS_CRITIC, raw)
+        for required in (
+            PACK_GUARD_CODEOWNERS_GITHUB,
+            PACK_GUARD_CODEOWNERS_FACTORY,
+            PACK_GUARD_CODEOWNERS_CRITIC,
+        ):
+            for line in raw.splitlines():
+                if line.strip().startswith("#") or not line.strip():
+                    continue
+                parts = line.split()
+                if parts[0] == required:
+                    self.assertIn(PACK_GUARD_CODEOWNERS_OWNER, parts)
+                    break
+            else:
+                self.fail(f"CODEOWNERS missing {required} @jcdavis131")
+
+    def test_pack_guard_check_name_spoofs_are_red(self) -> None:
+        """B4/S20: YAML uniqueness refuses spoofed required-check names."""
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+        spoofs = (
+            (
+                "4space",
+                "zz-spoof.yml",
+                "name: x\non:\n    pull_request:\n        branches: [main]\n"
+                "jobs:\n    pack-guard:\n        runs-on: ubuntu-latest\n"
+                "        steps:\n            - run: echo ok\n",
+            ),
+            (
+                "flow",
+                "zz-spoof.yml",
+                "name: x\non: [pull_request]\n"
+                "jobs: {pack-guard: {runs-on: ubuntu-latest, "
+                "steps: [{run: echo ok}]}}\n",
+            ),
+            (
+                "Pack-Guard",
+                "zz-spoof.yml",
+                "name: x\non:\n  pull_request:\n    branches: [main]\njobs:\n"
+                "  spoof:\n    name: Pack-Guard\n    runs-on: ubuntu-latest\n"
+                "    steps:\n      - run: echo ok\n",
+            ),
+            (
+                "expr",
+                "zz-spoof.yml",
+                "name: x\non:\n  pull_request:\n    branches: [main]\njobs:\n"
+                "  spoof:\n    name: ${{ 'pack-guard' }}\n"
+                "    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n",
+            ),
+            (
+                "yaml_ext",
+                "zz-spoof.yaml",
+                "name: x\non:\n  pull_request:\n    branches: [main]\njobs:\n"
+                "  pack-guard:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n      - run: echo ok\n",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wf = root / ".github" / "workflows"
+            wf.mkdir(parents=True)
+            (wf / "ci.yml").write_text(text, encoding="utf-8")
+            _assert_pack_guard_check_name_unique(text, root)
+            for mid, filename, body in spoofs:
+                path = wf / filename
+                path.write_text(body, encoding="utf-8")
+                with self.subTest(mutation=mid):
+                    with self.assertRaises(AssertionError):
+                        _assert_pack_guard_check_name_unique(text, root)
+                path.unlink()
+            (wf / "zz-spoof.yml").write_text(":\n  [ unterminated\n", encoding="utf-8")
+            with self.assertRaises(AssertionError):
+                _assert_pack_guard_check_name_unique(text, root)
+        smoke = "  dottie-os-smoke:\n    runs-on: ubuntu-latest\n"
+        lookalike = (
+            "  pack_guard:\n    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: echo ok\n\n" + smoke
+        )
+        mutated = text.replace(smoke, lookalike, 1)
+        self.assertNotEqual(mutated, text)
+        with self.assertRaises(AssertionError):
+            _assert_pack_guard_check_name_unique(mutated)
 
     def test_donewhen_mutations_go_red(self) -> None:
         """Critic done-when: shell -euo, unique pack-guard name, checkout with:."""
@@ -5452,6 +5954,15 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         )
         self.assertIn(CRITIC_91_136F_SHA256, path.read_text(encoding="utf-8"))
 
+    def test_critic_91_af2d_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_af2d.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            CRITIC_91_AF2D_SHA256,
+            "f251c6c9b34b5add838b6f45e93fb538ccb61b0704b5652428440033a0ecfbc5",
+        )
+        self.assertIn(CRITIC_91_AF2D_SHA256, path.read_text(encoding="utf-8"))
+
     def test_ci_pack_guard_run_block_trips_on_tracked_packs(self) -> None:
         run = self._run_block()
         with tempfile.TemporaryDirectory() as tmp:
@@ -5495,6 +6006,23 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
                 msg=(
                     "fixtures pack must trip the guard; "
                     f"stdout={nested_proc.stdout!r}"
+                ),
+            )
+
+            dashed = Path(tmp) / "dashed"
+            env = _init_pack_guard_repo(dashed)
+            _seed_pack_guard_floor(dashed)
+            dash_pack = dashed / "apps" / "x" / "curated-pack-v2.jsonl"
+            dash_pack.parent.mkdir(parents=True, exist_ok=True)
+            dash_pack.write_text('{"eval_only": true}\n', encoding="utf-8")
+            _commit_pack_guard_tree(dashed, env, "curated-pack jsonl")
+            dash_proc = _run_pack_guard_script(dashed, run, env)
+            self.assertNotEqual(
+                dash_proc.returncode,
+                0,
+                msg=(
+                    "curated-pack-v2.jsonl must trip the guard; "
+                    f"stdout={dash_proc.stdout!r}"
                 ),
             )
 

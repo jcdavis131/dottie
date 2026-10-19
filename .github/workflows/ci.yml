@@ -635,11 +635,11 @@ jobs:
           }
           grep_pack() {
             /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-              /usr/bin/grep -zEi 'curated_pack_|ultradata_harvest_' "$1"
+              /usr/bin/grep -zEi 'curated[-_]?pack|ultradata[-_]?harvest[-_]' "$1"
           }
           show_pack_hits() {
             /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-              /usr/bin/python3 -I -c "import sys,re; pat=re.compile(br'curated_pack_|ultradata_harvest_',re.I); [sys.stdout.write(p.decode('utf-8','backslashreplace')+chr(10)) for p in open(sys.argv[1],'rb').read().split(bytes([0])) if p and pat.search(p)]" "$1"
+              /usr/bin/python3 -I -c "import sys,re; pat=re.compile(br'curated[-_]?pack|ultradata[-_]?harvest[-_]',re.I); [sys.stdout.write(p.decode('utf-8','backslashreplace')+chr(10)) for p in open(sys.argv[1],'rb').read().split(bytes([0])) if p and pat.search(p)]" "$1"
           }
           toplevel=$(git_scrub rev-parse --show-toplevel) || {
             \builtin echo "FAIL: git rev-parse --show-toplevel failed"
@@ -730,7 +730,7 @@ jobs:
             \builtin exit 1
           fi
           /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-            /usr/bin/python3 -I -c "import sys,unicodedata,re; C=str.maketrans({'\u0430':'a','\u0435':'e','\u043e':'o','\u0440':'p','\u0441':'c','\u0445':'x','\u0443':'y','\u0456':'i','\u0458':'j','\u0455':'s','\u0501':'d','\u0410':'a','\u0415':'e','\u041e':'o','\u0420':'p','\u0421':'c','\u0425':'x','\u0423':'y','\u0406':'i'}); P=re.compile(r'curated_pack_|ultradata_harvest_',re.I); fold=lambda s: ''.join(ch for ch in unicodedata.normalize('NFKC',s).translate(C) if unicodedata.category(ch)!='Cf').casefold(); [(sys.exit('FAIL: non-ascii path') if any(b>127 for b in p) else sys.exit('FAIL: lookalike pack path') if P.search(fold(p.decode('utf-8','surrogateescape'))) else None) for f in sys.argv[1:] for p in open(f,'rb').read().split(bytes([0])) if p]" "$index_list" "$tree_list" || {
+            /usr/bin/python3 -I -c "import sys,unicodedata,re; C=str.maketrans({'\u0430':'a','\u0435':'e','\u043e':'o','\u0440':'p','\u0441':'c','\u0445':'x','\u0443':'y','\u0456':'i','\u0458':'j','\u0455':'s','\u0501':'d','\u03bf':'o','\u039f':'o','\u0410':'a','\u0415':'e','\u041e':'o','\u0420':'p','\u0421':'c','\u0425':'x','\u0423':'y','\u0406':'i'}); P=re.compile(r'curated[-_]?pack|ultradata[-_]?harvest[-_]',re.I); fold=lambda s: ''.join(ch for ch in unicodedata.normalize('NFKC',s).translate(C) if unicodedata.category(ch)!='Cf').casefold(); [(sys.exit('FAIL: non-ascii path') if any(b>127 for b in p) else sys.exit('FAIL: lookalike pack path') if P.search(fold(p.decode('utf-8','surrogateescape'))) else None) for f in sys.argv[1:] for p in open(f,'rb').read().split(bytes([0])) if p]" "$index_list" "$tree_list" || {
             \builtin echo "FAIL: lookalike/non-ascii pack path check"
             \builtin exit 1
           }
