@@ -21,6 +21,7 @@ if str(APP) not in sys.path:
 from decision_io import SCHEMA_ID, option_keys
 from dottie_core.serving.veto import (
     CONTROL_PLANE,
+    CREDENTIAL_READ,
     FORK_BOMB,
     MKFS,
     NEGATIVE_CASES,
@@ -100,10 +101,10 @@ class RuleTableTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertIsNone(veto_command(command), command)
 
-    def test_rule_list_is_the_five_classes(self) -> None:
+    def test_rule_list_is_the_halt_classes(self) -> None:
         self.assertEqual(
             VETO_RULES,
-            (PIPE_DOWNLOAD_TO_SHELL, FORK_BOMB, CONTROL_PLANE, RM_RF, MKFS),
+            (PIPE_DOWNLOAD_TO_SHELL, FORK_BOMB, CONTROL_PLANE, RM_RF, MKFS, CREDENTIAL_READ),
         )
 
     def test_veto_module_has_no_network_or_kill_switch(self) -> None:

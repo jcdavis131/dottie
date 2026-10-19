@@ -15,11 +15,14 @@ deadline, parse failure, oversize field, or unknown construct returns halt
 `veto_error: Type: msg` on stderr. The wrapper only ever adds a halt. There
 is no env kill-switch.
 
-Halt classes: pipe a download into a shell interpreter, fork bomb, serve
-control-plane URL (`/reload` and other admin paths on `:8770`/`:8765`/`:8769`,
-loopback, `nugatron`, tailnet — after percent-decode and `.`/`..` path
-normalize), `rm -rf` (any path, flag reorderings), `mkfs*` and other block-device
-wipes (`dd of=/dev/sd*`, `wipefs`, `shred`).
+Halt classes: pipe a download into a shell interpreter (`curl`/`wget`/`fetch`
+into `sh`/`bash`/`zsh`/`python`, including `sh -c "$(curl …)"` and
+`source <(curl …)`), fork bomb, serve control-plane URL (`/reload` and other
+admin paths on `:8770`/`:8765`/`:8769`, loopback, `nugatron`, tailnet — after
+percent-decode and `.`/`..` path normalize), `rm -rf` (any path, flag
+reorderings), `mkfs*` and other block-device wipes (`dd of=/dev/sd*`,
+`wipefs`, `shred`), and credential reads (`~/.ssh/id_*`, `~/.aws/credentials`,
+`.env` / token files via `cat`/`less`/`cp`/`scp`/`base64`/`python -c open`).
 
 The in-tree dottie-core serve (`packages/dottie-core/dottie_core/serving/server.py`)
 runs the veto on the raw `/decide` body before the model. The jev-v0 fixture
