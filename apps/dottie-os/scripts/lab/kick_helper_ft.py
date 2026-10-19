@@ -86,12 +86,16 @@ STATE_LEAK_KEYS = frozenset(
 )
 # The 20261018-185133 pack (sha256_pack a73c792f…) put gold labels in
 # state.meta.risk_hint on all 60 L3 rows. Refuse those keys at any depth.
-INBOX_LATEST_TOKENS = frozenset({"latest", "inbox_latest", "inbox-latest"})
+INBOX_LATEST_TOKENS = frozenset(
+    {"latest", "inbox_latest", "inbox-latest", "inbox:latest"}
+)
 INBOX_LATEST_PATH_MARKERS = (
     "inbox_latest",
     "inbox-latest",
+    "inbox:latest",
     "20260919-093515-host-meta",
 )
+LIVE_INBOX_LATEST_DIR = "runs/inbox/20260919-093515-host-meta"
 
 # (manifest sha field, on-disk file, MANIFEST row field, pin row field)
 ARTIFACTS: tuple[tuple[str, str, str, str], ...] = (
@@ -621,10 +625,18 @@ def enforce_pack_gates(
 
 
 def _looks_like_inbox_latest(value: str) -> bool:
-    text = value.replace("\\", "/").lower()
-    if text.strip() in INBOX_LATEST_TOKENS:
+    text = value.replace("\\", "/").lower().strip()
+    compact = text.replace(" ", "")
+    if text in INBOX_LATEST_TOKENS or compact in INBOX_LATEST_TOKENS:
         return True
-    return any(marker.lower() in text for marker in INBOX_LATEST_PATH_MARKERS)
+    return any(marker.lower() in compact for marker in INBOX_LATEST_PATH_MARKERS)
+
+
+def refuse_implicit_inbox_pack(pack_dir: Path | str) -> None:
+    """CLI/kick must not resolve inbox:latest or the live default inbox dir."""
+    raw = str(pack_dir)
+    if _looks_like_inbox_latest(raw):
+        _refuse("pack", "explicit pack path", raw)
 
 
 def refuse_inbox_latest(body: Mapping[str, Any] | None) -> None:
@@ -634,7 +646,7 @@ def refuse_inbox_latest(body: Mapping[str, Any] | None) -> None:
     if "inbox_latest" in body:
         _refuse("inbox_latest", "absent", "present")
     inbox = body.get("inbox")
-    if isinstance(inbox, str) and inbox.strip().lower() in INBOX_LATEST_TOKENS:
+    if isinstance(inbox, str) and _looks_like_inbox_latest(inbox):
         _refuse("inbox", "named pack_id", inbox)
     if inbox is True:
         _refuse("inbox", "named pack_id", True)
@@ -985,7 +997,9 @@ def verify_and_stage(
     """
     _refuse_skip_env()
     _refuse_pin_env()
+    refuse_implicit_inbox_pack(pack_dir)
     pack_root = _resolve_pack_dir(Path(pack_dir))
+    refuse_implicit_inbox_pack(pack_root)
     _refuse_local_pin_files(pack_root)
     run_private = Path(run_private)
     run_private.mkdir(parents=True, exist_ok=True)
@@ -1385,6 +1399,7 @@ def kick(
     """
     _refuse_skip_env()
     _refuse_pin_env()
+    refuse_implicit_inbox_pack(pack_dir)
     pack_dir = Path(pack_dir)
     smoke = bool(smoke)
     _refuse_local_pin_files(_resolve_pack_dir(pack_dir))

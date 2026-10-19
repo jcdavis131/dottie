@@ -19,6 +19,10 @@ current word):
   says `live_gate_eligible: true`. The gate source is in the private repo.
 - **`:8770` is not dottie-os.** It is the Grok Swarm's Laya lane (the
   `swarm-jev-ava` container). Dottie never calls it.
+- **`:8769` (jev-ava CUDA/peft trainer) is not in this repository.** It lives
+  on nugatron with the `swarm-jev-ava` stack. This tree has no `:8769` HTTP
+  routes. The only HELPER FT training-start route here is
+  `POST :8765/train/kickoff`.
 
 The Dottie router's System One backend (`DOTTIE_OS_URL`, see
 `docs/ROUTER.md`) is off by default, and neither the advisor nor the gate is

@@ -40,6 +40,10 @@ _HEX = frozenset("0123456789abcdef")
 MAX_EVIDENCE_AGE_SECONDS = 15 * 60
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+# Radar: the only HTTP training-start route in this repository.
+TRAINING_START_ROUTES = (("POST", "/train/kickoff"),)
+# jev-ava's trainer is not served from this tree. Empty on purpose.
+JEV_AVA_TRAINING_START_ROUTES: tuple[tuple[str, str], ...] = ()
 SWARM_HQ_AGENT_TOKEN_ENV = cam_pin_spec.SWARM_HQ_AGENT_TOKEN_ENV
 PIN_SOURCE = "swarm-hq-cam-pin"
 HQ_PIN_REQUIRED_KEYS = cam_pin_spec.HQ_PIN_REQUIRED_KEYS

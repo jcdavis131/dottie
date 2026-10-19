@@ -3174,10 +3174,35 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertNotIn("halt_class", dumped)
         self.assertNotIn("agent_config", dumped)
 
-    def test_inbox_latest_aliases_refused(self) -> None:
+    def test_inbox_latest_kickoff_is_refused(self) -> None:
         latest = helper_ft_kickoff.handle_train_kickoff(
             {"mode": "helper-ft", "inbox": "latest", "pack_id": "p", "evidence": {"ok": True, "pack_id": "p"}}
         )
+        colon = helper_ft_kickoff.handle_train_kickoff(
+            {
+                "mode": "helper-ft",
+                "inbox": "inbox:latest",
+                "pack_id": "p",
+                "evidence": {"ok": True, "pack_id": "p"},
+            }
+        )
+        http = helper_ft_kickoff.TestClient().post(
+            "/train/kickoff",
+            json={"mode": "helper-ft", "inbox": "latest", "pack_id": "p", "evidence": {"ok": True, "pack_id": "p"}},
+        )
+        query = helper_ft_kickoff.TestClient().post(
+            "/train/kickoff?inbox=latest",
+            json={"mode": "helper-ft", "pack_id": "p", "evidence": {"ok": True, "pack_id": "p"}},
+        )
+        self.assertFalse(latest["ok"])
+        self.assertEqual(latest["field"], "inbox")
+        self.assertEqual(latest["actual"], "latest")
+        self.assertEqual(colon["field"], "inbox")
+        self.assertEqual(http.status_code, 400)
+        self.assertEqual(http.json()["field"], "inbox")
+        self.assertEqual(query.json()["field"], "inbox")
+
+    def test_inbox_latest_aliases_refused(self) -> None:
         alias = helper_ft_kickoff.handle_train_kickoff(
             {
                 "mode": "helper-ft",
@@ -3201,24 +3226,46 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         runner_latest = runner.handle_train_kickoff(
             {"mode": "helper-ft", "inbox": "latest", "evidence": {"ok": True, "pack_id": "p"}, "pack_id": "p"}
         )
-        self.assertEqual(latest["field"], "inbox")
         self.assertEqual(alias["field"], "inbox_latest")
         self.assertEqual(pathed["field"], "run_private_dir")
         self.assertFalse(runner_latest.get("ok"))
         self.assertEqual(runner_latest["field"], "inbox")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "runs" / "inbox" / "20260919-093515-host-meta"
+            dest.mkdir(parents=True)
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+            rc = kick_helper_ft.main(["--pack", "inbox:latest"])
+        self.assertEqual(ctx.exception.field, "pack")
+        self.assertEqual(rc, 1)
 
     def test_8765_training_routes_and_8769_absent_from_lab(self) -> None:
         self.assertEqual(helper_ft_kickoff.DEFAULT_PORT, 8765)
+        self.assertEqual(helper_ft_kickoff.TRAINING_START_ROUTES, (("POST", "/train/kickoff"),))
+        self.assertEqual(helper_ft_kickoff.JEV_AVA_TRAINING_START_ROUTES, ())
         for name in helper_ft_kickoff.OTHER_HELPER_FT_START_PATHS:
             payload = helper_ft_kickoff.dispatch("POST", name, {"mode": "helper-ft"})[1]
             self.assertFalse(payload["ok"])
             self.assertIn(payload["field"], {"route", "inbox"})
         allowed = helper_ft_kickoff.dispatch("POST", "/train/kickoff", None)[1]
         self.assertEqual(allowed["field"], "body")
-        for path in (LAB / "kick_helper_ft.py", LAB / "helper_ft_kickoff.py", LAB / "cam_pin_spec.py"):
-            text = path.read_text(encoding="utf-8")
-            self.assertNotIn("8769", text)
-            self.assertNotIn("jev-ava", text.lower().replace("_", "-"))
+        roots = (
+            Path(__file__).resolve().parents[1],
+            Path(__file__).resolve().parents[3] / "packages" / "dottie-loop",
+        )
+        hits: list[str] = []
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for path in root.rglob("*.py"):
+                if path.name.startswith("test_"):
+                    continue
+                text = path.read_text(encoding="utf-8")
+                if "8769" in text:
+                    hits.append(str(path.relative_to(root) if path.is_relative_to(root) else path))
+        self.assertEqual(hits, [])
 
     def test_write_evidence_uses_mkstemp(self) -> None:
         src = Path(kick_helper_ft.__file__).read_text(encoding="utf-8")
