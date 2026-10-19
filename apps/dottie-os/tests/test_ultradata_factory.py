@@ -10184,8 +10184,40 @@ class HelperFtMillFpFileTests(unittest.TestCase):
         self.assertNotEqual(set(indexes), set(range(len(indexes))))
 
     def test_count_other_than_n_refused(self) -> None:
-        indexes = [row_fields.mill_fp_index({"index": i}) for i in range(3)]
-        self.assertNotEqual(len(indexes), 4)
+        with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+            kick_helper_ft._check_fp_indexes([0, 1, 2], 4)
+        self.assertEqual(ctx.exception.expected, "n_refs")
+        self.assertEqual(ctx.exception.actual, "mismatch")
+
+    def test_valid_file_passes_n_refs_and_refused_short(self) -> None:
+        cand = row_fields.mill_n_candidates_key()
+        counts = kick_helper_ft._signed_fp_counts(
+            {"n_refs": 3, "n_refused_short": 1, cand: 4}
+        )
+        self.assertEqual(counts["n_refs"], 3)
+        self.assertEqual(counts["n_refused_short"], 1)
+        self.assertEqual(counts[cand], 4)
+        kick_helper_ft._check_fp_indexes([0, 1, 2], 3)
+
+    def test_n_refs_plus_refused_short_mismatch_refused(self) -> None:
+        cand = row_fields.mill_n_candidates_key()
+        with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+            kick_helper_ft._signed_fp_counts(
+                {"n_refs": 3, "n_refused_short": 1, cand: 3}
+            )
+        self.assertEqual(ctx.exception.actual, "mismatch")
+        self.assertIn("n_refs", ctx.exception.field)
+
+    def test_missing_n_refused_short_or_candidate_count_refused(self) -> None:
+        cand = row_fields.mill_n_candidates_key()
+        with self.assertRaises(kick_helper_ft.KickRefused) as ctx_short:
+            kick_helper_ft._signed_fp_counts({"n_refs": 3, cand: 3})
+        self.assertEqual(ctx_short.exception.actual, "missing")
+        self.assertIn("n_refused_short", ctx_short.exception.field)
+        with self.assertRaises(kick_helper_ft.KickRefused) as ctx_cand:
+            kick_helper_ft._signed_fp_counts({"n_refs": 3, "n_refused_short": 0})
+        self.assertEqual(ctx_cand.exception.actual, "missing")
+        self.assertIn(cand, ctx_cand.exception.field)
 
     def test_missing_or_wrong_kcv_refused(self) -> None:
         key = b"factory-hmac-material-not-logged"

@@ -366,8 +366,16 @@ def mill_load_fingerprint_file(path: object, key: bytes) -> Any:
 
 
 def mill_n_candidates_key() -> str:
+    """Signed v2 candidate-count field. Mill header/MANIFEST name once vendored."""
     mill = _pinned_mill()
-    for name in ("N_CANDIDATES_KEY", "N_REF_CANDIDATES_KEY", "N_FP_CANDIDATES_KEY"):
+    for name in (
+        "N_CANDIDATES_KEY",
+        "N_REF_CANDIDATES_KEY",
+        "N_FP_CANDIDATES_KEY",
+        "MANIFEST_N_CANDIDATES_KEY",
+        "HEADER_N_CANDIDATES_KEY",
+        "N_CANDIDATES_FIELD",
+    ):
         val = getattr(mill, name, None)
         if type(val) is str and val:
             return val
