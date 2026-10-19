@@ -45,8 +45,19 @@ MANIFEST_FILE = "MANIFEST.json"
 DEFAULT_LOG_NAME = "helper_ft.log"
 DEFAULT_KICKOFF_URL = "http://127.0.0.1:8765/train/kickoff"
 SWARM_HQ_URL_ENV = "SWARM_HQ_URL"
+SWARM_HQ_AGENT_TOKEN_ENV = "SWARM_HQ_AGENT_TOKEN"
 PIN_SOURCE = "swarm-hq-cam-pin"
 CAM_RECORDED_BY = "cam"
+HQ_PIN_REQUIRED_KEYS = (
+    "pack_id",
+    "sha256_pack",
+    "sha256_train",
+    "sha256_holdout",
+    "recordedBy",
+    "recordedAt",
+    "kid",
+)
+HQ_PIN_ALLOWED_KEYS = frozenset((*HQ_PIN_REQUIRED_KEYS, "stampVerified", "verified"))
 CHUNK = 1 << 20
 SHA256_LEN = 64
 _HEX = frozenset("0123456789abcdef")
@@ -298,6 +309,15 @@ def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return seen
 
 
+def _no_duplicate_hq_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    seen: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in seen:
+            _refuse("cam-pin", "unique keys", f"duplicate {key}")
+        seen[key] = value
+    return seen
+
+
 def _read_manifest(pack_dir: Path) -> dict[str, Any]:
     manifest_path = _regular_file_in_pack(pack_dir, MANIFEST_FILE)
     try:
@@ -356,6 +376,43 @@ def _require_cam_pin(record: object, pack_id: str) -> dict[str, Any]:
     return pin
 
 
+def _agent_token() -> str:
+    token = os.environ.get(SWARM_HQ_AGENT_TOKEN_ENV)
+    if not isinstance(token, str) or not token.strip():
+        _refuse(SWARM_HQ_AGENT_TOKEN_ENV, "present", "missing")
+    return token.strip()
+
+
+def _parse_hq_pin_payload(payload: object) -> dict[str, Any]:
+    """Parse Swarm HQ's flat pin JSON. Unknown or missing keys refuse."""
+    if not isinstance(payload, dict) or not payload:
+        _refuse("cam-pin", "present", "missing")
+    unknown = [key for key in payload if key not in HQ_PIN_ALLOWED_KEYS]
+    if unknown:
+        _refuse("cam-pin", "HQ pin keys", f"unknown {unknown[0]}")
+    for key in HQ_PIN_REQUIRED_KEYS:
+        if key not in payload:
+            _refuse(f"cam-pin.{key}", "present", "missing")
+    recorded_at = payload.get("recordedAt")
+    if not isinstance(recorded_at, str) or not recorded_at.strip():
+        _refuse("cam-pin.recordedAt", "present", "missing")
+    kid = payload.get("kid")
+    if not isinstance(kid, str) or not kid.strip():
+        _refuse("cam-pin.kid", "present", "missing")
+    has_stamp = "stampVerified" in payload
+    has_alias = "verified" in payload
+    if not has_stamp and not has_alias:
+        _refuse("cam-pin.stampVerified", "present", "missing")
+    stamp = payload.get("stampVerified") if has_stamp else payload.get("verified")
+    if has_stamp and has_alias and payload.get("stampVerified") is not payload.get("verified"):
+        _refuse("cam-pin.stampVerified", payload.get("stampVerified"), payload.get("verified"))
+    if type(stamp) is not bool:
+        _refuse("cam-pin.stampVerified", "bool", type(stamp).__name__)
+    record = {key: payload[key] for key in HQ_PIN_REQUIRED_KEYS}
+    record["stampVerified"] = stamp
+    return record
+
+
 def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
     """GET ``{SWARM_HQ_URL}/api/packs/<pack_id>/pin`` over HTTPS. Never Redis."""
     if not isinstance(pack_id, str) or not pack_id.strip():
@@ -366,15 +423,25 @@ def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
     base = base.strip()
     if not base.lower().startswith("https://"):
         _refuse(SWARM_HQ_URL_ENV, "https URL", base)
+    token = _agent_token()
     url = base.rstrip("/") + "/api/packs/" + urllib.parse.quote(pack_id.strip(), safe="") + "/pin"
     request = urllib.request.Request(
-        url, method="GET", headers={"Accept": "application/json"}
+        url,
+        method="GET",
+        headers={
+            "Accept": "application/json",
+            "x-agent-token": token,
+        },
     )
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             blob = response.read()
             status = getattr(response, "status", None) or response.getcode()
     except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            _refuse("cam-pin", "authorized", "HTTP 401")
+        if exc.code == 404:
+            _refuse("cam-pin", "present", "HTTP 404")
         _refuse("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {exc.code}")
     except urllib.error.URLError as exc:
         reason = getattr(exc, "reason", None) or exc
@@ -388,13 +455,12 @@ def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
     except UnicodeDecodeError:
         _refuse("cam-pin", "utf-8 JSON", "invalid encoding")
     try:
-        payload = json.loads(raw) if raw else None
+        payload = json.loads(raw, object_pairs_hook=_no_duplicate_hq_keys) if raw else None
+    except KickRefused:
+        raise
     except ValueError:
         _refuse("cam-pin", "JSON object", "invalid JSON")
-    if not isinstance(payload, dict) or not payload:
-        _refuse("cam-pin", "present", "missing")
-    record = payload.get("pin") if isinstance(payload.get("pin"), dict) else payload
-    return record
+    return _parse_hq_pin_payload(payload)
 
 
 def _line_identities(path: Path, field: str) -> tuple[list[str], list[str]]:

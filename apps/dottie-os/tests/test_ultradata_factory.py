@@ -17,6 +17,7 @@ import unittest
 import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -345,6 +346,29 @@ def _write_helper_pack(dest: Path) -> dict:
     return manifest
 
 
+SWARM_HQ_PIN_CONTRACT_REQUIRED = (
+    "pack_id",
+    "sha256_pack",
+    "sha256_train",
+    "sha256_holdout",
+    "recordedBy",
+    "recordedAt",
+    "kid",
+)
+SWARM_HQ_PIN_CONTRACT_ALLOWED = frozenset((*SWARM_HQ_PIN_CONTRACT_REQUIRED, "stampVerified", "verified"))
+SWARM_HQ_AGENT_TOKEN_FIXTURE = "test-swarm-hq-agent-token"
+SWARM_HQ_PIN_FIXTURE = {
+    "pack_id": "curated_pack_v2-contract",
+    "sha256_pack": "11" * 32,
+    "sha256_train": "22" * 32,
+    "sha256_holdout": "33" * 32,
+    "recordedBy": "cam",
+    "recordedAt": "2026-10-19T00:00:00Z",
+    "kid": "cam-stamp-kid-1",
+    "stampVerified": True,
+}
+
+
 def _cam_pin(manifest: dict, **overrides: object) -> dict:
     pin = {
         "pack_id": manifest["pack_id"],
@@ -352,10 +376,28 @@ def _cam_pin(manifest: dict, **overrides: object) -> dict:
         "sha256_train": manifest["sha256_train"],
         "sha256_holdout": manifest["sha256_holdout"],
         "recordedBy": "cam",
+        "recordedAt": "2026-10-19T00:00:00Z",
+        "kid": "cam-stamp-kid-1",
         "stampVerified": True,
     }
     pin.update(overrides)
     return pin
+
+
+def _hq_http_error(url: str, code: int) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError(url, code, "error", hdrs={}, fp=BytesIO(b""))
+
+
+def _request_header(request: object, name: str) -> str:
+    getter = getattr(request, "get_header", None)
+    if callable(getter):
+        for candidate in (name, "-".join(part.capitalize() for part in name.split("-"))):
+            value = getter(candidate)
+            if value:
+                return str(value)
+    raw = getattr(request, "headers", {}) or {}
+    lowered = {str(key).lower(): str(value) for key, value in dict(raw).items()}
+    return lowered.get(name.lower(), "")
 
 
 class _FakeHqHttpResponse:
@@ -424,8 +466,11 @@ def _cli_args(dest: Path, log_path: Path | None = None) -> list[str]:
 def _start_hq_http_mock(owner: unittest.TestCase) -> None:
     owner.hq_pins = {}
     owner.hq_error = None
+    owner.hq_http_status = None
     owner.hq_requests = []
+    owner.hq_saw_agent_token = False
     os.environ["SWARM_HQ_URL"] = "https://swarm-hq.test"
+    os.environ["SWARM_HQ_AGENT_TOKEN"] = SWARM_HQ_AGENT_TOKEN_FIXTURE
 
     def fake_urlopen(request: object, timeout: object = None) -> _FakeHqHttpResponse:
         url = getattr(request, "full_url", None) or str(request)
@@ -435,13 +480,19 @@ def _start_hq_http_mock(owner: unittest.TestCase) -> None:
         owner.assertTrue(str(url).startswith("https://"), url)
         owner.assertIn("/api/packs/", str(url))
         owner.assertTrue(str(url).endswith("/pin"), url)
+        token = _request_header(request, "x-agent-token")
+        if not token:
+            raise _hq_http_error(str(url), 401)
+        owner.hq_saw_agent_token = True
+        if owner.hq_http_status in (401, 404):
+            raise _hq_http_error(str(url), owner.hq_http_status)
         if owner.hq_error is not None:
             raise urllib.error.URLError(owner.hq_error)
         pack_id = _pack_id_from_pin_url(str(url))
         pin = owner.hq_pins.get(pack_id)
         if pin is None:
-            return _FakeHqHttpResponse(b"{}")
-        return _FakeHqHttpResponse(json.dumps({"pin": pin}).encode("utf-8"))
+            raise _hq_http_error(str(url), 404)
+        return _FakeHqHttpResponse(json.dumps(pin).encode("utf-8"))
 
     owner._urlopen_patcher = patch("urllib.request.urlopen", side_effect=fake_urlopen)
     owner._urlopen_patcher.start()
@@ -450,6 +501,7 @@ def _start_hq_http_mock(owner: unittest.TestCase) -> None:
 def _stop_hq_http_mock(owner: unittest.TestCase) -> None:
     owner._urlopen_patcher.stop()
     os.environ.pop("SWARM_HQ_URL", None)
+    os.environ.pop("SWARM_HQ_AGENT_TOKEN", None)
 
 
 def _wrap_hash_fns(*targets: tuple[object, str]) -> tuple[list[str], list[tuple[object, str, object]]]:
@@ -554,6 +606,10 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(evidence["expected_shas"]["sha256_pack"], manifest["sha256_pack"])
         self.assertEqual(on_disk["computed_shas"], evidence["computed_shas"])
         self.assertEqual(on_disk["anchor_source"], "swarm-hq-cam-pin")
+        dumped = json.dumps(on_disk) + json.dumps(kickoff_body)
+        self.assertNotIn(SWARM_HQ_AGENT_TOKEN_FIXTURE, dumped)
+        self.assertNotIn("x-agent-token", dumped.lower())
+        self.assertTrue(self.hq_saw_agent_token)
         self.assertEqual(on_disk["checkpoint_id"], "ckpt-test")
         self.assertTrue(on_disk["run_id"])
         self.assertIn("pack_integrity_evidence_" + on_disk["run_id"], on_disk["evidence_path"])
@@ -723,7 +779,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(ctx.exception.field, "cam-pin")
         self.assertEqual(ctx.exception.expected, "present")
-        self.assertEqual(ctx.exception.actual, "missing")
+        self.assertEqual(ctx.exception.actual, "HTTP 404")
 
     def test_pin_mismatching_manifest_refuses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -813,6 +869,8 @@ class HelperFtIntegrityTests(unittest.TestCase):
     def test_pin_fetch_is_https_swarm_hq_not_redis_or_paste(self) -> None:
         src = Path(kick_helper_ft.__file__).read_text(encoding="utf-8")
         self.assertIn("SWARM_HQ_URL", src)
+        self.assertIn("SWARM_HQ_AGENT_TOKEN", src)
+        self.assertIn("x-agent-token", src)
         self.assertIn("/api/packs/", src)
         self.assertIn("/pin", src)
         self.assertIn("https://", src)
@@ -1545,10 +1603,138 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["field"], "cam-pin")
         self.assertEqual(payload["expected"], "present")
-        self.assertEqual(payload["actual"], "missing")
+        self.assertEqual(payload["actual"], "HTTP 404")
         self.assertEqual(self.launches, [])
         self.assertEqual(hash_calls, [])
         self.assertTrue(self.hq_requests)
+
+
+class SwarmHqPinContractTests(unittest.TestCase):
+    """Freeze GET /api/packs/<pack_id>/pin for CLI and :8765 fetch_cam_pin."""
+
+    def setUp(self) -> None:
+        _start_hq_http_mock(self)
+
+    def tearDown(self) -> None:
+        _stop_hq_http_mock(self)
+
+    def _fetchers(self) -> tuple[tuple[str, object], ...]:
+        return (
+            ("cli", kick_helper_ft.fetch_cam_pin),
+            ("handler", helper_ft_kickoff.fetch_cam_pin),
+        )
+
+    def _result(self, name: str, fetch: object, pack_id: str) -> dict:
+        if name == "cli":
+            try:
+                pin = fetch(pack_id)
+            except kick_helper_ft.KickRefused as exc:
+                return {
+                    "ok": False,
+                    "field": exc.field,
+                    "expected": exc.expected,
+                    "actual": exc.actual,
+                }
+            return {"ok": True, "pin": pin}
+        return fetch(pack_id)
+
+    def test_contract_keys_frozen_for_cli_and_handler(self) -> None:
+        self.assertEqual(
+            set(SWARM_HQ_PIN_FIXTURE),
+            set(SWARM_HQ_PIN_CONTRACT_REQUIRED) | {"stampVerified"},
+        )
+        self.assertEqual(kick_helper_ft.HQ_PIN_ALLOWED_KEYS, SWARM_HQ_PIN_CONTRACT_ALLOWED)
+        self.assertEqual(helper_ft_kickoff.HQ_PIN_ALLOWED_KEYS, SWARM_HQ_PIN_CONTRACT_ALLOWED)
+        self.assertEqual(kick_helper_ft.HQ_PIN_REQUIRED_KEYS, SWARM_HQ_PIN_CONTRACT_REQUIRED)
+        self.assertEqual(helper_ft_kickoff.HQ_PIN_REQUIRED_KEYS, SWARM_HQ_PIN_CONTRACT_REQUIRED)
+
+    def test_contract_fixture_accepted_by_cli_and_handler(self) -> None:
+        fixture = dict(SWARM_HQ_PIN_FIXTURE)
+        self.hq_pins[fixture["pack_id"]] = fixture
+        for name, fetch in self._fetchers():
+            with self.subTest(name=name):
+                result = self._result(name, fetch, fixture["pack_id"])
+                self.assertTrue(result.get("ok"))
+                pin = result["pin"]
+                self.assertEqual(pin["pack_id"], fixture["pack_id"])
+                self.assertEqual(pin["sha256_pack"], fixture["sha256_pack"])
+                self.assertEqual(pin["recordedAt"], fixture["recordedAt"])
+                self.assertEqual(pin["kid"], fixture["kid"])
+                self.assertTrue(pin["stampVerified"])
+                self.assertTrue(self.hq_saw_agent_token)
+
+    def test_contract_missing_agent_token_refused_by_cli_and_handler(self) -> None:
+        os.environ.pop("SWARM_HQ_AGENT_TOKEN", None)
+        self.hq_pins[SWARM_HQ_PIN_FIXTURE["pack_id"]] = dict(SWARM_HQ_PIN_FIXTURE)
+        for name, fetch in self._fetchers():
+            with self.subTest(name=name):
+                result = self._result(name, fetch, SWARM_HQ_PIN_FIXTURE["pack_id"])
+                self.assertIsNot(result.get("ok"), True)
+                self.assertEqual(result["field"], "SWARM_HQ_AGENT_TOKEN")
+                self.assertEqual(result["expected"], "present")
+                self.assertEqual(result["actual"], "missing")
+        self.assertEqual(self.hq_requests, [])
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            _write_helper_pack(dest)
+            rc = kick_helper_ft.main(_cli_args(dest))
+        self.assertEqual(rc, 1)
+
+    def test_contract_401_refused_by_cli_and_handler(self) -> None:
+        self.hq_http_status = 401
+        self.hq_pins[SWARM_HQ_PIN_FIXTURE["pack_id"]] = dict(SWARM_HQ_PIN_FIXTURE)
+        for name, fetch in self._fetchers():
+            with self.subTest(name=name):
+                result = self._result(name, fetch, SWARM_HQ_PIN_FIXTURE["pack_id"])
+                self.assertIsNot(result.get("ok"), True)
+                self.assertEqual(result["field"], "cam-pin")
+                self.assertEqual(result["expected"], "authorized")
+                self.assertEqual(result["actual"], "HTTP 401")
+
+    def test_contract_404_refused_by_cli_and_handler(self) -> None:
+        for name, fetch in self._fetchers():
+            with self.subTest(name=name):
+                result = self._result(name, fetch, SWARM_HQ_PIN_FIXTURE["pack_id"])
+                self.assertIsNot(result.get("ok"), True)
+                self.assertEqual(result["field"], "cam-pin")
+                self.assertEqual(result["expected"], "present")
+                self.assertEqual(result["actual"], "HTTP 404")
+
+    def test_contract_unknown_key_refused_by_cli_and_handler(self) -> None:
+        fixture = dict(SWARM_HQ_PIN_FIXTURE)
+        fixture["extra"] = "nope"
+        self.hq_pins[fixture["pack_id"]] = fixture
+        for name, fetch in self._fetchers():
+            with self.subTest(name=name):
+                result = self._result(name, fetch, fixture["pack_id"])
+                self.assertIsNot(result.get("ok"), True)
+                self.assertEqual(result["field"], "cam-pin")
+                self.assertEqual(result["expected"], "HQ pin keys")
+                self.assertEqual(result["actual"], "unknown extra")
+
+    def test_contract_missing_required_key_refused_by_cli_and_handler(self) -> None:
+        fixture = dict(SWARM_HQ_PIN_FIXTURE)
+        del fixture["kid"]
+        self.hq_pins[fixture["pack_id"]] = fixture
+        for name, fetch in self._fetchers():
+            with self.subTest(name=name):
+                result = self._result(name, fetch, fixture["pack_id"])
+                self.assertIsNot(result.get("ok"), True)
+                self.assertEqual(result["field"], "cam-pin.kid")
+                self.assertEqual(result["expected"], "present")
+                self.assertEqual(result["actual"], "missing")
+
+    def test_contract_verified_alias_accepted_by_cli_and_handler(self) -> None:
+        fixture = dict(SWARM_HQ_PIN_FIXTURE)
+        del fixture["stampVerified"]
+        fixture["verified"] = True
+        self.hq_pins[fixture["pack_id"]] = fixture
+        for name, fetch in self._fetchers():
+            with self.subTest(name=name):
+                result = self._result(name, fetch, fixture["pack_id"])
+                self.assertTrue(result.get("ok"))
+                self.assertIs(result["pin"]["stampVerified"], True)
 
 
 if __name__ == "__main__":
