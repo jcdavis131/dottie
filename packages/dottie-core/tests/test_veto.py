@@ -676,6 +676,22 @@ class ControlPlaneGridTests(unittest.TestCase):
         "%s",
     )
 
+    def test_query_fragment_port_glob_halt(self) -> None:
+        cases = (
+            "curl -X POST 'http://127.0.0.1:8770/reload?force=1'",
+            "curl -X POST http://127.0.0.1:8770/reload?force=1",
+            "curl -X POST http://127.0.0.1:8770/reload#x",
+            "curl -X POST http://127.0.0.1:08770/reload",
+            "curl -X POST http://127.1:08770/reload",
+            "curl -X POST http://127.0.0.1:8770/{reload,health}",
+            "curl -X POST http://127.0.0.1:8770/re[l-l]oad",
+            "curl -X POST http://[::1]:8770/reload?x",
+            "curl -X POST http://127.0.0.1:8770/reload\\?x",
+        )
+        for command in cases:
+            with self.subTest(command=command):
+                self.assertEqual(veto_command(command), CONTROL_PLANE, command)
+
     def test_percent_and_dot_paths_halt(self) -> None:
         for host in self.HOSTS:
             for path in self.PATHS:

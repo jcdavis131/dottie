@@ -234,11 +234,13 @@ def percent_decode(text: str) -> str:
 
 
 def normalize_path(path: str) -> str:
-    """Collapse ``//``, ``/./`` and ``/a/../`` without filesystem I/O."""
+    """Collapse ``//``, ``/./`` and ``/a/../`` without filesystem I/O.
+
+    Query strings and fragments are stripped before the compare.
+    """
     if not path:
         return path
-    qsplit = path.split("?", 1)
-    path, query = qsplit[0], (qsplit[1] if len(qsplit) == 2 else None)
+    path = path.split("#", 1)[0].split("?", 1)[0]
     path = path.replace("\\", "/")
     parts: list[str] = []
     absolute = path.startswith("/")
@@ -251,8 +253,6 @@ def normalize_path(path: str) -> str:
             continue
         parts.append(seg)
     rebuilt = "/" + "/".join(parts) if absolute else "/".join(parts)
-    if query is not None:
-        rebuilt = rebuilt + "?" + query
     return rebuilt or ("/" if absolute else "")
 
 
@@ -567,7 +567,7 @@ def _read_word(src: str, i: int) -> tuple[str, int]:
             i = _skip_dollar_brace_run(src, i)
             chunks.append("${}")
             continue
-        if ch in " \t\r\n;|&<>(){}":
+        if ch in " \t\r\n;|&<>()":
             break
         if ch == "`":
             i += 1
@@ -1159,17 +1159,29 @@ def _control_url_in_word(word: str) -> bool:
                 host, port = head, ""
         else:
             host = head
+    if port.isdigit():
+        port = str(int(port))
+    path = path.replace("\\", "")
+    globbed = "{" in path or "[" in path
+    if globbed:
+        last = path.rsplit("/", 1)[-1]
+        if last.startswith("{") and "," in last:
+            for opt in _expand_brace_list(last if last.startswith("{") else "{" + last + "}"):
+                cand = normalize_path(path[: path.rfind("/") + 1] + opt.strip("{}"))
+                if cand in _ADMIN_PATHS:
+                    path = cand
+                    globbed = False
+                    break
+        path = re.sub(r"\[(.)-\1\]", r"\1", path)
     path = normalize_path(path or "/")
-    # also accept path-only words like /./reload after decode
-    if not host and word.startswith("%") or (path in _ADMIN_PATHS and not host):
-        # path-only admin is not enough (would halt `grep /reload`); require host/port
-        pass
-    tailnet = host.endswith(".ts.net") or host.endswith(".tailscale.net")
-    host_ok = host in _CONTROL_HOSTS or tailnet
+    host_cmp = host.strip("[]").lower()
+    tailnet = host_cmp.endswith(".ts.net") or host_cmp.endswith(".tailscale.net")
+    host_ok = host in _CONTROL_HOSTS or host_cmp in _CONTROL_HOSTS or host_cmp.startswith("127.") or host_cmp == "::1" or tailnet
     port_ok = port in _CONTROL_PORTS
+    if globbed and (host_ok or port_ok):
+        return True
     if path in _ADMIN_PATHS and (host_ok or port_ok):
         return True
-    # host:port glued without scheme, path in the same word
     if port_ok and path in _ADMIN_PATHS:
         return True
     return False
