@@ -245,16 +245,33 @@ def _ed25519_mul8(point: tuple[int, int]) -> tuple[int, int]:
     return _ed25519_add(doubled, doubled)
 
 
+def _ed25519_scalarmult(point: tuple[int, int], scalar: int) -> tuple[int, int]:
+    """Affine double-and-add. Used for the [L]A prime-order check."""
+    result = ED25519_IDENTITY
+    addend = point
+    k = int(scalar)
+    if k < 0:
+        _refuse("cam_pin.pubkey", "non-negative scalar", k)
+    while k:
+        if k & 1:
+            result = _ed25519_add(result, addend)
+        addend = _ed25519_add(addend, addend)
+        k >>= 1
+    return result
+
+
 def require_ed25519_point(raw: bytes, *, field: str) -> tuple[int, int]:
-    """Refuse non-canonical encodings and points with [8]A == identity."""
+    """Refuse non-canonical encodings, [8]A == identity, and [L]A != identity."""
     point = _ed25519_decode_point(raw, field=field)
     if _ed25519_mul8(point) == ED25519_IDENTITY:
-        _refuse(field, "canonical Ed25519 point of order > 8", "small-order ([8]A == identity)")
+        _refuse(field, "canonical prime-order Ed25519 point", "small-order ([8]A == identity)")
+    if _ed25519_scalarmult(point, ED25519_L) != ED25519_IDENTITY:
+        _refuse(field, "canonical prime-order Ed25519 point", "mixed-order ([L]A != identity)")
     return point
 
 
 def require_ed25519_signature(signature: bytes, *, field: str = "cam-pin.cam_sig") -> None:
-    """Refuse small-order R, non-canonical R, and S >= L."""
+    """Refuse small-order/mixed-order R, non-canonical R, and S >= L."""
     if len(signature) != 64:
         _refuse(field, "64-byte signature", f"len {len(signature)}")
     require_ed25519_point(signature[:32], field=f"{field}.R")

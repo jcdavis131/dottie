@@ -447,10 +447,22 @@ def handle_train_kickoff(
         except kick_helper_ft.KickRefused as exc:
             return _bad(exc.field, exc.expected, exc.actual)
         if ckpt_dir is not None:
+            ckpt_path = ckpt_dir / kick_helper_ft.INTEGRITY_EVIDENCE_NAME
             kick_helper_ft.write_evidence(
                 kick_helper_ft._public_integrity_record(record),
-                ckpt_dir / kick_helper_ft.INTEGRITY_EVIDENCE_NAME,
+                ckpt_path,
+                mode=0o400,
             )
+            log_path = run_dir / kick_helper_ft.DEFAULT_LOG_NAME
+            line = kick_helper_ft.emit_integrity_evidence_line(
+                ckpt_path, record, log_path=log_path
+            )
+            evidence["integrity_evidence_line"] = line
+            evidence["sha256_evidence"] = kick_helper_ft.parse_integrity_evidence_line(line)[
+                "sha256_evidence"
+            ]
+            evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
+            evidence["checkpoint_integrity_status"] = record["status"]
     evidence["post_train_shas"] = record["computed_shas"]
     evidence["post_train_host"] = record["host"]
     evidence["post_train_paths"] = record["paths"]
@@ -476,6 +488,9 @@ def handle_train_kickoff(
     }
     if ckpt_id:
         result["checkpoint_id"] = ckpt_id
+    if evidence.get("integrity_evidence_line"):
+        result["integrity_evidence_line"] = evidence["integrity_evidence_line"]
+        result["sha256_evidence"] = evidence.get("sha256_evidence")
     return result
 
 

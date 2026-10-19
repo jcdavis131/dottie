@@ -73,6 +73,7 @@ PATH_KEY_BY_SHA = {
     "sha256_holdout": "holdout",
 }
 INTEGRITY_EVIDENCE_NAME = "integrity_evidence.json"
+INTEGRITY_EVIDENCE_LINE_PREFIX = "INTEGRITY_EVIDENCE"
 CHECKPOINT_MATCH = "MATCH"
 CHECKPOINT_REFUSED = "REFUSED"
 CHECKPOINT_UNSCORED = "unscored"
@@ -681,7 +682,12 @@ def verify_and_stage(
     }
 
 
-def write_evidence(evidence: Mapping[str, Any], evidence_path: Path) -> Path:
+def write_evidence(
+    evidence: Mapping[str, Any],
+    evidence_path: Path,
+    *,
+    mode: int | None = None,
+) -> Path:
     """Atomically write evidence JSON (mkstemp in the same directory + os.replace)."""
     evidence_path = Path(evidence_path)
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
@@ -696,7 +702,95 @@ def write_evidence(evidence: Mapping[str, Any], evidence_path: Path) -> Path:
     finally:
         os.close(fd)
     os.replace(tmp_name, evidence_path)
+    if mode is None and evidence_path.name == INTEGRITY_EVIDENCE_NAME:
+        mode = 0o400
+    if mode is not None and os.name == "posix":
+        os.chmod(evidence_path, mode)
     return evidence_path
+
+
+def format_integrity_evidence_line(
+    *,
+    sha256_evidence: str,
+    sha256_pack: str,
+    sha256_train: str,
+    sha256_holdout: str,
+    result: str,
+    host: str,
+) -> str:
+    return (
+        f"{INTEGRITY_EVIDENCE_LINE_PREFIX} sha256_evidence={sha256_evidence} "
+        f"sha256_pack={sha256_pack} sha256_train={sha256_train} "
+        f"sha256_holdout={sha256_holdout} result={result} host={host}"
+    )
+
+
+def parse_integrity_evidence_line(line: str) -> dict[str, str]:
+    """Parse the structured operator line. Keys are the sha/result/host fields."""
+    text = line.strip()
+    if not text.startswith(INTEGRITY_EVIDENCE_LINE_PREFIX + " "):
+        _refuse("integrity_evidence_line", INTEGRITY_EVIDENCE_LINE_PREFIX, text[:32])
+    parsed: dict[str, str] = {}
+    for part in text.split()[1:]:
+        key, sep, value = part.partition("=")
+        if not sep or not key:
+            _refuse("integrity_evidence_line", "key=value fields", part)
+        parsed[key] = value
+    required = (
+        "sha256_evidence",
+        "sha256_pack",
+        "sha256_train",
+        "sha256_holdout",
+        "result",
+        "host",
+    )
+    for key in required:
+        if key not in parsed:
+            _refuse("integrity_evidence_line", key, "missing")
+    if parsed["result"] not in (CHECKPOINT_MATCH, CHECKPOINT_REFUSED):
+        _refuse("integrity_evidence_line.result", "MATCH|REFUSED", parsed["result"])
+    for sha_key in ("sha256_evidence", "sha256_pack", "sha256_train", "sha256_holdout"):
+        digest = parsed[sha_key]
+        if len(digest) != SHA256_LEN or any(ch not in _HEX for ch in digest):
+            _refuse(f"integrity_evidence_line.{sha_key}", "64-char lowercase hex", digest)
+    return parsed
+
+
+def emit_integrity_evidence_line(
+    evidence_path: Path,
+    record: Mapping[str, Any],
+    *,
+    log_path: Path | None = None,
+) -> str:
+    """Hash the 0400 evidence file and emit one line to stdout and the run log."""
+    evidence_path = Path(evidence_path)
+    if os.name == "posix":
+        os.chmod(evidence_path, 0o400)
+    sha256_evidence = sha256_file(evidence_path)
+    computed = record.get("computed_shas") if isinstance(record.get("computed_shas"), Mapping) else {}
+    pin_shas = record.get("pin_shas") if isinstance(record.get("pin_shas"), Mapping) else {}
+
+    def _sha(field: str) -> str:
+        value = computed.get(field) or pin_shas.get(field)
+        if type(value) is not str or not value:
+            _refuse(field, "64-char lowercase hex", value)
+        return value
+
+    line = format_integrity_evidence_line(
+        sha256_evidence=sha256_evidence,
+        sha256_pack=_sha("sha256_pack"),
+        sha256_train=_sha("sha256_train"),
+        sha256_holdout=_sha("sha256_holdout"),
+        result=str(record.get("status") or CHECKPOINT_REFUSED),
+        host=str(record.get("host") or socket.gethostname()),
+    )
+    print(line, flush=True)
+    if log_path is not None:
+        log = Path(log_path)
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    return line
 
 
 def default_start_training(pack_dir: Path, evidence: dict[str, Any], log_path: Path) -> dict[str, Any]:
@@ -756,6 +850,7 @@ def _apply_post_train_record(
     record: Mapping[str, Any],
     *,
     run_dir: Path,
+    log_path: Path | None = None,
 ) -> None:
     evidence["post_train_shas"] = dict(record.get("computed_shas") or {})
     evidence["post_train_host"] = record["host"]
@@ -764,14 +859,24 @@ def _apply_post_train_record(
     ckpt_dir = checkpoint_dir_for(run_dir, evidence.get("checkpoint_id"))
     if ckpt_dir is not None:
         ckpt_path = ckpt_dir / INTEGRITY_EVIDENCE_NAME
-        write_evidence(_public_integrity_record(record), ckpt_path)
+        write_evidence(_public_integrity_record(record), ckpt_path, mode=0o400)
+        line = emit_integrity_evidence_line(ckpt_path, record, log_path=log_path)
+        parsed = parse_integrity_evidence_line(line)
         evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
         evidence["checkpoint_integrity_status"] = record["status"]
+        evidence["integrity_evidence_line"] = line
+        evidence["sha256_evidence"] = parsed["sha256_evidence"]
     if record["status"] != CHECKPOINT_MATCH:
         evidence["ok"] = False
 
 
-def _recheck_copies(run_private: Path, evidence: dict[str, Any], *, run_dir: Path) -> None:
+def _recheck_copies(
+    run_private: Path,
+    evidence: dict[str, Any],
+    *,
+    run_dir: Path,
+    log_path: Path | None = None,
+) -> None:
     recorded = evidence.get("paths")
     if not isinstance(recorded, dict):
         recorded = trainer_input_paths(run_private)
@@ -782,7 +887,7 @@ def _recheck_copies(run_private: Path, evidence: dict[str, Any], *, run_dir: Pat
         manifest_shas=evidence["manifest_shas"],
         host=host,
     )
-    _apply_post_train_record(evidence, record, run_dir=run_dir)
+    _apply_post_train_record(evidence, record, run_dir=run_dir, log_path=log_path)
     if record["status"] != CHECKPOINT_MATCH:
         _refuse(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
 
@@ -894,7 +999,7 @@ def kick(
         else:
             started = start_training(run_private, evidence, log_path)
             wait_for_training_exit(started if isinstance(started, dict) else None)
-        _recheck_copies(run_private, evidence, run_dir=run_dir)
+        _recheck_copies(run_private, evidence, run_dir=run_dir, log_path=log_path)
         persist()
         return evidence
     except KickRefused as exc:

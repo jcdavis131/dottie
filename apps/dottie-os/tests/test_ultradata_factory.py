@@ -20,12 +20,17 @@ import tempfile
 import unittest
 import urllib.error
 import urllib.parse
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 APP = Path(__file__).resolve().parents[1]
 SCRIPTS = APP / "scripts"
@@ -45,8 +50,10 @@ from ed25519_torsion_vectors import (  # noqa: E402
     ALL_ZERO,
     ED25519_L,
     IDENTITY,
+    NON_IDENTITY_TORSION_ENCODINGS,
     ORDER2,
     TORSION_ENCODINGS,
+    mixed_order_encodings,
 )
 from sidecar.curation.ultradata_curriculum import (  # noqa: E402
     LEGACY_SCHEMA,
@@ -2567,10 +2574,66 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(evidence["trust_blobs"], _TEST_TRUST_BLOBS)
         self.assertTrue(evidence["post_train_shas"])
 
+    def test_integrity_evidence_line_parses_and_matches_file_sha(self) -> None:
+        buf = StringIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with redirect_stdout(buf):
+                evidence = kick_helper_ft.kick(dest, log_path=log_path)
+            ckpt = Path(evidence["checkpoint_integrity_evidence_path"])
+            stdout_lines = [
+                line for line in buf.getvalue().splitlines() if line.startswith("INTEGRITY_EVIDENCE ")
+            ]
+            log_text = log_path.read_text(encoding="utf-8")
+            file_sha = kick_helper_ft.sha256_file(ckpt)
+            parsed = kick_helper_ft.parse_integrity_evidence_line(stdout_lines[0])
+            if os.name == "posix":
+                self.assertEqual(stat.S_IMODE(ckpt.stat().st_mode), 0o400)
+        self.assertEqual(len(stdout_lines), 1)
+        self.assertIn(stdout_lines[0], log_text)
+        self.assertEqual(stdout_lines[0], evidence["integrity_evidence_line"])
+        self.assertEqual(parsed["sha256_evidence"], file_sha)
+        self.assertEqual(parsed["sha256_evidence"], evidence["sha256_evidence"])
+        self.assertEqual(parsed["sha256_pack"], evidence["computed_shas"]["sha256_pack"])
+        self.assertEqual(parsed["sha256_train"], evidence["computed_shas"]["sha256_train"])
+        self.assertEqual(parsed["sha256_holdout"], evidence["computed_shas"]["sha256_holdout"])
+        self.assertEqual(parsed["result"], "MATCH")
+        self.assertEqual(parsed["host"], evidence["host"])
+
+    def test_post_hoc_edit_of_integrity_evidence_no_longer_matches_logged_sha(self) -> None:
+        buf = StringIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with redirect_stdout(buf):
+                evidence = kick_helper_ft.kick(dest, log_path=log_path)
+            ckpt = Path(evidence["checkpoint_integrity_evidence_path"])
+            line = [
+                row for row in buf.getvalue().splitlines() if row.startswith("INTEGRITY_EVIDENCE ")
+            ][0]
+            parsed = kick_helper_ft.parse_integrity_evidence_line(line)
+            self.assertEqual(parsed["sha256_evidence"], kick_helper_ft.sha256_file(ckpt))
+            if os.name == "posix":
+                os.chmod(ckpt, 0o600)
+            ckpt.write_bytes(ckpt.read_bytes() + b"\n")
+            if os.name == "posix":
+                os.chmod(ckpt, 0o400)
+            edited = kick_helper_ft.sha256_file(ckpt)
+        self.assertNotEqual(edited, parsed["sha256_evidence"])
+        self.assertEqual(parsed["result"], "MATCH")
+
     def test_write_evidence_uses_mkstemp(self) -> None:
         src = Path(kick_helper_ft.__file__).read_text(encoding="utf-8")
         self.assertIn("mkstemp", src)
         self.assertIn("os.replace", src)
+        self.assertIn("0o400", src)
 
     def test_codeowners_covers_trust_and_pin_spec(self) -> None:
         root = Path(__file__).resolve().parents[3]
@@ -2801,11 +2864,13 @@ class Ed25519CofactorTests(unittest.TestCase):
     def test_module_does_not_hardcode_torsion_encodings(self) -> None:
         src = Path(cam_pin_spec.__file__).read_text(encoding="utf-8")
         self.assertIn("[8]A", src)
+        self.assertIn("[L]A", src)
         self.assertIn("y >= p", src)
         self.assertIn("S < L", src)
         self.assertNotIn("26e8958f", src)
         self.assertNotIn("c7176a70", src)
         self.assertEqual(len(TORSION_ENCODINGS), 14)
+        self.assertEqual(len(NON_IDENTITY_TORSION_ENCODINGS), 7)
 
     def test_each_of_14_encodings_refused_as_public_key(self) -> None:
         self.assertEqual(len(TORSION_ENCODINGS), 14)
@@ -2879,6 +2944,32 @@ class Ed25519CofactorTests(unittest.TestCase):
         self.assertEqual(committed.replace("\r\n", "\n"), cam_pin_spec.PLACEHOLDER_PUB_TEXT)
         self.assertNotEqual(IDENTITY, ALL_ZERO)
         self.assertEqual(ORDER2[0], 0xEC)
+
+    def test_mixed_order_key_and_r_refused(self) -> None:
+        pub = cam_pin_spec.raw_public_from_private(TEST_CAM_PRIVATE)
+        mixed = mixed_order_encodings(pub)
+        self.assertEqual(len(mixed), 7)
+        torsion_raw = {raw for _name, raw in NON_IDENTITY_TORSION_ENCODINGS}
+        for name, raw in mixed:
+            with self.subTest(name=name, encoding=raw.hex()):
+                self.assertNotEqual(raw, pub)
+                self.assertNotIn(raw, torsion_raw)
+                with self.assertRaises(cam_pin_spec.CamPinError) as key_ctx:
+                    cam_pin_spec.require_ed25519_point(raw, field="cam_pin.pubkey")
+                self.assertEqual(key_ctx.exception.field, "cam_pin.pubkey")
+                self.assertIn("mixed-order", str(key_ctx.exception.actual))
+                with self.assertRaises(cam_pin_spec.CamPinError) as r_ctx:
+                    cam_pin_spec.verify_ed25519(b"msg", raw + bytes(32), pub)
+                self.assertEqual(r_ctx.exception.field, "cam-pin.cam_sig.R")
+                self.assertIn("mixed-order", str(r_ctx.exception.actual))
+
+    def test_generated_prime_order_key_still_verifies(self) -> None:
+        private = Ed25519PrivateKey.generate()
+        raw_pub = private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        message = b"prime-order-ok"
+        signature = private.sign(message)
+        cam_pin_spec.require_ed25519_point(raw_pub, field="cam_pin.pubkey")
+        cam_pin_spec.verify_ed25519(message, signature, raw_pub)
 
     def test_origin_main_ancestry_is_documented_as_hint(self) -> None:
         spec = Path(cam_pin_spec.__file__).read_text(encoding="utf-8")
