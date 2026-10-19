@@ -1654,7 +1654,8 @@ class HelperFtIntegrityTests(unittest.TestCase):
         runner_path = loop_src / "scripts" / "forge_runner.py"
         src = runner_path.read_text(encoding="utf-8")
         self.assertIn("helper_ft_kickoff.py", src)
-        self.assertIn('inbox.strip().lower() == "latest"', src)
+        self.assertIn("inbox_latest", src)
+        self.assertIn("latest", src)
         self.assertIn('body.get("mode") == "inbox-validate"', src)
         if str(loop_src) not in sys.path:
             sys.path.insert(0, str(loop_src))
@@ -2890,6 +2891,224 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertFalse(any("evil-hq.example" in u for u, _tok in self.hq_tokens_by_url))
         dumped = json.dumps(kick_post["body"]) + json.dumps(completion_post["body"])
         self.assertNotIn(SWARM_HQ_AGENT_TOKEN_FIXTURE, dumped)
+
+    def test_not_for_train_pack_refused_on_production_shaped_kick(self) -> None:
+        def kickoff(body: dict) -> dict:
+            return helper_ft_kickoff.handle_train_kickoff(
+                body,
+                launch_trainer=lambda _b: {"ok": True, "checkpoint_id": "ckpt-prod"},
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            man_path = dest / "MANIFEST.json"
+            payload = json.loads(man_path.read_text(encoding="utf-8"))
+            payload["not_for_train"] = True
+            man_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            manifest = _refresh_hashes(dest, not_for_train=True)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, kickoff=kickoff)
+            handler = helper_ft_kickoff.handle_train_kickoff(
+                _fresh_kickoff_body(dest, manifest),
+                launch_trainer=lambda _b: {"ok": True, "checkpoint_id": "ckpt-prod"},
+            )
+        self.assertEqual(ctx.exception.field, "not_for_train")
+        self.assertEqual(ctx.exception.expected, False)
+        self.assertIn("MANIFEST.not_for_train", ctx.exception.actual)
+        self.assertFalse(handler.get("ok"))
+        self.assertEqual(handler["field"], "not_for_train")
+        self.assertEqual(self.hq_posts, [])
+
+    def test_not_for_train_row_refused_without_smoke(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            _write_helper_pack(dest)
+            train = dest / "curated_pack_v2_train.jsonl"
+            row = json.loads(train.read_text(encoding="utf-8").splitlines()[0])
+            row["not_for_train"] = True
+            train.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            pack = dest / "curated_pack_v2.jsonl"
+            rows = [json.loads(line) for line in pack.read_text(encoding="utf-8").splitlines() if line.strip()]
+            rows[0]["not_for_train"] = True
+            pack.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+            manifest = _refresh_hashes(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "not_for_train")
+        self.assertTrue(any("not_for_train" in str(item) for item in ctx.exception.actual))
+
+    def test_smoke_run_does_not_post_hq_and_leaves_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            man_path = dest / "MANIFEST.json"
+            payload = json.loads(man_path.read_text(encoding="utf-8"))
+            payload["not_for_train"] = True
+            man_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            manifest = _refresh_hashes(dest, not_for_train=True)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            evidence = kick_helper_ft.kick(dest, log_path=log_path, smoke=True)
+            run_private = Path(evidence.get("run_private_dir") or "")
+            ckpt = log_path.parent / "smoke"
+            survivors = [
+                p
+                for p in (dest, run_private, ckpt)
+                if p and os.path.lexists(p)
+            ]
+        self.assertTrue(evidence["smoke"])
+        self.assertIsNone(evidence.get("checkpoint_id"))
+        self.assertNotIn("checkpoint_integrity_evidence_path", evidence)
+        self.assertEqual(evidence["checkpoint_integrity_status"], "unscored")
+        self.assertEqual(survivors, [])
+        self.assertEqual(self.hq_posts, [])
+        self.assertNotEqual(evidence.get("result"), None)
+
+    def test_wait_returncode_not_overridden_by_ok_dict(self) -> None:
+        class FakeProc:
+            def wait(self) -> int:
+                return 1
+
+        info = kick_helper_ft.wait_for_training_exit(
+            {"ok": True, "checkpoint_id": "ckpt-test", "exit_code": 0, "process": FakeProc()}
+        )
+        self.assertEqual(info["exit_code"], 1)
+        self.assertTrue(info["waited"])
+
+        def kickoff(body: dict) -> dict:
+            del body
+            proc = subprocess.Popen([sys.executable, "-c", "raise SystemExit(1)"])
+            return {"ok": True, "checkpoint_id": "ckpt-test", "process": proc}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, log_path=log_path, kickoff=kickoff)
+            rec = json.loads(
+                (log_path.parent / "ckpt-test" / "integrity_evidence.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        self.assertEqual(ctx.exception.field, "trainer.exit")
+        self.assertEqual(rec["status"], "REFUSED")
+        self.assertEqual(rec["exit_code"], 1)
+
+    def test_integrity_evidence_emitted_once_by_kick_not_8765(self) -> None:
+        def kickoff(body: dict) -> dict:
+            return helper_ft_kickoff.handle_train_kickoff(
+                body,
+                launch_trainer=lambda _b: {"ok": True, "checkpoint_id": "ckpt-once"},
+            )
+
+        buf = StringIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with redirect_stdout(buf):
+                evidence = kick_helper_ft.kick(dest, kickoff=kickoff)
+        prefix = kick_helper_ft.INTEGRITY_EVIDENCE_LINE_PREFIX + " "
+        lines = [line for line in buf.getvalue().splitlines() if line.startswith(prefix)]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0], evidence["integrity_evidence_line"])
+        self.assertEqual(evidence["result"], "MATCH")
+
+    def test_state_label_leak_nested_and_top_level_refused(self) -> None:
+        def _write_leaky(dest: Path, state: dict) -> dict:
+            _write_helper_pack(dest)
+            rows = [_row(rid="leak1", action="execute"), _row(rid="leak2", action="halt")]
+            rows[0]["state"] = state
+            write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+            write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[:1])
+            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[1:])
+            return _refresh_hashes(dest)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_leaky(dest, {"meta": {"risk_hint": "halt"}})
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as nested:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(nested.exception.field, "state.leak")
+        self.assertTrue(any("state.meta.risk_hint" in str(item) for item in nested.exception.actual))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_leaky(dest, {"halt_class": "x", "message": "ok"})
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as top:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(top.exception.field, "state.leak")
+        self.assertTrue(any("state.halt_class" in str(item) for item in top.exception.actual))
+
+    def test_stripped_rows_without_state_leaks_go_through(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+        self.assertNotIn("state.leak", json.dumps(evidence))
+
+    def test_inbox_latest_aliases_refused(self) -> None:
+        latest = helper_ft_kickoff.handle_train_kickoff(
+            {"mode": "helper-ft", "inbox": "latest", "pack_id": "p", "evidence": {"ok": True, "pack_id": "p"}}
+        )
+        alias = helper_ft_kickoff.handle_train_kickoff(
+            {
+                "mode": "helper-ft",
+                "inbox_latest": True,
+                "pack_id": "p",
+                "evidence": {"ok": True, "pack_id": "p"},
+            }
+        )
+        pathed = helper_ft_kickoff.handle_train_kickoff(
+            {
+                "mode": "helper-ft",
+                "pack_id": "p",
+                "run_private_dir": "/runs/inbox/20260919-093515-host-meta",
+                "evidence": {"ok": True, "pack_id": "p", "run_id": "r", "checked_at": "2026-10-19T00:00:00Z"},
+            }
+        )
+        loop_src = Path(__file__).resolve().parents[3] / "packages" / "dottie-loop"
+        if str(loop_src) not in sys.path:
+            sys.path.insert(0, str(loop_src))
+        runner = _load("forge_runner_latest_aliases", loop_src / "scripts" / "forge_runner.py")
+        runner_latest = runner.handle_train_kickoff(
+            {"mode": "helper-ft", "inbox": "latest", "evidence": {"ok": True, "pack_id": "p"}, "pack_id": "p"}
+        )
+        self.assertEqual(latest["field"], "inbox")
+        self.assertEqual(alias["field"], "inbox_latest")
+        self.assertEqual(pathed["field"], "run_private_dir")
+        self.assertFalse(runner_latest.get("ok"))
+        self.assertEqual(runner_latest["field"], "inbox")
+
+    def test_8765_training_routes_and_8769_absent_from_lab(self) -> None:
+        self.assertEqual(helper_ft_kickoff.DEFAULT_PORT, 8765)
+        for name in helper_ft_kickoff.OTHER_HELPER_FT_START_PATHS:
+            payload = helper_ft_kickoff.dispatch("POST", name, {"mode": "helper-ft"})[1]
+            self.assertFalse(payload["ok"])
+            self.assertIn(payload["field"], {"route", "inbox"})
+        allowed = helper_ft_kickoff.dispatch("POST", "/train/kickoff", None)[1]
+        self.assertEqual(allowed["field"], "body")
+        for path in (LAB / "kick_helper_ft.py", LAB / "helper_ft_kickoff.py", LAB / "cam_pin_spec.py"):
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("8769", text)
+            self.assertNotIn("jev-ava", text.lower().replace("_", "-"))
 
     def test_write_evidence_uses_mkstemp(self) -> None:
         src = Path(kick_helper_ft.__file__).read_text(encoding="utf-8")

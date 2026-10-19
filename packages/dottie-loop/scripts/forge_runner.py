@@ -172,10 +172,17 @@ def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(body, dict):
         return {"ok": False, "field": "body", "expected": "object", "actual": type(body).__name__}
     inbox = body.get("inbox")
-    if isinstance(inbox, str) and inbox.strip().lower() == "latest":
-        return {"ok": False, "field": "inbox", "expected": "named pack_id", "actual": "latest"}
+    if "inbox_latest" in body:
+        return {"ok": False, "field": "inbox_latest", "expected": "absent", "actual": "present"}
+    if isinstance(inbox, str) and inbox.strip().lower() in {"latest", "inbox_latest", "inbox-latest"}:
+        return {"ok": False, "field": "inbox", "expected": "named pack_id", "actual": inbox}
     if body.get("mode") == "inbox-validate":
         return {"ok": False, "field": "mode", "expected": "helper-ft", "actual": "inbox-validate"}
+    if body.get("not_for_train") is True or (
+        isinstance(body.get("evidence"), dict) and body["evidence"].get("not_for_train") is True
+    ):
+        if body.get("smoke") is not True and body.get("mode") != "helper-ft-smoke":
+            return {"ok": False, "field": "not_for_train", "expected": False, "actual": True}
     if not body.get("evidence"):
         return {"ok": False, "field": "evidence", "expected": "present", "actual": "missing"}
     return {"ok": False, "field": "handler", "expected": "helper_ft_kickoff.py", "actual": "missing"}

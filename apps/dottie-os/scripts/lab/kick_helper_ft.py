@@ -31,6 +31,7 @@ import errno
 import hashlib
 import json
 import os
+import shutil
 import socket
 import stat
 import subprocess
@@ -80,6 +81,15 @@ INTEGRITY_EVIDENCE_LINE_PREFIX = "HELPER_FT_INTEGRITY_EVIDENCE"
 CHECKPOINT_MATCH = "MATCH"
 CHECKPOINT_REFUSED = "REFUSED"
 CHECKPOINT_UNSCORED = "unscored"
+STATE_LEAK_KEYS = frozenset(
+    {"risk_hint", "halt_class", "provenance", "agent_config", "category"}
+)
+INBOX_LATEST_TOKENS = frozenset({"latest", "inbox_latest", "inbox-latest"})
+INBOX_LATEST_PATH_MARKERS = (
+    "inbox_latest",
+    "inbox-latest",
+    "20260919-093515-host-meta",
+)
 
 # (manifest sha field, on-disk file, MANIFEST row field, pin row field)
 ARTIFACTS: tuple[tuple[str, str, str, str], ...] = (
@@ -483,6 +493,197 @@ def build_trainer_argv(paths: Mapping[str, str]) -> list[str]:
     ]
 
 
+def is_smoke_mode(body: Mapping[str, Any] | None, *, smoke: bool = False) -> bool:
+    if smoke:
+        return True
+    if not isinstance(body, Mapping):
+        return False
+    if body.get("smoke") is True:
+        return True
+    return body.get("mode") == "helper-ft-smoke"
+
+
+def _is_not_for_train_value(value: object) -> bool:
+    return value is True or value == 1 or value == "true"
+
+
+def _iter_jsonl_objects(path: Path, field: str):
+    try:
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    _refuse(field, "jsonl row", "invalid JSON")
+                if isinstance(obj, dict):
+                    yield obj
+    except UnicodeDecodeError:
+        _refuse(field, "utf-8 text", "invalid encoding")
+    except OSError as exc:
+        _refuse(field, "readable text file", f"OSError:{exc.errno}")
+
+
+def _row_id(obj: Mapping[str, Any]) -> str:
+    for key in ("id", "trajectory_id"):
+        value = obj.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return "?"
+
+
+def collect_not_for_train(
+    manifest: Mapping[str, Any],
+    recorded_paths: Mapping[str, str],
+) -> list[str]:
+    hits: list[str] = []
+    if _is_not_for_train_value(manifest.get("not_for_train")):
+        hits.append("MANIFEST.not_for_train")
+    for key in ("pack", "train", "holdout"):
+        raw = recorded_paths.get(key)
+        if type(raw) is not str or not raw:
+            continue
+        path = Path(raw)
+        field = path.name
+        for obj in _iter_jsonl_objects(path, field):
+            if _is_not_for_train_value(obj.get("not_for_train")):
+                hits.append(f"{field}:{_row_id(obj)}.not_for_train")
+    return hits
+
+
+def _walk_state_leaks(
+    value: object,
+    *,
+    path: str,
+    row_id: str,
+    found: list[str],
+) -> None:
+    if len(found) >= 10:
+        return
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            key_s = str(key)
+            child_path = f"{path}.{key_s}"
+            if key_s in STATE_LEAK_KEYS:
+                found.append(f"{row_id}:{child_path}")
+                if len(found) >= 10:
+                    return
+            _walk_state_leaks(child, path=child_path, row_id=row_id, found=found)
+    elif isinstance(value, list):
+        for idx, child in enumerate(value):
+            _walk_state_leaks(child, path=f"{path}[{idx}]", row_id=row_id, found=found)
+
+
+def collect_state_leaks(recorded_paths: Mapping[str, str]) -> list[str]:
+    found: list[str] = []
+    for key in ("pack", "train", "holdout"):
+        raw = recorded_paths.get(key)
+        if type(raw) is not str or not raw:
+            continue
+        path = Path(raw)
+        for obj in _iter_jsonl_objects(path, path.name):
+            _walk_state_leaks(
+                obj.get("state"),
+                path="state",
+                row_id=_row_id(obj),
+                found=found,
+            )
+            if len(found) >= 10:
+                return found
+    return found
+
+
+def enforce_pack_gates(
+    manifest: Mapping[str, Any],
+    recorded_paths: Mapping[str, str],
+    *,
+    smoke: bool = False,
+) -> None:
+    hits = collect_not_for_train(manifest, recorded_paths)
+    if hits and not smoke:
+        _refuse("not_for_train", False, hits[:10])
+    leaks = collect_state_leaks(recorded_paths)
+    if leaks:
+        _refuse("state.leak", "absent", leaks[:10])
+
+
+def _looks_like_inbox_latest(value: str) -> bool:
+    text = value.replace("\\", "/").lower()
+    if text.strip() in INBOX_LATEST_TOKENS:
+        return True
+    return any(marker.lower() in text for marker in INBOX_LATEST_PATH_MARKERS)
+
+
+def refuse_inbox_latest(body: Mapping[str, Any] | None) -> None:
+    """Kickoff must take an explicit pack path plus a pin. No inbox:latest default."""
+    if not isinstance(body, Mapping):
+        return
+    if "inbox_latest" in body:
+        _refuse("inbox_latest", "absent", "present")
+    inbox = body.get("inbox")
+    if isinstance(inbox, str) and inbox.strip().lower() in INBOX_LATEST_TOKENS:
+        _refuse("inbox", "named pack_id", inbox)
+    if inbox is True:
+        _refuse("inbox", "named pack_id", True)
+    for key in ("run_private_dir", "pack_dir", "pack"):
+        value = body.get(key)
+        if isinstance(value, str) and _looks_like_inbox_latest(value):
+            _refuse(key, "explicit pack path", value)
+    paths = body.get("paths")
+    if isinstance(paths, Mapping):
+        for key, value in paths.items():
+            if isinstance(value, str) and _looks_like_inbox_latest(value):
+                _refuse(f"paths.{key}", "explicit pack path", value)
+
+
+def _force_remove(path: Path) -> None:
+    path = Path(path)
+    if not os.path.lexists(path):
+        return
+
+    def _onerror(func: Any, name: str, _exc: object) -> None:
+        try:
+            os.chmod(name, 0o700)
+            func(name)
+        except OSError:
+            pass
+
+    try:
+        if path.is_symlink() or path.is_file():
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+            path.unlink()
+            return
+        shutil.rmtree(path, onerror=_onerror)
+    except OSError:
+        pass
+
+
+def cleanup_smoke_artifacts(
+    *,
+    checkpoint_dir: Path | None,
+    run_private: Path | None,
+    inbox: Path | None,
+) -> list[str]:
+    """Delete smoke ckpt, run-dir copies, and inbox. Return surviving paths."""
+    targets: list[tuple[str, Path]] = []
+    if checkpoint_dir is not None:
+        targets.append(("checkpoint", Path(checkpoint_dir)))
+    if run_private is not None:
+        targets.append(("run_private", Path(run_private)))
+    if inbox is not None:
+        targets.append(("inbox", Path(inbox)))
+    survivors: list[str] = []
+    for label, path in targets:
+        _force_remove(path)
+        if os.path.lexists(path):
+            survivors.append(f"{label}:{path}")
+    return survivors
+
+
 def _empty_trainer_exit(*, waited: bool = False) -> dict[str, Any]:
     return {"exit_code": 0, "signal": None, "timeout": False, "waited": waited}
 
@@ -567,12 +768,14 @@ def wait_for_training_exit(launched: Mapping[str, Any] | None) -> dict[str, Any]
             return {"exit_code": None, "signal": None, "timeout": True, "waited": True}
         if waited_rc is None:
             waited_rc = getattr(proc, "returncode", None)
+        # The process wait return code is the source of truth. A launcher dict
+        # that also carries exit_code=0 must not hide a nonzero wait().
+        return _exit_from_wait_rc(waited_rc)
     pid = launched.get("pid") if launched.get("pid") is not None else launched.get("trainer_pid")
-    if not saw_process and pid is not None:
+    if pid is not None:
         try:
             _wpid, status = os.waitpid(int(pid), 0)
             del _wpid
-            saw_process = True
             if os.WIFSIGNALED(status):
                 sig = os.WTERMSIG(status)
                 return {"exit_code": -sig, "signal": sig, "timeout": False, "waited": True}
@@ -583,7 +786,7 @@ def wait_for_training_exit(launched: Mapping[str, Any] | None) -> dict[str, Any]
                     "timeout": False,
                     "waited": True,
                 }
-            waited_rc = status
+            return _exit_from_wait_rc(status)
         except ChildProcessError:
             pass
         except (TypeError, ValueError, OverflowError, OSError) as exc:
@@ -619,8 +822,6 @@ def wait_for_training_exit(launched: Mapping[str, Any] | None) -> dict[str, Any]
         if code_i < 0:
             info["signal"] = -code_i
         return info
-    if saw_process:
-        return _exit_from_wait_rc(waited_rc)
     return _empty_trainer_exit()
 
 
@@ -684,6 +885,8 @@ def checkpoint_integrity_status(checkpoint_dir: Path) -> str:
     except (OSError, UnicodeDecodeError, ValueError):
         return CHECKPOINT_UNSCORED
     if not isinstance(data, dict):
+        return CHECKPOINT_UNSCORED
+    if data.get("smoke") is True:
         return CHECKPOINT_UNSCORED
     status = data.get("status")
     if status in (CHECKPOINT_MATCH, CHECKPOINT_REFUSED):
@@ -761,6 +964,7 @@ def verify_and_stage(
     pack_dir: Path,
     *,
     run_private: Path,
+    smoke: bool = False,
 ) -> dict[str, Any]:
     """Copy-hash pack/train/holdout and check them against the Cam HQ pin.
 
@@ -823,6 +1027,7 @@ def verify_and_stage(
 
     trainer_paths = trainer_input_paths(run_private)
     _split_soundness(run_private, computed_shas)
+    enforce_pack_gates(manifest, trainer_paths, smoke=smoke)
 
     return {
         "pack_id": pack_id,
@@ -1124,6 +1329,7 @@ def _recheck_copies(
     run_dir: Path,
     log_path: Path | None = None,
     exit_info: Mapping[str, Any] | None = None,
+    smoke: bool = False,
 ) -> None:
     recorded = evidence.get("paths")
     if not isinstance(recorded, dict):
@@ -1136,7 +1342,15 @@ def _recheck_copies(
         host=host,
     )
     apply_trainer_exit(record, exit_info)
-    _apply_post_train_record(evidence, record, run_dir=run_dir, log_path=log_path)
+    if smoke:
+        record["smoke"] = True
+    _apply_post_train_record(
+        evidence,
+        record,
+        run_dir=run_dir,
+        log_path=log_path,
+        post_completion=not smoke,
+    )
     if record["status"] != CHECKPOINT_MATCH:
         _refuse(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
 
@@ -1148,15 +1362,19 @@ def kick(
     start_training: StartTraining | None = None,
     kickoff: KickoffFn | None = None,
     kickoff_url: str = DEFAULT_KICKOFF_URL,
+    smoke: bool = False,
 ) -> dict[str, Any]:
     """Fetch the Cam HQ pin, stage private copies, POST kickoff, re-check shas.
 
     ``start_training`` / ``kickoff`` are test injection hooks and still run only
     after the gate. CLI and env cannot supply them. There is no skip/override.
+    ``smoke=True`` never posts HQ events, marks evidence unscorable, and
+    deletes checkpoint/run-dir copies/inbox before returning.
     """
     _refuse_skip_env()
     _refuse_pin_env()
     pack_dir = Path(pack_dir)
+    smoke = bool(smoke)
     _refuse_local_pin_files(_resolve_pack_dir(pack_dir))
     run_id = _new_run_id()
     if log_path is not None:
@@ -1197,7 +1415,7 @@ def kick(
         write_evidence(evidence, evidence_path)
 
     try:
-        staged = verify_and_stage(pack_dir, run_private=run_private)
+        staged = verify_and_stage(pack_dir, run_private=run_private, smoke=smoke)
         evidence.update(staged)
         evidence["run_id"] = run_id
         evidence["checkpoint_id"] = None
@@ -1207,6 +1425,8 @@ def kick(
         evidence["evidence_path"] = str(evidence_path.resolve())
         evidence["trust_blobs"] = trust_blobs
         evidence["head_sha"] = trust_blobs.get("HEAD")
+        if smoke:
+            evidence["smoke"] = True
         persist()
         trainer_paths = trainer_input_paths(run_private)
         evidence["paths"] = trainer_paths
@@ -1215,17 +1435,18 @@ def kick(
         evidence["trainer_config"] = trainer_config
         evidence["trainer_argv"] = trainer_argv
         persist()
-        _post_hq_event(
-            "kick",
-            {
-                "run_id": run_id,
-                "sha256_pack": evidence["computed_shas"]["sha256_pack"],
-                "sha256_train": evidence["computed_shas"]["sha256_train"],
-                "sha256_holdout": evidence["computed_shas"]["sha256_holdout"],
-            },
-        )
+        if not smoke:
+            _post_hq_event(
+                "kick",
+                {
+                    "run_id": run_id,
+                    "sha256_pack": evidence["computed_shas"]["sha256_pack"],
+                    "sha256_train": evidence["computed_shas"]["sha256_train"],
+                    "sha256_holdout": evidence["computed_shas"]["sha256_holdout"],
+                },
+            )
         body = {
-            "mode": "helper-ft",
+            "mode": "helper-ft-smoke" if smoke else "helper-ft",
             "pack_id": evidence["pack_id"],
             "sha256_pack": evidence["computed_shas"]["sha256_pack"],
             "sha256_train": evidence["computed_shas"]["sha256_train"],
@@ -1241,12 +1462,21 @@ def kick(
             "run_id": run_id,
             "checked_at": evidence["checked_at"],
         }
+        if smoke:
+            body["smoke"] = True
         if kickoff is not None:
             result = kickoff(body)
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                if isinstance(result, dict) and result.get("field"):
+                    _refuse(result.get("field"), result.get("expected"), result.get("actual"))
+                _refuse("kickoff", "ok", result)
         else:
             result = post_kickoff(body, url=kickoff_url)
-        if isinstance(result, dict) and result.get("checkpoint_id"):
+        if isinstance(result, dict) and result.get("checkpoint_id") and not smoke:
             evidence["checkpoint_id"] = result["checkpoint_id"]
+            persist()
+        elif smoke:
+            evidence["checkpoint_id"] = "smoke"
             persist()
         # Training must finish before the end-of-training re-hash. Wait in this
         # same process/host, then re-hash the recorded run-dir copy paths.
@@ -1265,7 +1495,25 @@ def kick(
             run_dir=run_dir,
             log_path=log_path,
             exit_info=exit_info,
+            smoke=smoke,
         )
+        if smoke:
+            evidence["smoke"] = True
+            ckpt_dir = checkpoint_dir_for(run_dir, evidence.get("checkpoint_id"))
+            survivors = cleanup_smoke_artifacts(
+                checkpoint_dir=ckpt_dir,
+                run_private=run_private,
+                inbox=pack_dir,
+            )
+            evidence["checkpoint_id"] = None
+            evidence.pop("checkpoint_integrity_evidence_path", None)
+            evidence["checkpoint_integrity_status"] = CHECKPOINT_UNSCORED
+            if survivors:
+                evidence["ok"] = False
+                evidence["result"] = CHECKPOINT_REFUSED
+                evidence["survivors"] = survivors
+                persist()
+                _refuse("smoke.cleanup", "nothing survives", survivors)
         persist()
         return evidence
     except KickRefused as exc:
@@ -1273,6 +1521,23 @@ def kick(
         evidence["field"] = exc.field
         evidence["expected"] = exc.expected
         evidence["actual"] = exc.actual
+        if smoke:
+            evidence["smoke"] = True
+            ckpt_dir = None
+            try:
+                ckpt_dir = checkpoint_dir_for(run_dir, evidence.get("checkpoint_id"))
+            except KickRefused:
+                ckpt_dir = None
+            survivors = cleanup_smoke_artifacts(
+                checkpoint_dir=ckpt_dir,
+                run_private=run_private,
+                inbox=pack_dir,
+            )
+            evidence["checkpoint_id"] = None
+            evidence.pop("checkpoint_integrity_evidence_path", None)
+            evidence["checkpoint_integrity_status"] = CHECKPOINT_UNSCORED
+            if survivors:
+                evidence["survivors"] = survivors
         try:
             persist()
         except OSError:
@@ -1309,6 +1574,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_KICKOFF_URL,
         help="HELPER FT POST /train/kickoff URL (default 127.0.0.1:8765)",
     )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="explicit smoke mode: never post HQ events, unscorable, delete copies/inbox",
+    )
     return parser
 
 
@@ -1322,6 +1592,7 @@ def main(argv: list[str] | None = None) -> int:
             args.pack,
             log_path=args.log,
             kickoff_url=args.kickoff_url,
+            smoke=bool(args.smoke),
         )
     except KickRefused as exc:
         print(str(exc), file=sys.stderr, flush=True)

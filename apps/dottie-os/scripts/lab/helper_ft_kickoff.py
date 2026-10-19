@@ -66,6 +66,7 @@ OTHER_HELPER_FT_START_PATHS = frozenset(
         "/train/inbox",
         "/train/kick",
         "/inbox/latest",
+        "/inbox_latest",
         "/train/kickoff/latest",
     }
 )
@@ -267,13 +268,15 @@ def handle_train_kickoff(
         blobs = cam_pin_spec.require_committed_trust()
     except cam_pin_spec.CamPinError as exc:
         return _bad(exc.field, exc.expected, exc.actual)
-    inbox = body.get("inbox")
+    try:
+        kick_helper_ft.refuse_inbox_latest(body)
+    except kick_helper_ft.KickRefused as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
     mode = body.get("mode")
-    if isinstance(inbox, str) and inbox.strip().lower() == "latest":
-        return _bad("inbox", "named pack_id", "latest")
     if mode == "inbox-validate":
         return _bad("mode", "helper-ft", "inbox-validate")
-    if mode != "helper-ft":
+    smoke = kick_helper_ft.is_smoke_mode(body)
+    if mode not in ("helper-ft", "helper-ft-smoke"):
         return _bad("mode", "helper-ft", mode)
     evidence = body.get("evidence")
     if not isinstance(evidence, dict) or not evidence:
@@ -414,6 +417,10 @@ def handle_train_kickoff(
             return _bad(sha_field, hq_sha, actual)
         if actual != req:
             return _bad(sha_field, req, actual)
+    try:
+        kick_helper_ft.enforce_pack_gates(manifest, recorded_paths, smoke=smoke)
+    except kick_helper_ft.KickRefused as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
     host = socket.gethostname()
     trainer_config = {"host": host, "paths": recorded_paths}
     trainer_argv = kick_helper_ft.build_trainer_argv(recorded_paths)
@@ -449,25 +456,27 @@ def handle_train_kickoff(
             return _bad(exc.field, exc.expected, exc.actual)
         if ckpt_dir is not None:
             ckpt_path = ckpt_dir / kick_helper_ft.INTEGRITY_EVIDENCE_NAME
+            if smoke:
+                record["smoke"] = True
             kick_helper_ft.write_evidence(
                 kick_helper_ft._public_integrity_record(record),
                 ckpt_path,
                 mode=0o400,
             )
-            log_path = run_dir / kick_helper_ft.DEFAULT_LOG_NAME
             try:
-                sealed = kick_helper_ft.seal_integrity_evidence(
-                    ckpt_path, record, log_path=log_path
-                )
+                sealed = kick_helper_ft.load_integrity_completion(ckpt_path)
             except kick_helper_ft.KickRefused as exc:
                 return _bad(exc.field, exc.expected, exc.actual)
-            evidence["integrity_evidence_line"] = sealed["integrity_evidence_line"]
             evidence["sha256_evidence"] = sealed["sha256_evidence"]
             evidence["integrity_evidence"] = sealed["integrity_evidence"]
             evidence["result"] = sealed["result"]
-            evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
-            evidence["checkpoint_integrity_status"] = record["status"]
             evidence["exit_code"] = record.get("exit_code", 0)
+            if smoke:
+                evidence["smoke"] = True
+                evidence["checkpoint_integrity_status"] = kick_helper_ft.CHECKPOINT_UNSCORED
+            else:
+                evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
+                evidence["checkpoint_integrity_status"] = record["status"]
     evidence["post_train_shas"] = record["computed_shas"]
     evidence["post_train_host"] = record["host"]
     evidence["post_train_paths"] = record["paths"]
@@ -492,10 +501,12 @@ def handle_train_kickoff(
         "head_sha": blobs.get("HEAD"),
         "exit_code": record.get("exit_code", 0),
     }
-    if ckpt_id:
+    if ckpt_id and not smoke:
         result["checkpoint_id"] = ckpt_id
-    if evidence.get("integrity_evidence_line"):
-        result["integrity_evidence_line"] = evidence["integrity_evidence_line"]
+    if smoke:
+        result["smoke"] = True
+        result.pop("checkpoint_id", None)
+    if evidence.get("sha256_evidence"):
         result["sha256_evidence"] = evidence.get("sha256_evidence")
         result["integrity_evidence"] = evidence.get("integrity_evidence")
         result["result"] = evidence.get("result")
@@ -517,7 +528,8 @@ def dispatch(
     """Route table for :8765. Only POST /train/kickoff can start HELPER FT."""
     method = (method or "").upper()
     path = path or "/"
-    if "inbox=latest" in (query or "").lower():
+    query_l = (query or "").lower()
+    if "inbox=latest" in query_l or "inbox_latest" in query_l:
         payload = _bad("inbox", "named pack_id", "latest")
         return _json_status(payload), payload
     if path.rstrip("/").endswith("/latest"):
