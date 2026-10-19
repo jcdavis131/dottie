@@ -259,23 +259,36 @@ RESERVED_CONTENT_UUIDS_NAME = "reserved_content_uuids.jsonl"
 RESERVED_CONTENT_UUIDS_SHA256 = (
     "bc8926d5a18adf4105372c528fcbcfd32ca898e6235c1701859b837be435163c"
 )
-RESERVED_CONTENT_UUIDS_MIN_ROWS = 1
+RESERVED_CONTENT_UUIDS_MIN_ROWS = 250
 RESERVED_NEAR_DUP_FPS_REL = "apps/dottie-os/trust/reserved_near_dup_fingerprints.jsonl"
 RESERVED_NEAR_DUP_FPS_NAME = "reserved_near_dup_fingerprints.jsonl"
 RESERVED_NEAR_DUP_FPS_SHA256 = (
     "9ce40baf0bbdc30f78a88282a6ab833b3b0adf820315d441f77c9a8e7f16aae5"
 )
+# Gate-config path for the HMAC shingle key. Never from the request body.
+RESERVED_NEAR_DUP_HMAC_KEY_PATH = "/run/forge-runner/reserved_near_dup_hmac.key"
+RESERVED_NEAR_DUP_HMAC_KEY_ID = "RESERVED_NEAR_DUP_HMAC_KEY_ID_PLACEHOLDER"
 _PLACEHOLDER_MARKERS = (
     "PLACEHOLDER",
     "NOT_A_LIVE_ROW",
     "RESERVED_EVAL_PARTITION_PLACEHOLDER_NOT_A_LIVE_ROW",
     "RESERVED_NEAR_DUP_FINGERPRINTS_PLACEHOLDER_NOT_A_LIVE_ROW",
 )
+_FP_PLACEHOLDER_LINES = frozenset(
+    {
+        '{"id":"reserved-near-dup-fps-placeholder","placeholder":"RESERVED_NEAR_DUP_FINGERPRINTS_PLACEHOLDER_NOT_A_LIVE_ROW"}',
+        "RESERVED_NEAR_DUP_FINGERPRINTS_PLACEHOLDER_NOT_A_LIVE_ROW",
+    }
+)
+_HMAC_KEY_BYTES: bytes | None = None
+_HMAC_KEY_ID_LOADED: str | None = None
 # Strip format/combining marks and non-whitespace controls. Keep \t \n \r
-# so they collapse as whitespace (``$\\tls`` → ``$ ls``).
+# so they collapse as whitespace (``$\\tls`` → ``$ ls``). Keep C0 separators
+# ``\x1c``-``\x1e`` so they remain line terminators instead of disappearing.
 _SHAPE_STRIP_CATS = frozenset({"Cf", "Mn", "Me"})
-_SHAPE_KEEP_CC = frozenset("\t\n\r\x0b\x0c\u0085")
-_SHAPE_LINE_TERMINATORS = frozenset("\n\r\u2028\u2029\u0085\x0b\x0c")
+_SHAPE_KEEP_CC = frozenset("\t\n\r\x0b\x0c\u0085\x1c\x1d\x1e")
+_SHAPE_LINE_TERMINATORS = frozenset("\n\r\u2028\u2029\u0085\x0b\x0c\x1c\x1d\x1e")
+_SHAPE_BLANK_CHARS = frozenset("\u3164\u115f\u1160\uffa0\u2800")
 _UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})|\\U([0-9a-fA-F]{8})")
 _HEX_ESCAPE_RE = re.compile(r"\\x([0-9a-fA-F]{2})")
 _PERCENT_ESCAPE_RE = re.compile(r"%([0-9a-fA-F]{2})")
@@ -330,6 +343,15 @@ _SHAPE_COMMAND_WORDS = frozenset(
         "service",
         "docker",
         "kubectl",
+        "perl",
+        "node",
+        "git",
+        "env",
+        "id",
+        "echo",
+        "ruby",
+        "php",
+        "lua",
     }
 )
 _CYRILLIC_LATIN = str.maketrans(
@@ -364,6 +386,38 @@ _CYRILLIC_LATIN = str.maketrans(
         "К": "K",
         "Н": "H",
         "В": "B",
+        "α": "a",
+        "Α": "A",
+        "β": "b",
+        "Β": "B",
+        "ε": "e",
+        "Ε": "E",
+        "ι": "i",
+        "Ι": "I",
+        "κ": "k",
+        "Κ": "K",
+        "ν": "v",
+        "Ν": "N",
+        "ο": "o",
+        "Ο": "O",
+        "ρ": "p",
+        "Ρ": "P",
+        "τ": "t",
+        "Τ": "T",
+        "υ": "u",
+        "Υ": "Y",
+        "χ": "x",
+        "Χ": "X",
+        "η": "n",
+        "Η": "H",
+        "μ": "m",
+        "Μ": "M",
+        "σ": "s",
+        "ς": "s",
+        "Σ": "S",
+        "γ": "y",
+        "ω": "w",
+        "Ω": "W",
     }
 )
 TRAINER_PATH_FILES: dict[str, str] = {
@@ -1814,6 +1868,9 @@ def _require_cam_pin(record: object, pack_id: str, *, run_id: str | None = None)
         "expires_at": parsed.get("expires_at"),
         "reserved_content_uuids_sha256": parsed.get("reserved_content_uuids_sha256"),
         "reserved_content_uuids_min_rows": parsed.get("reserved_content_uuids_min_rows"),
+        "sha256_manifest": parsed.get("sha256_manifest"),
+        "near_dup_tokenizer_version": parsed.get("near_dup_tokenizer_version"),
+        "near_dup_tokenizer_sha256": parsed.get("near_dup_tokenizer_sha256"),
         "rows_total": parsed.get("rows_total"),
         "rows_train": parsed.get("rows_train"),
         "rows_holdout": parsed.get("rows_holdout"),
@@ -1847,8 +1904,8 @@ def _pin_ref_is_held_fd(pin_ref: object) -> bool:
     return type(pin_ref) is str and is_proc_self_fd_path(pin_ref)
 
 
-def load_staged_v2_pin(pin_ref: object, *, run_id: str | None = None) -> dict[str, Any]:
-    """Verify the staged v2 pin (held fd or path under the private root). Never fetch."""
+def _read_staged_v2_pin_bytes(pin_ref: object) -> bytes:
+    """Read the staged v2 pin once. Never fetch. Caller parses and re-uses these bytes."""
     if pin_ref is None or pin_ref == "":
         _refuse("cam-pin", "staged v2 pin fd or path under run_private_root", "missing")
     raw: bytes
@@ -1882,6 +1939,19 @@ def load_staged_v2_pin(pin_ref: object, *, run_id: str | None = None) -> dict[st
             _refuse("cam-pin", "readable staged pin", f"OSError:{exc.errno}")
         finally:
             os.close(fd)
+    return raw
+
+
+def load_staged_v2_pin(pin_ref: object, *, run_id: str | None = None) -> dict[str, Any]:
+    """Verify the staged v2 pin (held fd or path under the private root). Never fetch."""
+    raw = _read_staged_v2_pin_bytes(pin_ref)
+    parsed, _payload = _parse_staged_v2_pin_bytes(raw, run_id=run_id)
+    return parsed
+
+
+def _parse_staged_v2_pin_bytes(
+    raw: bytes, *, run_id: str | None = None
+) -> tuple[dict[str, Any], dict[str, Any]]:
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -1892,10 +1962,23 @@ def load_staged_v2_pin(pin_ref: object, *, run_id: str | None = None) -> dict[st
         raise
     except ValueError:
         _refuse("cam-pin", "JSON object", "invalid JSON")
+    if not isinstance(payload, dict):
+        _refuse("cam-pin", "JSON object", type(payload).__name__)
     try:
-        return cam_pin_spec.parse_kick_pin_payload(payload, run_id=run_id)
+        parsed = cam_pin_spec.parse_kick_pin_payload(payload, run_id=run_id)
     except cam_pin_spec.CamPinError as exc:
         _refuse(exc.field, exc.expected, exc.actual)
+    return parsed, payload
+
+
+def _stage_verified_pin_bytes(run_private: Path, pin_bytes: bytes) -> None:
+    """Write the already-verified pin into run_private/cam-pin-v2.json. No body pin_path."""
+    if type(pin_bytes) is not bytes or not pin_bytes:
+        _refuse("cam-pin", "staged v2 pin bytes", "missing")
+    if len(pin_bytes) > cam_pin_spec.MAX_PIN_BYTES:
+        _refuse("cam-pin", f"<={cam_pin_spec.MAX_PIN_BYTES} bytes", len(pin_bytes))
+    dest = Path(run_private) / STAGED_PIN_NAME
+    _write_buffer_exclusive(dest, pin_bytes, "cam-pin")
 
 
 def _line_identities(path: Path, field: str) -> tuple[list[str], list[str]]:
@@ -2722,11 +2805,98 @@ def _line_is_placeholder(text: str) -> bool:
     return any(marker in text or marker in upper for marker in _PLACEHOLDER_MARKERS)
 
 
+def _fp_line_is_placeholder(stripped: str) -> bool:
+    """Exact-line placeholder match. A substring in live JSON is not a placeholder."""
+    return stripped in _FP_PLACEHOLDER_LINES
+
+
+def _hmac_key_id_is_placeholder(key_id: str) -> bool:
+    return (
+        not key_id
+        or "PLACEHOLDER" in key_id.upper()
+        or key_id == RESERVED_NEAR_DUP_HMAC_KEY_ID
+        and "PLACEHOLDER" in RESERVED_NEAR_DUP_HMAC_KEY_ID
+    )
+
+
+def reset_hmac_key_state() -> None:
+    """Tests only: drop the kick-scoped HMAC key."""
+    global _HMAC_KEY_BYTES, _HMAC_KEY_ID_LOADED
+    _HMAC_KEY_BYTES = None
+    _HMAC_KEY_ID_LOADED = None
+
+
+def _hmac_digest_hex(key: bytes, shingle: str) -> str:
+    return hmac.new(key, shingle.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _looks_like_plaintext_shingle(value: object) -> bool:
+    return type(value) is str and len(value) == 5 and any(ch not in _HEX for ch in value)
+
+
+def _looks_like_unkeyed_digest(value: object) -> bool:
+    return type(value) is str and len(value) == SHA256_LEN and all(ch in _HEX for ch in value)
+
+
+def load_reserved_near_dup_hmac_key(path: object, expected_key_id: object) -> bytes:
+    """Read the HMAC key at kick time. Never logs key bytes; never from the request body."""
+    global _HMAC_KEY_BYTES, _HMAC_KEY_ID_LOADED
+    if type(expected_key_id) is not str or not expected_key_id:
+        _refuse("reserved_near_dup_hmac.key_id", "committed key id", "missing")
+    if _hmac_key_id_is_placeholder(expected_key_id):
+        _refuse("reserved_near_dup_hmac.key_id", "committed key id", "placeholder")
+    if path is None or path is _UNSET or (type(path) is not str and not isinstance(path, Path)):
+        _refuse("reserved_near_dup_hmac.key", "regular file", "missing")
+    named = Path(str(path))
+    flags = _open_flags_read()
+    try:
+        fd = os.open(named, flags)
+    except OSError as exc:
+        _refuse("reserved_near_dup_hmac.key", "readable regular file", f"OSError:{exc.errno}")
+        raise AssertionError("unreachable") from exc
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            _refuse("reserved_near_dup_hmac.key", "regular file", "non-regular")
+        if os.name == "posix" and stat.S_IMODE(info.st_mode) != 0o400:
+            _refuse("reserved_near_dup_hmac.key", "0400", oct(stat.S_IMODE(info.st_mode)))
+        if os.name == "posix" and int(info.st_uid) != int(os.getuid()):
+            _refuse("reserved_near_dup_hmac.key", "owned by gate uid", "uid mismatch")
+        buf = _read_fd_bytes(fd)
+    except KickRefused:
+        raise
+    except OSError as exc:
+        _refuse("reserved_near_dup_hmac.key", "readable regular file", f"OSError:{exc.errno}")
+        raise AssertionError("unreachable") from exc
+    finally:
+        os.close(fd)
+    if not buf:
+        _refuse("reserved_near_dup_hmac.key", "key material", "empty")
+    nl = buf.find(b"\n")
+    if nl <= 0:
+        _refuse("reserved_near_dup_hmac.key_id", "key_id line", "missing")
+    try:
+        file_key_id = buf[:nl].decode("ascii").strip()
+    except UnicodeDecodeError:
+        _refuse("reserved_near_dup_hmac.key_id", "ascii key_id", "invalid encoding")
+        raise AssertionError("unreachable")
+    if file_key_id != expected_key_id:
+        _refuse("reserved_near_dup_hmac.key_id", "committed key id", "mismatch")
+    material = buf[nl + 1 :]
+    if material.endswith(b"\n"):
+        material = material[:-1]
+    if not material:
+        _refuse("reserved_near_dup_hmac.key", "key material", "empty")
+    _HMAC_KEY_BYTES = material
+    _HMAC_KEY_ID_LOADED = file_key_id
+    return material
+
+
 def load_reserved_near_dup_fingerprints(
     path: object,
     expected_sha256: object,
 ) -> dict[str, tuple[str, frozenset[str]]]:
-    """Load sha-pinned N fingerprints for this kick. Placeholder files yield no fps."""
+    """Load sha-pinned HMAC-SHA256 N fingerprints. Plaintext shingles and unkeyed digests refuse."""
     if path is None or path is _UNSET or (type(path) is str and not path):
         return {}
     pin = _require_sha256_hex("reserved_near_dup_fingerprints.sha256", expected_sha256)
@@ -2738,14 +2908,19 @@ def load_reserved_near_dup_fingerprints(
         text = buf.decode("utf-8")
     except UnicodeDecodeError:
         _refuse("reserved_near_dup_fingerprints", "utf-8 text", "invalid encoding")
-    if _line_is_placeholder(text):
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    if lines and all(_fp_line_is_placeholder(ln) for ln in lines):
         return {}
+    load_reserved_near_dup_hmac_key(
+        RESERVED_NEAR_DUP_HMAC_KEY_PATH,
+        RESERVED_NEAR_DUP_HMAC_KEY_ID,
+    )
     found: dict[str, tuple[str, frozenset[str]]] = {}
     for idx, line in enumerate(text.splitlines()):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        if _line_is_placeholder(stripped):
+        if _fp_line_is_placeholder(stripped):
             _refuse(
                 "reserved_near_dup_fingerprints",
                 "live fingerprints",
@@ -2762,22 +2937,120 @@ def load_reserved_near_dup_fingerprints(
                 type(obj).__name__,
             )
         digest = obj.get("content_uuid") or obj.get("sha256")
-        tokens = obj.get("tokens")
         rid = obj.get("id") if type(obj.get("id")) is str else "n"
         if type(digest) is not str or len(digest) != SHA256_LEN:
             _refuse(
                 f"reserved_near_dup_fingerprints[{idx}].content_uuid",
                 "64-hex",
-                digest,
+                "invalid",
             )
-        if not isinstance(tokens, list) or not all(type(tok) is str for tok in tokens):
+        raw_tokens = obj.get("tokens")
+        if raw_tokens is not None:
+            if not isinstance(raw_tokens, list):
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].tokens",
+                    "HMAC-SHA256 digests",
+                    type(raw_tokens).__name__,
+                )
+            if not raw_tokens:
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].tokens",
+                    "non-empty HMAC-SHA256 digests",
+                    "empty",
+                )
+            if any(_looks_like_plaintext_shingle(tok) for tok in raw_tokens):
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].tokens",
+                    "HMAC-SHA256 digests",
+                    "plaintext shingles",
+                )
+            if any(_looks_like_unkeyed_digest(tok) for tok in raw_tokens):
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].tokens",
+                    "HMAC-SHA256 digests",
+                    "unkeyed digest",
+                )
             _refuse(
                 f"reserved_near_dup_fingerprints[{idx}].tokens",
-                "list of str",
-                type(tokens).__name__,
+                "HMAC-SHA256 digests",
+                "plaintext or unkeyed",
             )
-        found[digest] = (rid, frozenset(tokens))
+        hmac_list = obj.get("hmac_sha256")
+        if not isinstance(hmac_list, list) or not hmac_list:
+            _refuse(
+                f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
+                "non-empty list of HMAC-SHA256 hex",
+                "missing" if hmac_list is None else type(hmac_list).__name__ if not isinstance(hmac_list, list) else "empty",
+            )
+        for tok in hmac_list:
+            if type(tok) is not str or len(tok) != SHA256_LEN or any(ch not in _HEX for ch in tok):
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
+                    "64-hex HMAC-SHA256",
+                    "invalid",
+                )
+            if _looks_like_plaintext_shingle(tok):
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
+                    "HMAC-SHA256 digests",
+                    "plaintext shingles",
+                )
+        file_kid = obj.get("key_id")
+        if type(file_kid) is not str or not file_kid:
+            _refuse(
+                f"reserved_near_dup_fingerprints[{idx}].key_id",
+                "committed key id",
+                "missing",
+            )
+        if file_kid != RESERVED_NEAR_DUP_HMAC_KEY_ID:
+            _refuse(
+                f"reserved_near_dup_fingerprints[{idx}].key_id",
+                "committed key id",
+                "mismatch",
+            )
+        tok_ver = obj.get("tokenizer_version")
+        if tok_ver is None:
+            tok_ver = obj.get("near_dup_tokenizer_version")
+        try:
+            content_uuid.require_near_dup_tokenizer_version(
+                tok_ver if tok_ver is not None else content_uuid.NEAR_DUP_TOKENIZER_VERSION
+            )
+        except content_uuid.ContentUuidError as exc:
+            _refuse(exc.field, exc.expected, exc.actual)
+        if tok_ver not in (None, content_uuid.NEAR_DUP_TOKENIZER_VERSION):
+            _refuse(
+                f"reserved_near_dup_fingerprints[{idx}].tokenizer_version",
+                content_uuid.NEAR_DUP_TOKENIZER_VERSION,
+                tok_ver,
+            )
+        found[digest] = (rid, frozenset(hmac_list))
     return found
+
+
+def _fingerprint_tokens_are_hmac(tokens: frozenset[str]) -> bool:
+    if not tokens:
+        return False
+    return all(
+        type(tok) is str and len(tok) == SHA256_LEN and all(ch in _HEX for ch in tok)
+        for tok in tokens
+    )
+
+
+def _candidate_tokens_for_fingerprint(
+    cand_tokens: frozenset[str],
+    n_tokens: frozenset[str],
+) -> frozenset[str]:
+    """HMAC candidate shingles when N fingerprints are keyed HMAC digests."""
+    if not _fingerprint_tokens_are_hmac(n_tokens):
+        return cand_tokens
+    key = _HMAC_KEY_BYTES
+    if key is None:
+        _refuse(
+            "reserved_near_dup_hmac.key",
+            "loaded HMAC key",
+            "missing",
+        )
+    return frozenset(_hmac_digest_hex(key, tok) for tok in cand_tokens)
 
 
 def load_reserved_content_uuids(path: object, expected_sha256: object) -> set[str]:
@@ -2947,7 +3220,27 @@ def _row_subset(row: Mapping[str, Any]) -> str | tuple[str, str]:
 
 
 def _nonempty_str(value: object) -> bool:
-    return type(value) is str and bool(value)
+    return _canonical_group_key(value) is not None
+
+
+def _fold_group_key(value: str) -> str:
+    return unicodedata.normalize("NFKC", value).strip().casefold()
+
+
+def _canonical_group_key(value: object) -> str | None:
+    """NFKC, strip, casefold. Refuse whitespace-only, padded, NBSP, and case variants."""
+    if type(value) is not str:
+        return None
+    nfkc = unicodedata.normalize("NFKC", value)
+    stripped = nfkc.strip()
+    if not stripped:
+        return None
+    if nfkc != value or stripped != nfkc:
+        return None
+    folded = stripped.casefold()
+    if folded != stripped:
+        return None
+    return folded
 
 
 def _group_key_mismatch(row: Mapping[str, Any]) -> tuple[str, str] | None:
@@ -2974,7 +3267,7 @@ def _group_key_mismatch(row: Mapping[str, Any]) -> tuple[str, str] | None:
     if subset == "Agent" or subset == "Code":
         if has_source_rid or has_top_rid:
             return ("row.group_key", f"{subset} row must not have record_id")
-        if has_tid_alias and not tid_ok:
+        if has_tid_alias:
             return ("row.group_key", f"{subset} row requires trajectory_id, not trajectoryid")
         if not tid_ok:
             return ("row.group_key", f"{subset} row requires non-empty trajectory_id")
@@ -2991,12 +3284,12 @@ def _group_key_split_value(row: Mapping[str, Any]) -> tuple[str, str] | None:
         if isinstance(source, Mapping):
             record_id = source.get("record_id")
             if type(record_id) is str and record_id:
-                return ("record_id", record_id)
+                return ("record_id", _fold_group_key(record_id))
         return None
     if resolved == "Agent" or resolved == "Code":
         trajectory_id = row.get("trajectory_id")
         if type(trajectory_id) is str and trajectory_id:
-            return ("trajectory_id", trajectory_id)
+            return ("trajectory_id", _fold_group_key(trajectory_id))
         return None
     _unhandled_subset(resolved)
 
@@ -3028,6 +3321,9 @@ def _mapping_keys(value: object) -> set[object] | None:
 def _shape_strip_marks(text: str) -> str:
     kept: list[str] = []
     for ch in text:
+        if ch in _SHAPE_BLANK_CHARS:
+            kept.append(" ")
+            continue
         cat = unicodedata.category(ch)
         if cat in _SHAPE_STRIP_CATS:
             continue
@@ -3079,20 +3375,22 @@ def _shape_split_lines(text: str) -> list[str]:
 
 
 def _shape_line_prompt_hit(line: str) -> bool:
-    """True when a line starts with ``$ `` plus a command word (not LaTeX ``$ x$``)."""
+    """True when a line starts with ``$ `` plus any token that is not closed LaTeX."""
     stripped = line.lstrip(" \t")
     if not stripped.startswith("$"):
         return False
     rest = stripped[1:]
     if not rest or rest[0] not in " \t":
         return False
-    token = rest.lstrip(" \t").split(None, 1)[0] if rest.lstrip(" \t") else ""
+    body = rest.lstrip(" \t")
+    if not body:
+        return False
+    if "$" in body:
+        return False
+    token = body.split(None, 1)[0]
     if not token:
         return False
-    word = token.strip("`'\"")
-    if word in _SHAPE_COMMAND_WORDS:
-        return True
-    return False
+    return True
 
 
 def _shape_scan_text(text: str) -> str:
@@ -3246,14 +3544,13 @@ def _uuidless_shape_mismatch(
             return f"questions.{name}.type mismatch"
         if isinstance(child, Mapping) and "criteria" in child:
             criteria = child.get("criteria")
-            if isinstance(criteria, Mapping):
-                early_forbidden = spec["forbidden_keys"]
-                if isinstance(early_forbidden, frozenset):
-                    for crit_key in criteria:
-                        if _forbidden_key_name(crit_key, early_forbidden):
-                            return f"forbidden key {crit_key!r}"
-                        if _shape_prompt_hit(str(crit_key)):
-                            return "forbidden string marker"
+            if type(criteria) is str:
+                pass
+            elif isinstance(criteria, list):
+                if not all(type(item) is str for item in criteria):
+                    return f"questions.{name}.criteria type"
+            else:
+                return f"questions.{name}.criteria type"
     labels_fields = spec["labels_fields"]
     labels = row["labels"]
     if not isinstance(labels_fields, Mapping):
@@ -3546,37 +3843,91 @@ def collect_reserved_partition(
                     f"{rid}:reserved content sha {content_sha}",
                 )
             )
-        cand_tokens = content_uuid.near_dup_tokens(
-            {key: row[key] for key in content_uuid.CONTENT_UUID_FIELDS if key in row}
-        )
-        if cand_tokens:
-            for reserved_sha in reserved:
-                indexed = content_uuid.lookup_near_dup_fingerprint(reserved_sha)
-                if indexed is None:
-                    if content_uuid.kick_near_dup_fingerprints_loaded():
-                        hits.append(
-                            (
-                                "reserved_eval_partition.near_dup_fingerprint_missing",
-                                f"{rid}:no fingerprint for {reserved_sha}",
-                            )
-                        )
-                        break
-                    continue
-                n_id, n_tokens = indexed
-                if not n_tokens:
-                    continue
-                union = cand_tokens | n_tokens
-                if not union:
-                    continue
-                jaccard = len(cand_tokens & n_tokens) / len(union)
-                if jaccard >= 0.5:
+        try:
+            cand_tokens = content_uuid.near_dup_tokens(
+                {key: row[key] for key in content_uuid.CONTENT_UUID_FIELDS if key in row}
+            )
+        except content_uuid.ContentUuidError as exc:
+            hits.append((exc.field, f"{rid}:{exc}"))
+            if len(hits) >= 10:
+                return hits
+            continue
+        if content_uuid._is_no_text(cand_tokens):
+            hits.append(
+                (
+                    "reserved_eval_partition.near_dup_no_text",
+                    f"{rid}:NO_TEXT",
+                )
+            )
+            if len(hits) >= 10:
+                return hits
+            continue
+        if not isinstance(cand_tokens, frozenset):
+            hits.append(
+                (
+                    "near_dup_tokens",
+                    f"{rid}:tokenizer did not return a token set",
+                )
+            )
+            if len(hits) >= 10:
+                return hits
+            continue
+        for reserved_sha in reserved:
+            indexed = content_uuid.lookup_near_dup_fingerprint(reserved_sha)
+            if indexed is None:
+                if content_uuid.kick_near_dup_fingerprints_loaded():
                     hits.append(
                         (
-                            "reserved_eval_partition.near_dup",
-                            f"{rid}:near_dup of {n_id}",
+                            "reserved_eval_partition.near_dup_fingerprint_missing",
+                            f"{rid}:no fingerprint for {reserved_sha}",
                         )
                     )
                     break
+                continue
+            n_id, n_tokens = indexed
+            if n_tokens is None:
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup_empty_tokens",
+                        f"{rid}:empty fingerprint for {n_id}",
+                    )
+                )
+                continue
+            if not isinstance(n_tokens, frozenset):
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup_empty_tokens",
+                        f"{rid}:invalid fingerprint for {n_id}",
+                    )
+                )
+                continue
+            if len(n_tokens) == 0:
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup_empty_tokens",
+                        f"{rid}:empty fingerprint for {n_id}",
+                    )
+                )
+                continue
+            scored = _candidate_tokens_for_fingerprint(cand_tokens, n_tokens)
+            union = scored | n_tokens
+            if len(union) == 0:
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup_empty_tokens",
+                        f"{rid}:empty token union",
+                    )
+                )
+                continue
+            jaccard = len(scored & n_tokens) / len(union)
+            if jaccard >= 0.5:
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup",
+                        f"{rid}:near_dup of {n_id}",
+                    )
+                )
+                break
         if len(hits) >= 10:
             return hits
     return hits
@@ -4133,11 +4484,14 @@ def verify_and_stage(
     pin_record: Mapping[str, Any],
     run_id: str,
     smoke: bool = False,
+    pin_bytes: bytes | None = None,
 ) -> dict[str, Any]:
     """Copy-hash pack/train/holdout and check them against the staged v2 pin.
 
     Returns evidence fields on success. Raises KickRefused on any failure. Does not
     start training or POST kickoff. No MANIFEST-only or ticket fallback. Never fetches.
+    The verified pin bytes are written to ``run_private/cam-pin-v2.json`` so the
+    launcher never takes ``pin_path`` from the kick POST body.
     """
     _refuse_skip_env()
     _refuse_pin_env()
@@ -4163,6 +4517,8 @@ def verify_and_stage(
                 _refuse(child.name, "readable regular file", f"OSError:{exc.errno}")
     except OSError as exc:
         _refuse("sidecar", "readable jsonl", f"OSError:{exc.errno}")
+    if type(pin_bytes) is bytes:
+        need += len(pin_bytes)
     # Staged copies plus sealed memfds share the tmpfs (shmem).
     _require_run_private_capacity(run_private, need * 2)
 
@@ -4171,6 +4527,9 @@ def verify_and_stage(
     prev_copy_fd = _COPY_DIR_FD
     _COPY_DIR_FD = copy_dir_fd
     try:
+        if type(pin_bytes) is not bytes or not pin_bytes:
+            _refuse("cam-pin", "staged v2 pin bytes", "missing")
+        _stage_verified_pin_bytes(run_private, pin_bytes)
         manifest_dest = run_private / MANIFEST_FILE
         manifest_sha = _copy_and_hash(
             _regular_file_in_pack(pack_root, MANIFEST_FILE), manifest_dest, MANIFEST_FILE
@@ -4203,6 +4562,22 @@ def verify_and_stage(
                 "cam-pin.reserved_content_uuids_min_rows",
                 RESERVED_CONTENT_UUIDS_MIN_ROWS,
                 claimed_min,
+            )
+        claimed_manifest = pin.get("sha256_manifest")
+        if claimed_manifest != manifest_sha:
+            _refuse("cam-pin.sha256_manifest", manifest_sha, claimed_manifest)
+        try:
+            content_uuid.require_near_dup_tokenizer_version(
+                pin.get("near_dup_tokenizer_version")
+            )
+        except content_uuid.ContentUuidError as exc:
+            _refuse(exc.field, exc.expected, exc.actual)
+        claimed_tok_sha = pin.get("near_dup_tokenizer_sha256")
+        if claimed_tok_sha != content_uuid.NEAR_DUP_TOKENIZER_SHA256:
+            _refuse(
+                "cam-pin.near_dup_tokenizer_sha256",
+                content_uuid.NEAR_DUP_TOKENIZER_SHA256,
+                claimed_tok_sha,
             )
 
         computed_shas: dict[str, str] = {}
@@ -4776,6 +5151,32 @@ def _recheck_copies(
         _refuse(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
 
 
+def probe_sealed_code_pins(
+    *,
+    root: Path,
+    pin: Mapping[str, Any],
+    run_id: str,
+) -> Any:
+    """Production caller of ``launch_sealed_child``. Refuses drifted CODE_PINS.
+
+    ``helper_ft_kickoff`` imports this module at top level, so the sealed-child
+    launcher is imported here only for this production probe.
+    """
+    import helper_ft_kickoff as _kickoff  # circular: helper_ft_kickoff imports this module
+
+    try:
+        proc = _kickoff.launch_sealed_child(root=root, pin=pin, run_id=run_id)
+    except KickRefused:
+        raise
+    if proc.returncode != 0 or "HELPER_FT_SEALED_OK" not in (proc.stdout or ""):
+        _refuse(
+            "cam-pin.code_pins",
+            "sealed child HELPER_FT_SEALED_OK",
+            "sealed child refused",
+        )
+    return proc
+
+
 def kick(
     pack_dir: Path,
     *,
@@ -4860,7 +5261,8 @@ def kick(
         persist()
         if type(run_id) is not str or not run_id:
             _refuse("run-id", "present", "missing")
-        pin_record = load_staged_v2_pin(pin_path, run_id=run_id)
+        pin_bytes = _read_staged_v2_pin_bytes(pin_path)
+        pin_record, _payload = _parse_staged_v2_pin_bytes(pin_bytes, run_id=run_id)
         try:
             cam_pin_spec.verify_code_pins_match(pin_record["code_pins"])
         except cam_pin_spec.CamPinError as exc:
@@ -4876,6 +5278,7 @@ def kick(
             pin_record=pin_record,
             run_id=run_id,
             smoke=smoke,
+            pin_bytes=pin_bytes,
         )
         evidence.update(staged)
         evidence["run_id"] = run_id
@@ -4911,11 +5314,9 @@ def kick(
             verified["manifest"] = _verify_manifest_copy(run_private, manifest_sha)
         sealed_fds = seal_verified_buffers(verified)
         fd_paths = trainer_fd_paths(sealed_fds)
-        local_fd_paths = trainer_local_fd_paths(sealed_fds)
-        trainer_config = {"host": evidence["host"], "paths": fd_paths}
+        trainer_config = {"host": evidence["host"]}
         trainer_argv = build_trainer_argv(fd_paths)
         evidence["trainer_config"] = trainer_config
-        evidence["trainer_argv"] = trainer_argv
         persist()
         if not smoke:
             kick_event = {
@@ -4927,6 +5328,7 @@ def kick(
             kick_event.update(_entrypoint_event_fields(evidence))
             _post_hq_event("kick", kick_event)
         hook_evidence = dict(evidence)
+        hook_evidence.pop("trainer_argv", None)
         body = {
             "mode": "helper-ft-smoke" if smoke else "helper-ft",
             "pack_id": evidence["pack_id"],
@@ -4937,20 +5339,17 @@ def kick(
             "pin": dict(evidence["pin"]),
             "run_private_dir": evidence["run_private_dir"],
             "paths": dict(staged_paths),
-            "trainer_config": trainer_config,
-            "trainer_argv": trainer_argv,
+            "trainer_config": dict(trainer_config),
             "evidence": hook_evidence,
             "evidence_path": evidence["evidence_path"],
             "run_id": run_id,
             "checked_at": evidence["checked_at"],
-            "pin_path": str(pin_path) if pin_path is not None else None,
         }
         if smoke:
             body["smoke"] = True
         with guard_trainer_fd_writes(fd_paths, evidence["pin"]):
             if kickoff is not None:
                 hook_body = dict(body)
-                hook_body["paths"] = dict(local_fd_paths)
                 result = kickoff(hook_body)
                 if not isinstance(result, dict) or result.get("ok") is not True:
                     if isinstance(result, dict) and result.get("field"):

@@ -579,15 +579,9 @@ def handle_train_kickoff(
         root = kick_helper_ft._require_run_private_dir(Path(run_private))
     except kick_helper_ft.KickRefused as exc:
         return _bad(exc.field, exc.expected, exc.actual)
-    manifest = _read_run_private_manifest(root)
-    if manifest.get("ok") is False and "field" in manifest:
-        return manifest
-    if manifest.get("pack_id") != pack_id:
-        return _bad("pack_id", pack_id, manifest.get("pack_id"))
-    pin_ref = body.get("pin_path")
-    if pin_ref is None or pin_ref == "":
-        candidate = root / kick_helper_ft.STAGED_PIN_NAME
-        pin_ref = str(candidate) if candidate.is_file() else None
+    body.pop("pin_path", None)
+    candidate = root / kick_helper_ft.STAGED_PIN_NAME
+    pin_ref = str(candidate) if candidate.is_file() else None
     if pin_ref is None or pin_ref == "":
         return _bad("cam-pin", "staged v2 pin fd or path under run_private_root", "missing")
     staged = require_staged_v2_pin(pin_ref, pack_id, run_id)
@@ -604,6 +598,23 @@ def handle_train_kickoff(
         return _bad("evidence.pin", hq_id, ev_id)
     fetched_pin = {"ok": True, "pin": hq_pin, "source": PIN_SOURCE, "staged": True}
     evidence["kickoff_pin_fetch"] = fetched_pin
+    pin_root = (
+        Path(cam_pin_spec.PINNED_COPY_ROOT)
+        if cam_pin_spec.PINNED_COPY_ROOT is not None
+        else cam_pin_spec.code_pins_root()
+    )
+    try:
+        cam_pin_spec.verify_code_pins_match(hq_pin["code_pins"], root=pin_root)
+        sealed_pins = seal_code_pins(hq_pin["code_pins"], root=pin_root)
+        for fd in sealed_pins.values():
+            kick_helper_ft._close_quietly(fd)
+        kick_helper_ft.probe_sealed_code_pins(
+            root=pin_root, pin=hq_pin, run_id=run_id
+        )
+    except cam_pin_spec.CamPinError as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
+    except kick_helper_ft.KickRefused as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
     claimed_paths = body.get("paths")
     if isinstance(claimed_paths, dict):
         pack_dir_claim = claimed_paths.get("pack_dir")
@@ -614,9 +625,49 @@ def handle_train_kickoff(
     sealed_fds: dict[str, int] = {}
     verified_bufs: dict[str, bytes] = {}
     manifest_shas: dict[str, str] = {}
+    manifest: dict[str, Any] = {}
     try:
         dir_fd = kick_helper_ft._open_dir_nofollow(str(root))
         try:
+            try:
+                man_fd = os.open(
+                    MANIFEST_FILE,
+                    kick_helper_ft._open_flags_read(),
+                    dir_fd=dir_fd,
+                )
+            except OSError as exc:
+                return _bad(MANIFEST_FILE, "readable regular file", f"OSError:{exc.errno}")
+            held_fds["manifest"] = man_fd
+            try:
+                man_buf = kick_helper_ft._read_fd_bytes(man_fd)
+                try:
+                    os.lseek(man_fd, 0, os.SEEK_SET)
+                except OSError:
+                    pass
+            except OSError as exc:
+                return _bad(MANIFEST_FILE, "readable regular file", f"OSError:{exc.errno}")
+            verified_bufs["manifest"] = man_buf
+            try:
+                man_text = man_buf.decode("utf-8")
+            except UnicodeDecodeError:
+                return _bad(MANIFEST_FILE, "utf-8 text", "invalid encoding")
+            try:
+                parsed_manifest = json.loads(
+                    man_text, object_pairs_hook=_no_duplicate_manifest_keys
+                )
+            except ValueError as exc:
+                if "duplicate" in str(exc):
+                    return _bad(MANIFEST_FILE, "unique keys", str(exc))
+                return _bad(MANIFEST_FILE, "valid JSON object", "invalid JSON")
+            if not isinstance(parsed_manifest, dict):
+                return _bad(MANIFEST_FILE, "object", type(parsed_manifest).__name__)
+            manifest = parsed_manifest
+            if manifest.get("pack_id") != pack_id:
+                return _bad("pack_id", pack_id, manifest.get("pack_id"))
+            man_digest = hashlib.sha256(man_buf).hexdigest()
+            claimed_manifest = hq_pin.get("sha256_manifest")
+            if claimed_manifest != man_digest:
+                return _bad("cam-pin.sha256_manifest", man_digest, claimed_manifest)
             for sha_field, filename, manifest_rows_field, pin_rows_field in ARTIFACTS:
                 req = _require_sha(sha_field, body.get(sha_field))
                 if isinstance(req, dict):
@@ -670,24 +721,6 @@ def handle_train_kickoff(
                 if actual != req:
                     return _bad(sha_field, req, actual)
                 verified_bufs[path_key] = buf
-            try:
-                man_fd = os.open(
-                    MANIFEST_FILE,
-                    kick_helper_ft._open_flags_read(),
-                    dir_fd=dir_fd,
-                )
-            except OSError as exc:
-                return _bad(MANIFEST_FILE, "readable regular file", f"OSError:{exc.errno}")
-            held_fds["manifest"] = man_fd
-            try:
-                man_buf = kick_helper_ft._read_fd_bytes(man_fd)
-                try:
-                    os.lseek(man_fd, 0, os.SEEK_SET)
-                except OSError:
-                    pass
-            except OSError as exc:
-                return _bad(MANIFEST_FILE, "readable regular file", f"OSError:{exc.errno}")
-            verified_bufs["manifest"] = man_buf
         finally:
             kick_helper_ft._close_quietly(dir_fd)
         try:
@@ -708,11 +741,13 @@ def handle_train_kickoff(
         trainer_config = {"host": host, "paths": fd_paths}
         trainer_argv = kick_helper_ft.build_trainer_argv(fd_paths)
         launch_body = dict(body)
+        launch_body.pop("pin_path", None)
         launch_body["paths"] = fd_paths
         launch_body["trainer_config"] = trainer_config
         launch_body["trainer_argv"] = trainer_argv
         ev_paths = evidence.get("paths") if isinstance(evidence.get("paths"), dict) else {}
         launch_evidence = dict(evidence)
+        launch_evidence.pop("private_copy_shas", None)
         launch_evidence["paths"] = fd_paths
         launch_evidence["run_private_dir"] = str(root.resolve())
         if isinstance(ev_paths, dict) and ev_paths.get("pack_dir"):
@@ -743,8 +778,6 @@ def handle_train_kickoff(
                 if smoke:
                     record["smoke"] = True
                 public = kick_helper_ft._public_integrity_record(record)
-                if isinstance(evidence.get("private_copy_shas"), dict):
-                    public["private_copy_shas"] = dict(evidence["private_copy_shas"])
                 try:
                     sealed = kick_helper_ft.write_integrity_evidence_held(public, ckpt_path)
                 except kick_helper_ft.KickRefused as exc:

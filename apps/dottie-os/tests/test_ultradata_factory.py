@@ -11,6 +11,7 @@ import ast
 import base64
 import decimal
 import hashlib
+import hmac
 import importlib.util
 import json
 import multiprocessing
@@ -499,6 +500,7 @@ def _write_helper_pack(dest: Path) -> dict:
         "consent_champion_false": True,
     }
     (dest / "MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    manifest["sha256_manifest"] = kick_helper_ft.sha256_file(dest / "MANIFEST.json")
     return manifest
 
 
@@ -692,7 +694,18 @@ def _cam_pin(manifest: dict, **overrides: object) -> dict:
         pin["reserved_content_uuids_sha256"] = kick_helper_ft.RESERVED_CONTENT_UUIDS_SHA256
     if "reserved_content_uuids_min_rows" not in overrides:
         pin["reserved_content_uuids_min_rows"] = kick_helper_ft.RESERVED_CONTENT_UUIDS_MIN_ROWS
+    if "sha256_manifest" not in overrides:
+        pin["sha256_manifest"] = manifest.get("sha256_manifest") or ("00" * 32)
+    if "near_dup_tokenizer_version" not in overrides:
+        pin["near_dup_tokenizer_version"] = content_uuid.NEAR_DUP_TOKENIZER_VERSION
+    if "near_dup_tokenizer_sha256" not in overrides:
+        pin["near_dup_tokenizer_sha256"] = content_uuid.NEAR_DUP_TOKENIZER_SHA256
     pin.update(overrides)
+    pins = pin.get("code_pins")
+    if isinstance(pins, dict) and "near_dup_tokenizer_sha256" not in overrides:
+        pinned_tok = pins.get(content_uuid._NEAR_DUP_TOKENIZER_REL)
+        if type(pinned_tok) is str:
+            pin["near_dup_tokenizer_sha256"] = pinned_tok
     if "head" not in overrides and type(pin.get("git_commit")) is str:
         pin["head"] = pin["git_commit"]
     if "not_after" in overrides and "expires_at" not in overrides:
@@ -773,8 +786,16 @@ def _refresh_hashes(dest: Path, **overrides: object) -> dict:
     manifest["train_rows"] = sum(1 for line in train_path.read_text(encoding="utf-8").splitlines() if line.strip())
     manifest["holdout_rows"] = sum(1 for line in hold_path.read_text(encoding="utf-8").splitlines() if line.strip())
     manifest.update(overrides)
+    manifest.pop("sha256_manifest", None)
     (dest / "MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    manifest["sha256_manifest"] = kick_helper_ft.sha256_file(dest / "MANIFEST.json")
     return manifest
+
+
+def _with_current_manifest_sha(dest: Path, manifest: dict) -> dict:
+    updated = dict(manifest)
+    updated["sha256_manifest"] = kick_helper_ft.sha256_file(dest / "MANIFEST.json")
+    return updated
 
 
 def _flip_one_ascii_byte(path: Path) -> None:
@@ -1191,15 +1212,13 @@ class HelperFtIntegrityTests(unittest.TestCase):
             self.assertFalse(_is_held_trainer_fd(path), path)
             self.assertTrue(str(Path(path).resolve()).startswith(str(run_private)), path)
             self.assertNotEqual(Path(run_private).resolve(), dest.resolve())
-        trainer_fds = kickoff_body["trainer_config"]["paths"]
-        self.assertNotEqual(trainer_fds, kickoff_body["paths"])
-        for path in trainer_fds.values():
-            self.assertTrue(_is_held_trainer_fd(path), path)
-        self.assertEqual(kickoff_body["trainer_argv"], kick_helper_ft.build_trainer_argv(trainer_fds))
-        self.assertEqual(on_disk["trainer_argv"], kickoff_body["trainer_argv"])
+        dumped_kick = json.dumps(kickoff_body, default=str)
+        self.assertNotIn("/proc/self/fd", dumped_kick)
+        self.assertNotIn("/dev/fd/", dumped_kick)
+        self.assertNotIn("paths", kickoff_body.get("trainer_config") or {})
+        self.assertNotIn("trainer_argv", kickoff_body)
         self.assertEqual(rec["status"], "MATCH")
         self.assertEqual(rec["host"], on_disk["host"])
-        self.assertEqual(rec["paths"], trainer_fds)
         self.assertEqual(rec["computed_shas"], on_disk["computed_shas"])
         self.assertTrue(rec["match"])
 
@@ -1285,6 +1304,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             del manifest["sha256_train"]
             manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            self._pin(_with_current_manifest_sha(dest, original))
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest, start_training=start)
             rc = kick_helper_ft.main(_cli_args(dest))
@@ -1306,20 +1326,22 @@ class HelperFtIntegrityTests(unittest.TestCase):
             dest.mkdir()
             ticket = _write_helper_pack(dest)
             self._pin(ticket)
+            pinned_manifest_sha = ticket["sha256_manifest"]
             pack = dest / "curated_pack_v2.jsonl"
             _flip_one_ascii_byte(pack)
             host_manifest = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
             host_manifest["sha256_pack"] = kick_helper_ft.sha256_file(pack)
             (dest / "MANIFEST.json").write_text(json.dumps(host_manifest, indent=2) + "\n", encoding="utf-8")
+            rewritten_manifest_sha = kick_helper_ft.sha256_file(dest / "MANIFEST.json")
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest, start_training=start)
             rc = kick_helper_ft.main(_cli_args(dest))
         self.assertEqual(started, [])
         self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(rc, 1)
-        self.assertEqual(ctx.exception.field, "sha256_pack")
-        self.assertEqual(ctx.exception.expected, ticket["sha256_pack"])
-        self.assertEqual(ctx.exception.actual, host_manifest["sha256_pack"])
+        self.assertEqual(ctx.exception.field, "cam-pin.sha256_manifest")
+        self.assertEqual(ctx.exception.expected, rewritten_manifest_sha)
+        self.assertEqual(ctx.exception.actual, pinned_manifest_sha)
         self.assertNotEqual(ctx.exception.expected, ctx.exception.actual)
 
     def test_swap_after_check_does_not_affect_training(self) -> None:
@@ -1403,15 +1425,17 @@ class HelperFtIntegrityTests(unittest.TestCase):
             dest.mkdir()
             manifest = _write_helper_pack(dest)
             self._pin(manifest)
+            pinned_manifest_sha = manifest["sha256_manifest"]
             host = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
             host["sha256_pack"] = "a" * 64
             (dest / "MANIFEST.json").write_text(json.dumps(host, indent=2) + "\n", encoding="utf-8")
+            rewritten_manifest_sha = kick_helper_ft.sha256_file(dest / "MANIFEST.json")
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
-        self.assertEqual(ctx.exception.field, "sha256_pack")
-        self.assertEqual(ctx.exception.expected, manifest["sha256_pack"])
-        self.assertEqual(ctx.exception.actual, "a" * 64)
+        self.assertEqual(ctx.exception.field, "cam-pin.sha256_manifest")
+        self.assertEqual(ctx.exception.expected, rewritten_manifest_sha)
+        self.assertEqual(ctx.exception.actual, pinned_manifest_sha)
 
     def test_pin_for_different_pack_id_refuses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1803,6 +1827,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             host = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
             host["rows"] = 99
             (dest / "MANIFEST.json").write_text(json.dumps(host, indent=2) + "\n", encoding="utf-8")
+            self._pin(_with_current_manifest_sha(dest, manifest))
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
@@ -1822,6 +1847,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
                     host = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
                     host["train_rows"] = bad
                     (dest / "MANIFEST.json").write_text(json.dumps(host, indent=2) + "\n", encoding="utf-8")
+                    self._pin(_with_current_manifest_sha(dest, manifest))
                     with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                         kick_helper_ft.kick(dest)
                 self.assertEqual(self.kickoff_calls, [])
@@ -1837,6 +1863,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             host = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
             del host["holdout_rows"]
             (dest / "MANIFEST.json").write_text(json.dumps(host, indent=2) + "\n", encoding="utf-8")
+            self._pin(_with_current_manifest_sha(dest, manifest))
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(ctx.exception.field, "holdout_rows")
@@ -3175,6 +3202,9 @@ class HelperFtCritic3dacTests(unittest.TestCase):
                         "rows_holdout": 0,
                         "reserved_content_uuids_sha256": kick_helper_ft.RESERVED_CONTENT_UUIDS_SHA256,
                         "reserved_content_uuids_min_rows": kick_helper_ft.RESERVED_CONTENT_UUIDS_MIN_ROWS,
+                        "sha256_manifest": "44" * 32,
+                        "near_dup_tokenizer_version": content_uuid.NEAR_DUP_TOKENIZER_VERSION,
+                        "near_dup_tokenizer_sha256": "11" * 32,
                     }
                 ),
                 encoding="utf-8",
@@ -3357,18 +3387,16 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(len(captured), 1)
         self.assertEqual(set(body["paths"]), {"pack", "train", "holdout", "manifest"})
         self.assertNotIn("pack_dir", body["paths"])
-        trainer_fds = body["trainer_config"]["paths"]
-        self.assertNotEqual(trainer_fds, body["paths"])
-        self.assertEqual(body["trainer_argv"], kick_helper_ft.build_trainer_argv(trainer_fds))
+        dumped_kick = json.dumps(body, default=str)
+        self.assertNotIn("/proc/self/fd", dumped_kick)
+        self.assertNotIn("/dev/fd/", dumped_kick)
+        self.assertNotIn("paths", body.get("trainer_config") or {})
+        self.assertNotIn("trainer_argv", body)
         for path in body["paths"].values():
             self.assertFalse(_is_held_trainer_fd(path), path)
-        for path in (*trainer_fds.values(), *body["trainer_argv"][1::2]):
-            self.assertTrue(_is_held_trainer_fd(path), path)
-            self.assertFalse(str(path).startswith(str(dest.resolve()) + os.sep))
-        self.assertEqual(rec["paths"], trainer_fds)
-        self.assertEqual(rec["paths"], evidence["paths"])
-        self.assertNotEqual(run_private, dest.resolve())
+            self.assertTrue(str(Path(path).resolve()).startswith(str(run_private)), path)
         self.assertEqual(rec["host"], evidence["host"])
+        self.assertNotEqual(run_private, dest.resolve())
         self.assertEqual(rec["host"], socket.gethostname())
         self.assertEqual(rec["status"], "MATCH")
         self.assertEqual(rec["computed_shas"], evidence["computed_shas"])
@@ -5299,7 +5327,7 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
                     manifest = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
                     self.assertTrue(manifest.get("not_for_train"))
                     self.assertTrue(manifest.get("eval_only"))
-                    self._pin(manifest)
+                    self._pin(_with_current_manifest_sha(dest, manifest))
                     got = "accept"
                     field = ""
                     try:
@@ -5757,18 +5785,23 @@ class HelperFtLeakGateSyntheticTests(unittest.TestCase):
             self._pin(manifest)
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
-        self.assertEqual(ctx.exception.field, "state.leak")
-        self.assertTrue(any("content" in str(item) for item in ctx.exception.actual))
+        # v1 fail-closed: list state.message is not tokenizable, so the row is
+        # refused before leak-gate. The leak never reaches training.
+        self.assertEqual(ctx.exception.field, "near_dup_tokens")
+        self.assertTrue(
+            any("no tokenizable state.message" in str(item) for item in ctx.exception.actual)
+        )
 
     def test_non_user_message_role_uncorrelated_twin_accepted(self) -> None:
         actions = ["execute", "execute", "halt", "halt"]
         rows = [_row(rid=f"msg-twin-{idx}", action=action) for idx, action in enumerate(actions)]
         for row in rows:
             row["state"] = {
-                "message": [
+                "message": f"do the task {row['id']}",
+                "messages": [
                     {"role": "user", "content": f"do the task {row['id']}"},
                     {"role": "assistant", "content": "ack"},
-                ]
+                ],
             }
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -6676,6 +6709,48 @@ class HelperFtNearDupTokenizerTests(unittest.TestCase):
                 content_uuid._load_mill_near_dup_tokenizer()
         self.assertEqual(ctx.exception.field, "near_dup_tokenizer")
         self.assertIn("missing", str(ctx.exception).lower())
+
+    def test_v2_tokenizer_slot_is_fail_closed_placeholder(self) -> None:
+        with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+            content_uuid.require_near_dup_tokenizer_version("v2")
+        self.assertEqual(ctx.exception.field, "near_dup_tokenizer.version")
+        self.assertIn("placeholder", str(ctx.exception.actual).lower())
+        with self.assertRaises(content_uuid.ContentUuidError) as ctx2:
+            content_uuid._load_mill_near_dup_tokenizer(version="v2")
+        self.assertEqual(ctx2.exception.field, "near_dup_tokenizer.version")
+        self.assertFalse((LAB / "neardup_tokens-v2.py").is_file())
+        self.assertEqual(
+            content_uuid.NEAR_DUP_TOKENIZER_SHA256,
+            "50d5015a051832608391208b7fc3f48259d6e94443213bb46143a06aa2a4f173",
+        )
+        self.assertEqual(
+            content_uuid.NEAR_DUP_GOLDEN_SHA256,
+            "69609b85cb779a57f071aabc4a94af300f106ea04617d956135d267454d4b7bc",
+        )
+
+    def test_no_tokenizable_message_is_refused(self) -> None:
+        with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+            content_uuid.near_dup_tokens({"state": {"text": "hello"}})
+        self.assertEqual(ctx.exception.field, "near_dup_tokens")
+        with self.assertRaises(content_uuid.ContentUuidError):
+            content_uuid.near_dup_tokens({"state": {"message": ["not", "str"]}})
+        with self.assertRaises(content_uuid.ContentUuidError):
+            content_uuid.near_dup_tokens({"prompt": "no state"})
+
+    def test_no_text_sentinel_is_refused(self) -> None:
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+
+        class NoText:
+            pass
+
+        mill.NO_TEXT = NoText()
+        mill.message_tokens = lambda _message: mill.NO_TEXT
+        with patch.object(
+            content_uuid, "_load_mill_near_dup_tokenizer", return_value=mill
+        ):
+            with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+                content_uuid.near_dup_tokens({"state": {"message": "hello world"}})
+        self.assertEqual(ctx.exception.actual, "NO_TEXT")
 
     def test_mill_cli_verify_golden_file(self) -> None:
         mill = LAB / "neardup_tokens-v1.py"
@@ -7650,6 +7725,9 @@ class HelperFtK1PinV2Tests(unittest.TestCase):
             "head": "ab" * 20,
             "reserved_content_uuids_sha256": kick_helper_ft.RESERVED_CONTENT_UUIDS_SHA256,
             "reserved_content_uuids_min_rows": kick_helper_ft.RESERVED_CONTENT_UUIDS_MIN_ROWS,
+            "sha256_manifest": "44" * 32,
+            "near_dup_tokenizer_version": content_uuid.NEAR_DUP_TOKENIZER_VERSION,
+            "near_dup_tokenizer_sha256": "11" * 32,
             "rows_total": 0,
             "rows_train": 0,
             "rows_holdout": 0,
@@ -8160,6 +8238,244 @@ class HelperFtCodePinsTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.field, "cam-pin.format")
         self.assertEqual(ctx.exception.actual, cam_pin_spec.PIN_FORMAT_V1)
+
+
+class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
+    """HMAC fingerprints, MIN_ROWS=250, B7, group-key canonical, K1 launch refuse."""
+
+    def tearDown(self) -> None:
+        kick_helper_ft.reset_hmac_key_state()
+        content_uuid.reset_kick_near_dup_fingerprints()
+        cam_pin_spec.clear_pinned_copy_trust()
+
+    def _hmac_key_file(self, directory: Path, key_id: str, material: bytes) -> Path:
+        path = directory / "reserved_near_dup_hmac.key"
+        path.write_bytes(key_id.encode("ascii") + b"\n" + material)
+        os.chmod(path, 0o400)
+        return path
+
+    def test_min_rows_is_n_size(self) -> None:
+        self.assertEqual(kick_helper_ft.RESERVED_CONTENT_UUIDS_MIN_ROWS, 250)
+
+    def test_fingerprint_loader_refuses_plaintext_shingles(self) -> None:
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        msg = "the quick brown fox jumps over the lazy dog"
+        toks = sorted(mill.message_tokens(msg))
+        digest = hashlib.sha256(b"n").hexdigest()
+        key_id = "factory-hmac-test-key"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, b"factory-hmac-material")
+            fps = json.dumps({"content_uuid": digest, "tokens": toks}) + "\n"
+            fps_path = root / "fps.jsonl"
+            fps_path.write_text(fps, encoding="utf-8")
+            with patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)
+            ), patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.load_reserved_near_dup_fingerprints(
+                        fps_path, hashlib.sha256(fps.encode()).hexdigest()
+                    )
+        self.assertIn("tokens", ctx.exception.field)
+
+    def test_fingerprint_loader_accepts_hmac_and_refuses_empty(self) -> None:
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        msg = "synthetic n message number one"
+        shingles = mill.message_tokens(msg)
+        key_id = "factory-hmac-test-key"
+        material = b"factory-hmac-material-not-logged"
+        digest = hashlib.sha256(b"n-hmac").hexdigest()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, material)
+            hmacs = sorted(
+                hmac.new(material, tok.encode("utf-8"), hashlib.sha256).hexdigest()
+                for tok in shingles
+            )
+            live = (
+                json.dumps(
+                    {
+                        "content_uuid": digest,
+                        "id": "n1",
+                        "hmac_sha256": hmacs,
+                        "key_id": key_id,
+                        "tokenizer_version": "v1",
+                    }
+                )
+                + "\n"
+            )
+            empty = (
+                json.dumps(
+                    {
+                        "content_uuid": digest,
+                        "id": "n1",
+                        "hmac_sha256": [],
+                        "key_id": key_id,
+                        "tokenizer_version": "v1",
+                    }
+                )
+                + "\n"
+            )
+            fps_path = root / "fps.jsonl"
+            fps_path.write_text(live, encoding="utf-8")
+            with patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)
+            ), patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                found = kick_helper_ft.load_reserved_near_dup_fingerprints(
+                    fps_path, hashlib.sha256(live.encode()).hexdigest()
+                )
+                self.assertEqual(set(found), {digest})
+                self.assertEqual(found[digest][1], frozenset(hmacs))
+                fps_path.write_text(empty, encoding="utf-8")
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.load_reserved_near_dup_fingerprints(
+                        fps_path, hashlib.sha256(empty.encode()).hexdigest()
+                    )
+                self.assertIn("hmac_sha256", ctx.exception.field)
+
+    def test_hmac_key_refuses_wrong_mode_and_key_id(self) -> None:
+        key_id = "factory-hmac-test-key"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "k"
+            path.write_bytes(key_id.encode("ascii") + b"\nsecret")
+            os.chmod(path, 0o600)
+            with patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.load_reserved_near_dup_hmac_key(path, key_id)
+                self.assertEqual(ctx.exception.field, "reserved_near_dup_hmac.key")
+            os.chmod(path, 0o400)
+            with patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx2:
+                    kick_helper_ft.load_reserved_near_dup_hmac_key(path, "other-id")
+                self.assertEqual(ctx2.exception.field, "reserved_near_dup_hmac.key_id")
+                self.assertNotIn("secret", str(ctx2.exception))
+
+    def test_no_message_row_is_not_unscreened(self) -> None:
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        n_msg = "A train leaves Chicago at 3 pm going 60 mph toward Denver"
+        nsha = hashlib.sha256(b"synth-n").hexdigest()
+        fps = {nsha: ("n1", frozenset(mill.message_tokens(n_msg)))}
+        row = _row(rid="t1", action="execute")
+        row["state"] = {"text": n_msg}
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "train.jsonl"
+            p.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            content_uuid.reset_kick_near_dup_fingerprints()
+            content_uuid.install_kick_near_dup_fingerprints(fps)
+            hits = kick_helper_ft.collect_reserved_partition(
+                {}, {"train": str(p)}, {nsha}
+            )
+        self.assertTrue(hits)
+        self.assertTrue(any("near_dup_tokens" in field for field, _msg in hits), hits)
+
+    def test_b7_unclosed_prompt_and_closed_latex(self) -> None:
+        base = _math_uuidless(rid="math-a")
+        cases = (
+            ("Intro\n$ /usr/bin/id", True),
+            ("Intro\n$ perl -e 1", True),
+            ("Intro\n$ cat;id", True),
+            ("Intro\n$ pyth\u03bfn x.py", True),
+            ("Intro\n$ \u3164ls /etc", True),
+            ("Intro\x1c$ ls /etc", True),
+            ("$ ln x = 2 $ at the start", False),
+            ("$ dd = 4 $ here", False),
+        )
+        for text, refuse in cases:
+            row = json.loads(json.dumps(base))
+            row["state"]["message"] = text
+            why = kick_helper_ft._uuidless_shape_mismatch(
+                row, kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
+            )
+            if refuse:
+                self.assertEqual(why, "forbidden string marker", text)
+            else:
+                self.assertIsNone(why, (text, why))
+
+    def test_b7_greek_key_and_criteria_type(self) -> None:
+        base = _math_uuidless(rid="math-a")
+        greek = json.loads(json.dumps(base))
+        greek["questions"]["difficulty"]["criteria"] = {"\u03c4\u03bf\u03bfl": "x"}
+        self.assertIsNotNone(
+            kick_helper_ft._uuidless_shape_mismatch(
+                greek, kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
+            )
+        )
+        for crit in ({"note": "x"}, [{"a": "b"}], 7):
+            row = json.loads(json.dumps(base))
+            row["questions"]["difficulty"]["criteria"] = crit
+            why = kick_helper_ft._uuidless_shape_mismatch(
+                row, kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
+            )
+            self.assertIsNotNone(why, crit)
+
+    def test_group_key_padded_and_both_alias_refused(self) -> None:
+        math_row = _math_uuidless(rid="m1")
+        math_row["source"]["record_id"] = " rec-1"
+        self.assertIsNotNone(kick_helper_ft._group_key_mismatch(math_row))
+        agent = _row(rid="a1", action="execute")
+        agent["trajectory_id"] = "a1 "
+        self.assertIsNotNone(kick_helper_ft._group_key_mismatch(agent))
+        both = _row(rid="a2", action="halt")
+        both["trajectoryid"] = "other"
+        self.assertIsNotNone(kick_helper_ft._group_key_mismatch(both))
+
+    def test_split_leak_canonical_ids(self) -> None:
+        m1 = _math_uuidless(rid="m1")
+        m1["source"]["record_id"] = "rec-1"
+        m2 = _math_uuidless(rid="m2")
+        m2["state"]["message"] = "Factor x^2-1."
+        m2["source"]["record_id"] = "REC-1"
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            write_jsonl(dest / kick_helper_ft.TRAIN_FILE, [m1])
+            write_jsonl(dest / kick_helper_ft.HOLDOUT_FILE, [m2])
+            write_jsonl(dest / kick_helper_ft.PACK_FILE, [m1, m2])
+            shas = {
+                "sha256_train": kick_helper_ft.sha256_file(dest / kick_helper_ft.TRAIN_FILE),
+                "sha256_holdout": kick_helper_ft.sha256_file(
+                    dest / kick_helper_ft.HOLDOUT_FILE
+                ),
+            }
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft._split_soundness(dest, shas)
+        self.assertEqual(ctx.exception.field, "split")
+
+    def test_handle_train_kickoff_refuses_drifted_content_uuid(self) -> None:
+        _start_hq_http_mock(self)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "inbox-pack"
+                dest.mkdir()
+                manifest = _write_helper_pack(dest)
+                _cam_pin(manifest)
+                body = _fresh_kickoff_body(dest, manifest)
+                copy_root = Path(tmp) / "pinned-copy"
+                repo = Path(kick_helper_ft.__file__).resolve().parents[4]
+                for rel in cam_pin_spec.CODE_PINS:
+                    (copy_root / rel).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(repo / rel, copy_root / rel)
+                drifted = copy_root / "apps/dottie-os/scripts/lab/content_uuid.py"
+                drifted.write_bytes(drifted.read_bytes() + b"\n# drifted\n")
+                launched: list[int] = []
+                with patch.object(cam_pin_spec, "PINNED_COPY_ROOT", copy_root):
+                    result = helper_ft_kickoff.handle_train_kickoff(
+                        body,
+                        launch_trainer=lambda _b: launched.append(1)
+                        or {"ok": True, "exit_code": 0},
+                    )
+                self.assertFalse(result.get("ok"))
+                self.assertFalse(launched)
+                self.assertIn("code_pins", str(result.get("field")))
+        finally:
+            _stop_hq_http_mock(self)
 
 
 if __name__ == "__main__":

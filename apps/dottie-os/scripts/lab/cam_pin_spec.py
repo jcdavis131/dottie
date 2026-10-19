@@ -83,6 +83,8 @@ SIGNED_KEYS_V2 = (
     "head",
     "issued_at",
     "key_id",
+    "near_dup_tokenizer_sha256",
+    "near_dup_tokenizer_version",
     "nonce",
     "not_after",
     "not_before",
@@ -92,8 +94,17 @@ SIGNED_KEYS_V2 = (
     "rows_total",
     "rows_train",
     "sha256_holdout",
+    "sha256_manifest",
     "sha256_pack",
     "sha256_train",
+)
+NEAR_DUP_TOKENIZER_VERSION_V1 = "v1"
+NEAR_DUP_TOKENIZER_VERSION_V2 = "v2"
+NEAR_DUP_TOKENIZER_V1_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v1.py"
+# Fail-closed v2 slot. Mill vendoring is held; do not pin a live v2 file here.
+NEAR_DUP_TOKENIZER_V2_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v2.py"
+NEAR_DUP_TOKENIZER_V2_SHA256_PLACEHOLDER = (
+    "NEAR_DUP_TOKENIZER_V2_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
 )
 BINDING_KEYS_V2 = ("lease_owner", "pack_id", "run_id")
 PIN_V2_MAX_LIFETIME = timedelta(hours=24)
@@ -626,6 +637,34 @@ def parse_v2_pin_payload(
             ">= 1",
             record["reserved_content_uuids_min_rows"],
         )
+    record["sha256_manifest"] = require_sha256_hex(
+        "cam-pin.sha256_manifest",
+        payload.get("sha256_manifest"),
+    )
+    tok_ver = payload.get("near_dup_tokenizer_version")
+    if type(tok_ver) is not str or not tok_ver:
+        _refuse("cam-pin.near_dup_tokenizer_version", NEAR_DUP_TOKENIZER_VERSION_V1, "missing")
+    if tok_ver == NEAR_DUP_TOKENIZER_VERSION_V2:
+        _refuse(
+            "cam-pin.near_dup_tokenizer_version",
+            NEAR_DUP_TOKENIZER_VERSION_V1,
+            "v2 placeholder",
+        )
+    if tok_ver != NEAR_DUP_TOKENIZER_VERSION_V1:
+        _refuse(
+            "cam-pin.near_dup_tokenizer_version",
+            NEAR_DUP_TOKENIZER_VERSION_V1,
+            tok_ver,
+        )
+    tok_sha = require_sha256_hex(
+        "cam-pin.near_dup_tokenizer_sha256",
+        payload.get("near_dup_tokenizer_sha256"),
+    )
+    pinned_tok = code_pins.get(NEAR_DUP_TOKENIZER_V1_REL)
+    if pinned_tok != tok_sha:
+        _refuse("cam-pin.near_dup_tokenizer_sha256", pinned_tok, tok_sha)
+    record["near_dup_tokenizer_version"] = tok_ver
+    record["near_dup_tokenizer_sha256"] = tok_sha
     if "recordedBy" in payload:
         record["recordedBy"] = payload["recordedBy"]
     if "stampVerified" in payload:
@@ -1267,6 +1306,9 @@ def pin_identity(pin: dict[str, Any]) -> dict[str, Any]:
             "expires_at": pin.get("expires_at"),
             "reserved_content_uuids_sha256": pin.get("reserved_content_uuids_sha256"),
             "reserved_content_uuids_min_rows": pin.get("reserved_content_uuids_min_rows"),
+            "sha256_manifest": pin.get("sha256_manifest"),
+            "near_dup_tokenizer_version": pin.get("near_dup_tokenizer_version"),
+            "near_dup_tokenizer_sha256": pin.get("near_dup_tokenizer_sha256"),
             "cam_sig": pin.get("cam_sig"),
         }
         for rows_field in ("rows_total", "rows_train", "rows_holdout"):
