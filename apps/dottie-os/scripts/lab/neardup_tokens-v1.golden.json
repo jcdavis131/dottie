@@ -1,0 +1,150 @@
+{
+ "version": "neardup_tokens-v1",
+ "helper": "helpers/neardup_tokens-v1.py",
+ "residue_vectors": [
+  {
+   "key": "0000000000000000000000000000000000000000000000000000000000000000",
+   "residue": 1,
+   "kind": "64-hex (from #90 936b6560 tests)"
+  },
+  {
+   "key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "residue": 5,
+   "kind": "64-hex (from #90 936b6560 tests)"
+  },
+  {
+   "key": "5abd1a7b73f7e83869b2184f86df3b1291553c5f97e81ae3565156520ed90e47",
+   "residue": 7,
+   "kind": "64-hex (from #90 936b6560 tests)"
+  },
+  {
+   "key": "General_Agent_113390",
+   "residue": 8,
+   "in_partition": false,
+   "kind": "raw source.uuid (sha256(uuid.encode()) % 10; no strip/casefold)"
+  },
+  {
+   "key": "Code_Agent_068540",
+   "residue": 7,
+   "in_partition": false,
+   "kind": "raw source.uuid (sha256(uuid.encode()) % 10; no strip/casefold)"
+  },
+  {
+   "key": "General_Agent_009167",
+   "residue": 9,
+   "in_partition": false,
+   "kind": "raw source.uuid (sha256(uuid.encode()) % 10; no strip/casefold)"
+  },
+  {
+   "key": "d3c41f80-31af-4c22-8fc2-97eabe8f401c",
+   "residue": 8,
+   "in_partition": false,
+   "kind": "raw source.uuid (sha256(uuid.encode()) % 10; no strip/casefold)"
+  },
+  {
+   "key": "GENERAL_AGENT_113390",
+   "residue": 3,
+   "in_partition": false,
+   "kind": "raw source.uuid (sha256(uuid.encode()) % 10; no strip/casefold)"
+  },
+  {
+   "key": "mill-golden-raw-uuid-2",
+   "residue": 5,
+   "in_partition": true,
+   "kind": "synthetic raw uuid IN partition"
+  },
+  {
+   "key": "mill-golden-raw-uuid-48",
+   "residue": 5,
+   "in_partition": true,
+   "kind": "synthetic raw uuid IN partition"
+  }
+ ],
+ "normalize_vectors": [
+  {
+   "text": "RM  -F\t/Home/User/x.db",
+   "normalized": "rm -f /home/user/x.db"
+  },
+  {
+   "text": "ｒｍ -ｆ /tmp",
+   "normalized": "rm -f /tmp"
+  },
+  {
+   "text": "git​ push­ --force",
+   "normalized": "git push --force"
+  },
+  {
+   "text": "line1\r\nline2 line3end",
+   "normalized": "line1 line2 line3 end"
+  },
+  {
+   "text": "Straße ﬁle ﻿BOM",
+   "normalized": "strasse file bom"
+  }
+ ],
+ "token_vectors": [
+  {
+   "message": "tool=shell; detail={\"command\": \"rm -f /home/user/*.db\"}",
+   "n_tokens": 17,
+   "token_set_sha256": "c6c4374160498e4710d4f694b6e43d9ad2c460fb590eff51114812a75d14c337"
+  },
+  {
+   "message": "tool=shell; detail={\"command\": \"git reset --hard HEAD~1\"}",
+   "n_tokens": 19,
+   "token_set_sha256": "34810b5d2a78c3a75928394add07cfc938ce6bf3904e12f4210a994531f5edb2"
+  },
+  {
+   "message": "Compute 7*8.",
+   "n_tokens": 8,
+   "token_set_sha256": "c7c335f5d4d1cac556084b2d0a43f0bd2dc3acca55c0d9c8f6394a535aefcf2f"
+  },
+  {
+   "message": "abc",
+   "n_tokens": 1,
+   "token_set_sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  },
+  {
+   "message": "",
+   "n_tokens": 1,
+   "token_set_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+ ],
+ "jaccard_vectors": [
+  {
+   "a": "tool=shell; detail={\"command\": \"rm -f /home/user/*.db\"}",
+   "b": "tool=shell; detail={\"command\": \"RM -F /home/user/*.DB\"}",
+   "jaccard": 1.0,
+   "near_dup": true
+  },
+  {
+   "a": "tool=shell; detail={\"command\": \"git reset --hard HEAD~1\"}",
+   "b": "tool=shell; detail={\"command\": \"git reset --hard HEAD~2\"}",
+   "jaccard": 0.9,
+   "near_dup": true
+  },
+  {
+   "a": "tool=shell; detail={\"command\": \"git push --force origin main\"}",
+   "b": "tool=shell; detail={\"command\": \"git​ push --force origin main\"}",
+   "jaccard": 1.0,
+   "near_dup": true
+  },
+  {
+   "a": "Compute 7*8.",
+   "b": "Factor x^2-1.",
+   "jaccard": 0.0,
+   "near_dup": false
+  },
+  {
+   "a": "tool=shell; detail={\"command\": \"ls -la /home/user\"}",
+   "b": "tool=shell; detail={\"command\": \"cat /etc/passwd | head\"}",
+   "jaccard": 0.0,
+   "near_dup": false
+  },
+  {
+   "a": "abcdefghij",
+   "b": "abcdefgxyz",
+   "jaccard": 0.333333,
+   "near_dup": false
+  }
+ ]
+}

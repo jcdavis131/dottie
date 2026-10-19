@@ -171,7 +171,8 @@ CODE_PINS = (
     "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py",
     "apps/dottie-os/scripts/lab/content_uuid.py",
-    "apps/dottie-os/scripts/lab/near_dup_tokenizer.py",
+    "apps/dottie-os/scripts/lab/neardup_tokens-v1.py",
+    "apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json",
     "apps/dottie-os/trust/cam_pin_ed25519.pub",
     "apps/dottie-os/trust/cam_pin_key_id",
     "apps/dottie-os/trust/reserved_content_uuids.jsonl",
@@ -184,7 +185,7 @@ CODE_PIN_MODULE_NAMES = {
     "helper_ft_kickoff": "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
     "cam_pin_spec": "apps/dottie-os/scripts/lab/cam_pin_spec.py",
     "content_uuid": "apps/dottie-os/scripts/lab/content_uuid.py",
-    "near_dup_tokenizer": "apps/dottie-os/scripts/lab/near_dup_tokenizer.py",
+    "neardup_tokens_v1": "apps/dottie-os/scripts/lab/neardup_tokens-v1.py",
 }
 ORIGIN_MAIN_REF = "origin/main"
 # Twisted Edwards Ed25519 (RFC 8032). Cofactor and canonical checks run in
