@@ -5845,15 +5845,17 @@ class HelperFtContentUuidTests(unittest.TestCase):
             ),
         )
         for key, residue in vectors:
-            self.assertEqual(content_uuid.eval_partition_residue(key), residue)
+            mill = (
+                int(hashlib.sha256(key.encode("ascii")).hexdigest(), 16)
+                % content_uuid.RESERVED_EVAL_PARTITION_N
+            )
+            self.assertEqual(mill, residue)
+            self.assertEqual(content_uuid.eval_partition_residue(key), mill)
             self.assertEqual(
                 content_uuid.in_reserved_eval_partition(key),
-                residue in content_uuid.RESERVED_EVAL_PARTITION_RESIDUES,
+                mill in content_uuid.RESERVED_EVAL_PARTITION_RESIDUES,
             )
-        self.assertNotEqual(
-            int(vectors[2][0], 16) % 10,
-            content_uuid.eval_partition_residue(vectors[2][0]),
-        )
+            self.assertNotEqual(int(key, 16) % 10, mill)
 
     def test_canonical_bytes_are_nfc_sorted_compact_utf8(self) -> None:
         composed = {"state": {"message": "café"}, "questions": {"action": {"type": "choice"}}}

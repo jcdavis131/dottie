@@ -59,11 +59,22 @@ must not silently dedupe:
 
 Usage (Mill)::
 
-    from content_uuid import content_uuid, canonical_content_bytes
+    from content_uuid import (
+        content_uuid,
+        canonical_content_bytes,
+        eval_partition_residue,
+        in_reserved_eval_partition,
+        RESERVED_EVAL_PARTITION_N,
+        RESERVED_EVAL_PARTITION_RESIDUES,
+    )
     python3 content_uuid.py < row.json
     python3 content_uuid.py --jsonl rows.jsonl
     python3 content_uuid.py --check rows.jsonl
     python3 content_uuid.py --check train.jsonl --holdout holdout.jsonl
+
+N membership is ``eval_partition_residue(key) in RESERVED_EVAL_PARTITION_RESIDUES``
+with ``key`` = raw ``source.uuid`` or the lowercase 64-hex ``content_uuid``.
+Never ``int(content_uuid, 16)``.
 """
 from __future__ import annotations
 
@@ -183,11 +194,10 @@ def lookup_near_dup_fingerprint(digest: str) -> tuple[str, frozenset[str]] | Non
 
 
 def eval_partition_residue(key: str) -> int:
-    """Mill reserved-eval residue: ``sha256(ascii key) % n``.
+    """``int(sha256(key.encode('ascii')).hexdigest(), 16) % 10``.
 
-    Used for raw ``source.uuid`` and for the lowercase 64-hex
-    ``content_uuid`` of a uuid-less allowlisted row. Do not treat the
-    content uuid hex itself as the integer.
+    Shared by raw ``source.uuid`` and by a uuid-less row's lowercase
+    64-hex ``content_uuid``. Do not use the content uuid hex as the int.
     """
     digest = hashlib.sha256(key.encode("ascii")).hexdigest()
     return int(digest, 16) % RESERVED_EVAL_PARTITION_N
