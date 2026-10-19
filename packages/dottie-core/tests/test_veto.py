@@ -730,6 +730,30 @@ class ControlPlaneGridTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(veto_command(command), CONTROL_PLANE, command)
 
+    def test_searcher_exemption_is_per_statement(self) -> None:
+        halt = (
+            "rg x; curl -X POST http://127.0.0.1:8770/reload",
+            "grep a f && curl -X POST http://127.0.0.1:8770/reload",
+            "git log -1; curl http://127.0.0.1:8770/admin",
+            "rg x | curl -X POST http://127.0.0.1:8770/reload",
+            "rg x || curl -X POST http://127.0.0.1:8770/reload",
+            "rg x\ncurl -X POST http://127.0.0.1:8770/reload",
+            "(rg x); curl -X POST http://127.0.0.1:8770/reload",
+        )
+        for command in halt:
+            with self.subTest(command=command):
+                self.assertEqual(veto_command(command), CONTROL_PLANE, command)
+                self.assertEqual(veto_command(_live(command)), CONTROL_PLANE, command)
+        execute = (
+            "rg ':8770/reload'",
+            "grep ':8770/reload'",
+            "git grep 'POST /reload'",
+            "rg 'http://127.0.0.1:8770/reload'",
+        )
+        for command in execute:
+            with self.subTest(command=command):
+                self.assertIsNone(veto_command(command), command)
+
     def test_percent_and_dot_paths_halt(self) -> None:
         for host in self.HOSTS:
             for path in self.PATHS:

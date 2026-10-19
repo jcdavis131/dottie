@@ -1252,24 +1252,21 @@ def _control_url_in_word(word: str) -> bool:
     return False
 
 
-def _control_plane_tokens(tokens: list[tuple[str, str]], original: str) -> bool:
-    words = [value for kind, value in tokens if kind == "word"]
+def _is_searcher_words(words: list[str]) -> bool:
     stripped = _strip_wrappers(list(words))
-    head = stripped[0].lower() if stripped else ""
-    if head in _SEARCHERS or (
-        head == "git" and len(stripped) > 1 and stripped[1].lower() in {"grep", "log", "show", "blame"}
-    ):
+    if not stripped:
         return False
-    decoded_orig = percent_decode(original)
-    for kind, value in tokens:
-        if kind != "word":
-            continue
-        if _control_url_in_word(value):
-            return True
-    # Walk decoded original for host/port/path without relying on regex backtracking.
-    text = decoded_orig.replace("\\", "/")
-    lowered = text.lower()
-    # Find admin path occurrences after normalization of each slash-run.
+    head = stripped[0].lower()
+    if head in _SEARCHERS:
+        return True
+    if head == "git" and len(stripped) > 1 and stripped[1].lower() in {"grep", "log", "show", "blame"}:
+        return True
+    return False
+
+
+def _control_plane_in_text(text: str) -> bool:
+    """Host/port/path walk over one statement. Linear; no backtracking."""
+    lowered = percent_decode(text).replace("\\", "/").lower()
     i = 0
     n = len(lowered)
     while i < n:
@@ -1289,6 +1286,28 @@ def _control_plane_tokens(tokens: list[tuple[str, str]], original: str) -> bool:
             i = j
             continue
         i += 1
+    return False
+
+
+def _control_plane_tokens(tokens: list[tuple[str, str]], original: str) -> bool:
+    # Scope the rg/grep/git-log exemption to that statement or pipe stage only.
+    statements = _split_statements(tokens)
+    if not statements:
+        statements = [list(tokens)]
+    for stmt in statements:
+        stages = _pipeline_stages(stmt)
+        if not stages:
+            stages = [stmt]
+        for stage in stages:
+            words = _words(stage)
+            if _is_searcher_words(words):
+                continue
+            for tok in words:
+                if _control_url_in_word(tok):
+                    return True
+            text = " ".join(value for _kind, value in stage)
+            if text and _control_plane_in_text(text):
+                return True
     return False
 
 
