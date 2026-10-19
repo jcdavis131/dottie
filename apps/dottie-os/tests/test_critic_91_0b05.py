@@ -243,9 +243,10 @@ M_CONTROLS = {
     "gitlink_neutral": {"apps/x/vendor": ("gitlink", "b" * 40)},
     "lfs_via_gitattributes_filter": {".gitattributes": b"*.bin filter=lfs diff=lfs merge=lfs -text\n",
                                      "apps/x/rows.bin": ("version https://git-lfs.github.com/spec/v1\n" + LFS_OID).encode()},
+    # r2: fixtures-folder exemption dropped at 0ac5 (Cam ruling); fixture jsonl must refuse.
+    "fixture_jsonl": {"apps/x/fixtures/rows.jsonl": ROWS},
 }
 M_MUST_PASS = {
-    "fixture_jsonl": {"apps/x/fixtures/rows.jsonl": ROWS},
     "png_asset": {"apps/x/assets/logo.png": b"\x89PNG\r\n\x1a\n" + b"\x00" * 32},
     "json_config": {"apps/x/config.json": b'{"a": 1}\n'},
     "plain_txt": {"docs/notes.txt": b"hello\n"},

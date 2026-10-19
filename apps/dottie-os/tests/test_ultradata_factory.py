@@ -4389,14 +4389,44 @@ PACK_GUARD_KNOWN_LEGACY = frozenset(
          '61a55d528b3945f4a488e0ffd077d7bff49d7344f24409d3441a6120004646be'),
     }
 )
-
-# Synthetic critic-tree pin for vendored 0b05 M2. Exact (path, sha256)
-# only; not a folder exemption. No production path is in this set.
-PACK_GUARD_BLOB_PIN_TEST = frozenset(
+# Warn-only CSV-header tripwire. Paper-skill tables are pinned; extras
+# print WARN and never fail CI (accepted leftover bounded by the 3 MiB cap).
+PACK_GUARD_CSV_PIN = frozenset(
     {
-        ("apps/x/fixtures/rows.jsonl",
-         "d023f31446388bb420186f66819c5648e107b829d39aaee6352f23289a8aa999"),
+        (
+            "apps/arxiviq-factory/sources/paper_skills/2609.26458/"
+            "assets/table/table-p0009-006.csv",
+            "66133abef7d8eaf19048faf8a4ca99b08180307b4c15f30e0acf1df3d39e5f76",
+        ),
+        (
+            "apps/arxiviq-factory/sources/paper_skills/2609.26458/"
+            "assets/table/table-p0009-010.csv",
+            "41a26cac36b9beeb90e0db2b06a1fd1cc13752a4004cd8cc2fa8234dc669b774",
+        ),
+        (
+            "apps/arxiviq-factory/sources/paper_skills/2609.26642/"
+            "assets/table/table-p0005-002.csv",
+            "7c97a417bf81dae3361c47f2e2cde17bccbfd3f6b2de696a6b436932343bee0a",
+        ),
+        (
+            "apps/arxiviq-factory/sources/paper_skills/2609.26642/"
+            "assets/table/table-p0015-006.csv",
+            "449f039c5a30fdab6b26a1ecabc4c72f92608ae0cee536bb0fc43b9715ff5002",
+        ),
     }
+)
+PACK_GUARD_CSV_TRIPWIRE_PY = (
+    "import hashlib,sys;"
+    "P=frozenset("
+    f"{tuple(sorted(PACK_GUARD_CSV_PIN))!r}"
+    ");"
+    "[sys.stdout.write('WARN csv tripwire '+p+' '+h+chr(10))"
+    " for rec in sys.stdin.buffer.read().split(bytes([0])) if rec"
+    " for p in [rec.decode('utf-8','surrogateescape')]"
+    " if p.casefold().endswith('.csv')"
+    " for h in [hashlib.sha256(open(p,'rb').read()).hexdigest()]"
+    " if (p,h) not in P];"
+    "sys.exit(0)"
 )
 PACK_GUARD_BLOB_MAX = 3 * 1024 * 1024
 _PACK_GUARD_INNER = r"""
@@ -4488,7 +4518,7 @@ def s26(p):
  if bad(b):return 1
  if isinstance(b,bytes):
   h=hashlib.sha256(b).hexdigest()
-  if (p,h) in PIN or (p,h) in LEG or (p,h) in TP:return 0
+  if (p,h) in PIN or (p,h) in LEG:return 0
  cf=p.casefold()
  ext=any(cf.endswith(e) for e in EXT) or '.jsonl.' in cf or '.ndjson.' in cf
  mag=isinstance(b,bytes) and (b.startswith((GZ,b'BZh',XZ,ZST,SQL,LZ4,Z,LZMA,b'PAR1')) or GZ8 in b)
@@ -4529,9 +4559,6 @@ PACK_GUARD_PATH_PY = (
     ");"
     "LEG=frozenset("
     f"{tuple(sorted(PACK_GUARD_KNOWN_LEGACY))!r}"
-    ");"
-    "TP=frozenset("
-    f"{tuple(sorted(PACK_GUARD_BLOB_PIN_TEST))!r}"
     ");"
     f"CAP={PACK_GUARD_BLOB_MAX};"
     "EXT=('.zip','.tar','.tgz','.7z','.rar','.gz','.bz2','.xz',"
@@ -4630,10 +4657,10 @@ CRITIC_91_F8F1_SHA256 = (
     "4cdf999eef803bd20ee448a3c836230fcf9fe294bf2b3c11a20ffeba081986a0"
 )
 CRITIC_91_0B05_SHA256 = (
-    "36130a164b5130b8404b05986308ad551396cedd02fb17abff6c8f899b4daeaf"
+    "49c11d0e1fd3596f4eefb13737a2d13aa4cc49fa816e481665ee4347a60b4d54"
 )
 CRITIC_91_0AC5_SHA256 = (
-    "ba9182224c1b1f681319768a6734b3403a3ef58007fb26463205229ee43e3474"
+    "182d9dcd264312b7a76de6b79f3d0ffc20edcf41d1859d05b8dcb68ed7cbb2cc"
 )
 LEAKGATE_TRACKED_NAMES = frozenset(
     {
@@ -7538,6 +7565,37 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
                     msg=f"edited {path} must be refused; stdout={proc.stdout!r}",
                 )
                 self.assertIn(path, proc.stdout)
+
+    def test_csv_header_tripwire_warns_only(self) -> None:
+        """Pinned paper-skill CSVs are silent; extras warn; never fails CI."""
+        run = self._run_block()
+        self.assertIn(PACK_GUARD_CSV_TRIPWIRE_PY, run)
+        self.assertEqual(len(PACK_GUARD_CSV_PIN), 4)
+        extras: list[str] = []
+        for path, digest in sorted(PACK_GUARD_CSV_PIN):
+            blob = REPO_ROOT / path
+            self.assertTrue(blob.is_file(), path)
+            self.assertEqual(hashlib.sha256(blob.read_bytes()).hexdigest(), digest)
+        env = _pack_guard_git_env()
+        proc = _run_pack_guard_script(REPO_ROOT, run, env)
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"csv tripwire must not fail CI; stdout={proc.stdout!r}",
+        )
+        for rec in subprocess.check_output(
+            ["git", "ls-files", "-z"], cwd=REPO_ROOT
+        ).split(b"\0"):
+            if not rec:
+                continue
+            rel = rec.decode("utf-8", "surrogateescape")
+            if not rel.casefold().endswith(".csv"):
+                continue
+            digest = hashlib.sha256((REPO_ROOT / rel).read_bytes()).hexdigest()
+            if (rel, digest) not in PACK_GUARD_CSV_PIN:
+                extras.append(rel)
+        if extras:
+            print("WARN csv tripwire extras:", extras)
 
     def test_pack_guard_refuses_blob_over_size_cap(self) -> None:
         """S26 size cap fails closed one byte over 3 MiB, neutral name."""

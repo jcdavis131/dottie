@@ -1,5 +1,10 @@
 """Critic attack suite for dottie#91 @ 0ac51f7e6d3e4f4c25baf308a1582d4c87fead1a (S24 quote-aware scan / S26 content re-attack).
 
+r2 (2026-10-19, Critic ruling (b) at d56d7ca0): csv_rows moves from F to F_ACCEPTED_LEFTOVER - CSV pack rows are
+an accepted inherent leftover bounded by the 3 MiB per-file cap; it is asserted to PASS so any change is visible.
+Every other F case (7z, RAR, gzip-behind, PNG chunks, tar-behind, b64 header/url, hex, comment-first JSONL,
+JSON arrays) must still be REFUSED. Nothing else changed.
+
 Every test asserts the SECURE behaviour; a FAIL is a finding.
 A: S24 controls at 0ac5 (nested quoted }}, '' escapes, YAML quoting/escape rebuilds, folded/literal splits,
    github.<prop> casing/abuse, docker/node local actions) - must stay RED.
@@ -7,10 +12,11 @@ B: S24 gaps - unbraced `if:` expressions are never scanned (github.token / toJSO
 C: S24 over-refusal - read-only github metadata props that should stay GREEN (friction, low).
 D: S24 must-GREEN controls (allowlisted props, digest-pinned docker, folded `$`/`{{` split is not an expr).
 E: S26 controls (zip behind any prefix, cap+1, pure base64, exempt-dir subfolder, zip in exempt dir).
-F: S26 content evasions that must stay refused (csv leftover omitted: tracked paper-skill tables).
-G: S26 exemption scope - exact (path, sha256) only; new files, fixtures dirs, and content swaps refuse.
+F: S26 content evasions that still pass the real guard.
+G: S26 exemption scope - exemption is per folder (new files pass), any */fixtures|fixture/ dir is exempt,
+   and exempt/OKP paths can have their CONTENT swapped for rows.
 H: S26 cap boundary: exactly 3 MiB passes (by design; asserted so a change is visible).
-Run:  WT=/workspace/review/dottie-91/wt-0ac5 python3 -m unittest -v test_critic_91_0ac5
+Run:  WT=/workspace/review/dottie-91/wt-0ac5 python3 -m unittest -v test_critic_91_0ac5_r2
 Read-only w.r.t. GitHub. Temp dirs prefixed critic-91-0ac5- (via 0b05 helpers: critic-91-0b05-). No sockets.
 No holdout / N rows are used; all rows are synthetic.
 """
@@ -161,6 +167,10 @@ F_EVASIONS = {
     "json_array_pretty": {"apps/x/rows.json": json.dumps([{"messages": [{"role": "user", "content": "x"}], "label": "halt"}] * 50, indent=2).encode()},
     "json_array_one_line": {"apps/x/rows.json": json.dumps([{"messages": [], "label": "halt"}] * 50).encode()},
 }
+# r2: Critic ruling (b) - accepted inherent leftover, bounded by the per-file cap. Asserted to PASS.
+F_ACCEPTED_LEFTOVER = {
+    "csv_rows": {"apps/x/rows.csv": b"id,label\n" + b"1,halt\n" * 200},
+}
 G_SCOPE = {
     "new_jsonl_in_exempt_dir": {"apps/ava-factory/data/orchestration/new_rows.jsonl": ROWS},
     "new_gz_in_exempt_dir": {"apps/ava-factory/data/orchestration/new_rows.jsonl.gz": gzip.compress(ROWS)},
@@ -182,6 +192,11 @@ class F_S26Evasions(unittest.TestCase):
         for cid, files in F_EVASIONS.items():
             with self.subTest(case=cid):
                 self.assertNotEqual(B._guard(files), 0, f"{cid} passes pack-guard")
+
+    def test_f_accepted_leftover_passes(self):
+        for cid, files in F_ACCEPTED_LEFTOVER.items():
+            with self.subTest(case=cid):
+                self.assertEqual(B._guard(files), 0, f"{cid}: ACCEPTED_LEFTOVER changed behaviour; re-rule it")
 
 
 class G_S26ExemptionScope(unittest.TestCase):
