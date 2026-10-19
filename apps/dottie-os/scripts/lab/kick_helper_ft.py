@@ -15,14 +15,29 @@ local pin file are refused before hashing or kickoff. After the gate
 passes, this script POSTs ``/train/kickoff``; ``inbox: latest`` is never
 sent. Copies are 0400 in a 0700 directory under a container-private tmpfs
 (``FORGE_RUN_PRIVATE_ROOT``, default ``/run/forge-runner/private``). The
-trainer opens each staged file once with ``O_NOFOLLOW``, hashes that fd,
-compares in constant time to the signed pin, and trains from those bytes
-(no source-pack fallback, no path reopen). The same process on the
-training host waits for the trainer to exit, then re-hashes those recorded
-paths. Completion ``result`` and ``sha256_evidence`` come from the 0400
-evidence file this process wrote, never from scraped stdout. Nonzero trainer
-exit, a signal, or a timeout is ``REFUSED`` even when hashes match. This
-process POSTs a kick event and a completion event to the pinned HQ origin.
+**forge-runner server** creates that default root (mode 0700, euid-owned,
+on the compose tmpfs) before launching this child; this process fails
+closed if the root is missing and never POSTs to create it. r5 sized the
+tmpfs at 16 MiB — enough for dual copies of a tiny pack (~8 MiB) and
+nothing more. Real packs need
+``FORGE_RUN_PRIVATE_RECOMMENDED_BYTES`` (256 MiB) so pack+train+holdout+
+MANIFEST staging plus sealed memfds fit; a pack that exceeds free space
+is refused with ``run_private.capacity``.
+
+Verification finishes **before** the trainer starts. This process opens
+each staged copy with ``O_NOFOLLOW``, requires a regular file, ``nlink==1``,
+euid owner, no group/other write, and ``st_dev`` equal to the tmpfs root,
+hashes that fd, compares in constant time to the signed pin (and
+re-verifies MANIFEST bytes at point of use), then hands the trainer
+sealed memfds (``F_SEAL_WRITE|F_SEAL_SHRINK|F_SEAL_GROW|F_SEAL_SEAL``)
+or held ``O_RDONLY`` fds via ``/proc/self/fd/N`` — never reopenable
+paths. An end-of-training re-hash, if any, is informational and runs
+against those same fds. Completion ``result`` and ``sha256_evidence``
+come from the 0400 evidence file this process wrote, never from scraped
+stdout. Nonzero trainer exit, a signal, or a timeout is ``REFUSED`` even
+when hashes match. This process POSTs a kick event and a completion event
+to the pinned HQ origin. Run-private copies are removed on every path
+(success, refusal, exception, SIGTERM/atexit).
 
 There is no skip flag or skip env var. Does not promote, does not touch serve,
 :8770, champion files, or the LIVE gate.
@@ -30,10 +45,13 @@ There is no skip flag or skip env var. Does not promote, does not touch serve,
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
+import builtins
 import ctypes
 import ctypes.util
 import errno
+import fcntl
 import hashlib
 import hmac
 import json
@@ -41,6 +59,7 @@ import math
 import os
 import re
 import shutil
+import signal
 import socket
 import stat
 import subprocess
@@ -51,11 +70,12 @@ import urllib.error
 import urllib.request
 import uuid
 from collections import Counter, defaultdict
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from datetime import datetime, timezone
+import io
 from io import StringIO
 from pathlib import Path
-from typing import Any, Callable, Mapping, NoReturn
+from typing import Any, Callable, Iterator, Mapping, NoReturn
 
 _LAB = str(Path(__file__).resolve().parent)
 if _LAB not in sys.path:
@@ -83,6 +103,24 @@ FORGE_PINS_SOURCE_COMMIT_ENV = "FORGE_PINS_SOURCE_COMMIT"
 FORGE_RUN_PRIVATE_ROOT_ENV = "FORGE_RUN_PRIVATE_ROOT"
 DEFAULT_FORGE_RUN_PRIVATE_ROOT = "/run/forge-runner/private"
 TMPFS_MAGIC = 0x01021994
+# r5 compose tmpfs is 16 MiB — dual-copy of a tiny pack only. Real packs need 256 MiB.
+FORGE_RUN_PRIVATE_R5_BYTES = 16 * 1024 * 1024
+FORGE_RUN_PRIVATE_RECOMMENDED_BYTES = 256 * 1024 * 1024
+F_ADD_SEALS = getattr(fcntl, "F_ADD_SEALS", 1033)
+F_SEAL_SEAL = getattr(fcntl, "F_SEAL_SEAL", 0x0001)
+F_SEAL_SHRINK = getattr(fcntl, "F_SEAL_SHRINK", 0x0002)
+F_SEAL_GROW = getattr(fcntl, "F_SEAL_GROW", 0x0004)
+F_SEAL_WRITE = getattr(fcntl, "F_SEAL_WRITE", 0x0008)
+MEMFD_SEALS = F_SEAL_WRITE | F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_SEAL
+MFD_CLOEXEC = getattr(os, "MFD_CLOEXEC", 1)
+MFD_ALLOW_SEALING = getattr(os, "MFD_ALLOW_SEALING", 2)
+PROC_SELF_FD_PREFIX = "/proc/self/fd/"
+SHA_FIELD_BY_PATH_KEY = {
+    "pack": "sha256_pack",
+    "train": "sha256_train",
+    "holdout": "sha256_holdout",
+    "manifest": "sha256_manifest",
+}
 ENTRYPOINT_PIN_BASENAMES = ("kick_helper_ft.py", "cam_pin_spec.py", "content_uuid.py")
 PINS_JSON_NAME = "PINS.json"
 PINNED_COPY_DEPTH = 4
@@ -302,6 +340,398 @@ def _refuse(field: str, expected: object, actual: object) -> NoReturn:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+_CLEANUP_PATHS: list[Path] = []
+_CLEANUP_FDS: list[int] = []
+_COPY_DIR_FD: int | None = None
+_CLEANUP_INSTALLED = False
+_PREV_SIGTERM: Any = None
+
+
+def _close_quietly(fd: int) -> None:
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def _cleanup_run_privates() -> None:
+    while _CLEANUP_FDS:
+        _close_quietly(_CLEANUP_FDS.pop())
+    while _CLEANUP_PATHS:
+        path = _CLEANUP_PATHS.pop()
+        try:
+            _force_remove(path)
+        except Exception:
+            pass
+
+
+def _register_run_private_cleanup(path: Path) -> None:
+    _CLEANUP_PATHS.append(Path(path))
+    _install_cleanup_handlers()
+
+
+def _register_held_fd(fd: int) -> int:
+    _CLEANUP_FDS.append(fd)
+    return fd
+
+
+def _sigterm_cleanup(signum: int, frame: Any) -> None:
+    _cleanup_run_privates()
+    previous = _PREV_SIGTERM
+    if callable(previous) and previous not in (signal.SIG_DFL, signal.SIG_IGN):
+        previous(signum, frame)
+        return
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
+
+
+def _install_cleanup_handlers() -> None:
+    global _CLEANUP_INSTALLED, _PREV_SIGTERM
+    if _CLEANUP_INSTALLED:
+        return
+    atexit.register(_cleanup_run_privates)
+    try:
+        _PREV_SIGTERM = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGTERM, _sigterm_cleanup)
+    except (OSError, ValueError):
+        _PREV_SIGTERM = None
+    _CLEANUP_INSTALLED = True
+
+
+def is_proc_self_fd_path(path: object) -> bool:
+    if type(path) is not str or not path:
+        return False
+    if not path.startswith(PROC_SELF_FD_PREFIX):
+        return False
+    tail = path[len(PROC_SELF_FD_PREFIX) :]
+    return tail.isdigit()
+
+
+def _dup_proc_self_fd(path: str) -> int:
+    if not is_proc_self_fd_path(path):
+        _refuse("paths", PROC_SELF_FD_PREFIX, path)
+    try:
+        return os.dup(int(path[len(PROC_SELF_FD_PREFIX) :]))
+    except OSError as exc:
+        _refuse("paths", "held fd", f"OSError:{exc.errno}")
+
+
+def _dir_open_flags() -> int:
+    flags = os.O_RDONLY | os.O_DIRECTORY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    return flags
+
+
+def _open_dir_nofollow(path: str, *, dir_fd: int | None = None) -> int:
+    flags = _dir_open_flags()
+    try:
+        if dir_fd is None:
+            return os.open(path, flags)
+        return os.open(path, flags, dir_fd=dir_fd)
+    except OSError as exc:
+        if getattr(exc, "errno", None) in (errno.ELOOP, getattr(errno, "EPERM", None)):
+            _refuse("run_private_root", "real directory", "symlink")
+        _refuse("run_private_root", "walkable directory", f"OSError:{exc.errno}")
+
+
+def _require_dir_mode(st: os.stat_result, field: str) -> None:
+    if stat.S_ISLNK(st.st_mode):
+        _refuse(field, "real directory", "symlink")
+    if not stat.S_ISDIR(st.st_mode):
+        _refuse(field, "directory", "not a directory")
+    go_write = bool(st.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+    sticky = bool(st.st_mode & stat.S_ISVTX)
+    if go_write and not sticky:
+        _refuse(field, "0700 or sticky-root", oct(stat.S_IMODE(st.st_mode)))
+
+
+def _walk_ancestors_dirfds(path: Path) -> None:
+    """O_DIRECTORY|O_NOFOLLOW walk from ``/``. Sticky-root may be group/other-writable."""
+    abs_path = Path(os.path.abspath(path))
+    parts = abs_path.parts
+    if not parts or parts[0] != "/":
+        _refuse("run_private_root", "absolute path", str(path))
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0))
+    try:
+        _require_dir_mode(os.fstat(fd), "run_private_root")
+        for part in parts[1:]:
+            nxt = _open_dir_nofollow(part, dir_fd=fd)
+            _close_quietly(fd)
+            fd = nxt
+            _require_dir_mode(os.fstat(fd), "run_private_root")
+    finally:
+        _close_quietly(fd)
+
+
+def _dirfd_contained_in(root: Path, path: Path) -> bool:
+    root_real = os.path.realpath(root)
+    path_real = os.path.realpath(path)
+    try:
+        Path(path_real).relative_to(root_real)
+    except ValueError:
+        return False
+    if path_real == root_real:
+        return False
+    try:
+        root_fd = _open_dir_nofollow(str(root))
+    except KickRefused:
+        return False
+    try:
+        root_st = os.fstat(root_fd)
+        current = Path(path_real)
+        while True:
+            try:
+                cur_fd = _open_dir_nofollow(str(current))
+            except KickRefused:
+                return False
+            try:
+                cur_st = os.fstat(cur_fd)
+            finally:
+                _close_quietly(cur_fd)
+            if (cur_st.st_dev, cur_st.st_ino) == (root_st.st_dev, root_st.st_ino):
+                return True
+            parent = current.parent
+            if parent == current:
+                return False
+            current = parent
+    finally:
+        _close_quietly(root_fd)
+
+
+def _tmpfs_free_bytes(path: Path) -> int:
+    try:
+        st = os.statvfs(path)
+    except OSError as exc:
+        _refuse("run_private.capacity", "statvfs", f"OSError:{exc.errno}")
+    return int(st.f_bavail) * int(st.f_frsize or st.f_bsize or 1)
+
+
+def _require_run_private_capacity(root: Path, nbytes: int) -> None:
+    if nbytes <= 0:
+        return
+    free = _tmpfs_free_bytes(root)
+    if nbytes > free:
+        _refuse(
+            "run_private.capacity",
+            f"free={free} recommended={FORGE_RUN_PRIVATE_RECOMMENDED_BYTES}",
+            f"need={nbytes}",
+        )
+
+
+def create_forge_run_private_root() -> Path:
+    """Server-side helper: create ``/run/forge-runner/private`` 0700 on tmpfs.
+
+    The child ``kick()`` path does **not** call this when the default is
+    missing — that stays fail-closed (``run_private_root`` / ``missing``).
+    Forge-runner must mount the tmpfs large enough for real packs
+    (``FORGE_RUN_PRIVATE_RECOMMENDED_BYTES`` = 256 MiB). r5's 16 MiB mount
+    only fits dual copies of a tiny pack.
+    """
+    path = Path(DEFAULT_FORGE_RUN_PRIVATE_ROOT)
+    parent = path.parent
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+        path.mkdir(mode=0o700, exist_ok=True)
+        os.chmod(path, 0o700)
+    except OSError as exc:
+        _refuse("run_private_root", DEFAULT_FORGE_RUN_PRIVATE_ROOT, f"OSError:{exc.errno}")
+    return _require_run_private_root()
+
+
+def _memfd_create(name: str) -> int:
+    if not hasattr(os, "memfd_create"):
+        _refuse("trainer.fd", "memfd_create", "missing")
+    try:
+        return os.memfd_create(name, MFD_CLOEXEC | MFD_ALLOW_SEALING)
+    except OSError as exc:
+        _refuse("trainer.fd", "memfd_create", f"OSError:{exc.errno}")
+
+
+def _write_all(fd: int, buf: bytes, field: str) -> None:
+    view = memoryview(buf)
+    offset = 0
+    try:
+        while offset < len(buf):
+            offset += os.write(fd, view[offset:])
+    except OSError as exc:
+        _refuse(field, "writable memfd", f"OSError:{exc.errno}")
+
+
+def _seal_memfd(fd: int, field: str) -> None:
+    try:
+        fcntl.fcntl(fd, F_ADD_SEALS, MEMFD_SEALS)
+    except OSError as exc:
+        _refuse(field, "F_SEAL_WRITE|F_SEAL_SHRINK|F_SEAL_GROW|F_SEAL_SEAL", f"OSError:{exc.errno}")
+
+
+def seal_verified_buffers(verified: Mapping[str, bytes]) -> dict[str, int]:
+    """Copy verified bytes into sealed memfds. Returns path-key -> fd."""
+    fds: dict[str, int] = {}
+    try:
+        for key, buf in verified.items():
+            field = SHA_FIELD_BY_PATH_KEY.get(key, key)
+            fd = _register_held_fd(_memfd_create(f"helper-ft-{key}"))
+            _write_all(fd, buf, field)
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+            except OSError as exc:
+                _refuse(field, "seekable memfd", f"OSError:{exc.errno}")
+            _seal_memfd(fd, field)
+            fds[key] = fd
+    except KickRefused:
+        for fd in fds.values():
+            _close_quietly(fd)
+        raise
+    return fds
+
+
+def trainer_fd_paths(fds: Mapping[str, int]) -> dict[str, str]:
+    return {key: f"{PROC_SELF_FD_PREFIX}{fd}" for key, fd in fds.items()}
+
+
+def _hash_held_fd(fd: int, field: str) -> str:
+    try:
+        os.lseek(fd, 0, os.SEEK_SET)
+    except OSError as exc:
+        _refuse(field, "seekable fd", f"OSError:{exc.errno}")
+    digest = hashlib.sha256()
+    try:
+        while True:
+            block = os.read(fd, CHUNK)
+            if not block:
+                break
+            digest.update(block)
+    except OSError as exc:
+        _refuse(field, "readable fd", f"OSError:{exc.errno}")
+    try:
+        os.lseek(fd, 0, os.SEEK_SET)
+    except OSError as exc:
+        _refuse(field, "seekable fd", f"OSError:{exc.errno}")
+    return digest.hexdigest()
+
+
+def rehash_held_fds(
+    fds: Mapping[str, int],
+    *,
+    pin: Mapping[str, Any],
+    manifest_shas: Mapping[str, str],
+    host: str,
+    refuse_on_mismatch: bool = False,
+) -> dict[str, Any]:
+    """Informational re-hash of the same fds handed to the trainer. Never reopens paths."""
+    post: dict[str, str] = {}
+    record: dict[str, Any] = {
+        "status": CHECKPOINT_MATCH,
+        "host": host,
+        "paths": trainer_fd_paths(fds),
+        "computed_shas": post,
+        "pin_shas": {
+            "sha256_pack": pin["sha256_pack"],
+            "sha256_train": pin["sha256_train"],
+            "sha256_holdout": pin["sha256_holdout"],
+        },
+        "manifest_shas": dict(manifest_shas),
+        "checked_at": _utc_now(),
+        "match": True,
+        "informational": True,
+    }
+    try:
+        for sha_field, path_key in PATH_KEY_BY_SHA.items():
+            fd = fds.get(path_key)
+            if fd is None:
+                _refuse(sha_field, "held fd", "missing")
+            actual = _hash_held_fd(int(fd), sha_field)
+            post[sha_field] = actual
+            if refuse_on_mismatch:
+                pin_sha = pin[sha_field]
+                man_sha = manifest_shas[sha_field]
+                if actual != pin_sha:
+                    _refuse(sha_field, pin_sha, actual)
+                if actual != man_sha:
+                    _refuse(sha_field, man_sha, actual)
+    except KickRefused as exc:
+        record["status"] = CHECKPOINT_REFUSED
+        record["match"] = False
+        record["field"] = exc.field
+        record["expected"] = exc.expected
+        record["actual"] = exc.actual
+        if refuse_on_mismatch:
+            raise
+    record["computed_shas"] = post
+    record["checked_at"] = _utc_now()
+    return record
+
+
+def _path_matches_trainer_fd(named: object, fd_paths: Mapping[str, str]) -> str | None:
+    if named is None:
+        return None
+    try:
+        text = os.fsdecode(named) if isinstance(named, (bytes, bytearray)) else str(named)
+    except (TypeError, ValueError):
+        return None
+    if not text:
+        return None
+    try:
+        real = os.path.realpath(text)
+    except OSError:
+        real = text
+    for key, fdpath in fd_paths.items():
+        if text == fdpath or real == fdpath:
+            return key
+        try:
+            if os.path.realpath(fdpath) in (text, real):
+                return key
+        except OSError:
+            continue
+    return None
+
+
+@contextmanager
+def guard_trainer_fd_writes(fd_paths: Mapping[str, str], pin: Mapping[str, Any]) -> Iterator[None]:
+    """Refuse a writable reopen of a sealed trainer fd, with the matching sha field."""
+    real_os_open = os.open
+    real_builtin_open = builtins.open
+    real_io_open = io.open
+
+    def _field_for(named: object) -> str | None:
+        key = _path_matches_trainer_fd(named, fd_paths)
+        if key is None:
+            return None
+        return SHA_FIELD_BY_PATH_KEY.get(key, key)
+
+    def _refuse_write(named: object) -> None:
+        field = _field_for(named)
+        if field is None:
+            return
+        expected = pin.get(field) if field in pin else "sealed fd"
+        _refuse(field, expected, "writable reopen after verify")
+
+    def _os_open(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        acc = flags & getattr(os, "O_ACCMODE", 0o3)
+        if acc != os.O_RDONLY:
+            _refuse_write(path)
+        return real_os_open(path, flags, *args, **kwargs)
+
+    def _file_open(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+        mode_s = str(mode)
+        if any(flag in mode_s for flag in ("w", "a", "x", "+")):
+            _refuse_write(file)
+        return real_io_open(file, mode, *args, **kwargs)
+
+    os.open = _os_open  # type: ignore[method-assign]
+    builtins.open = _file_open  # type: ignore[assignment]
+    io.open = _file_open  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        os.open = real_os_open  # type: ignore[method-assign]
+        builtins.open = real_builtin_open  # type: ignore[assignment]
+        io.open = real_io_open  # type: ignore[assignment]
 
 
 def _new_run_id() -> str:
@@ -705,7 +1135,7 @@ def _run_private_root_path() -> Path:
 
 
 def _require_run_private_root() -> Path:
-    """tmpfs, euid-owned, 0700, not a bind-mount st_dev. Refuse before staging."""
+    """tmpfs, euid-owned, 0700, not a bind-mount st_dev. Fail closed if missing."""
     if os.name != "posix":
         _refuse("run_private_root", "posix tmpfs", os.name)
     root = _run_private_root_path()
@@ -723,6 +1153,7 @@ def _require_run_private_root() -> Path:
         _refuse("run_private_root", f"uid {os.geteuid()}", info.st_uid)
     if stat.S_IMODE(info.st_mode) != 0o700:
         _refuse("run_private_root", "0700", oct(stat.S_IMODE(info.st_mode)))
+    _walk_ancestors_dirfds(root)
     mounts = _parse_mountinfo()
     covering = _covering_mount(root, mounts)
     if covering["fstype"] != "tmpfs":
@@ -740,45 +1171,69 @@ def _require_run_private_root() -> Path:
     return root
 
 
-def _require_run_private_dir(run_private: Path) -> Path:
+def hold_run_private_root() -> tuple[Path, int, os.stat_result]:
+    """Open the private root with O_DIRECTORY|O_NOFOLLOW and keep that dir-fd."""
     root = _require_run_private_root()
-    path = Path(run_private)
+    fd = _open_dir_nofollow(str(root))
+    st = os.fstat(fd)
+    return root, fd, st
+
+
+def _require_run_private_dir(run_private: Path) -> Path:
+    root, root_fd, root_st = hold_run_private_root()
     try:
-        info = os.lstat(path)
-    except FileNotFoundError:
-        _refuse("run_private_dir", "present", "missing")
-    except OSError as exc:
-        _refuse("run_private_dir", "readable directory", f"OSError:{exc.errno}")
-    if stat.S_ISLNK(info.st_mode):
-        _refuse("run_private_dir", "real directory", "symlink")
-    if not stat.S_ISDIR(info.st_mode):
-        _refuse("run_private_dir", "directory", "not a directory")
-    if info.st_uid != os.geteuid():
-        _refuse("run_private_dir", f"uid {os.geteuid()}", info.st_uid)
-    if stat.S_IMODE(info.st_mode) != 0o700:
-        _refuse("run_private_dir", "0700", oct(stat.S_IMODE(info.st_mode)))
-    try:
-        root_info = os.lstat(root)
-    except OSError as exc:
-        _refuse("run_private_root", "readable directory", f"OSError:{exc.errno}")
-    if info.st_dev != root_info.st_dev:
-        _refuse("run_private_dir", root_info.st_dev, info.st_dev)
-    if not _contained_in(root, path) or os.path.realpath(path) == os.path.realpath(root):
-        _refuse("run_private_dir", f"under {root}", os.path.realpath(path))
-    return path
+        path = Path(run_private)
+        try:
+            info = os.lstat(path)
+        except FileNotFoundError:
+            _refuse("run_private_dir", "present", "missing")
+        except OSError as exc:
+            _refuse("run_private_dir", "readable directory", f"OSError:{exc.errno}")
+        if stat.S_ISLNK(info.st_mode):
+            _refuse("run_private_dir", "real directory", "symlink")
+        if not stat.S_ISDIR(info.st_mode):
+            _refuse("run_private_dir", "directory", "not a directory")
+        if info.st_uid != os.geteuid():
+            _refuse("run_private_dir", f"uid {os.geteuid()}", info.st_uid)
+        if stat.S_IMODE(info.st_mode) != 0o700:
+            _refuse("run_private_dir", "0700", oct(stat.S_IMODE(info.st_mode)))
+        if info.st_dev != root_st.st_dev:
+            _refuse("run_private_dir", root_st.st_dev, info.st_dev)
+        if not _dirfd_contained_in(root, path):
+            _refuse("run_private_dir", f"under {root}", os.path.realpath(path))
+        _walk_ancestors_dirfds(path)
+        return path
+    finally:
+        _close_quietly(root_fd)
 
 
 def _make_run_private_dir() -> Path:
-    root = _require_run_private_root()
+    root, root_fd, _root_st = hold_run_private_root()
     try:
-        path = Path(tempfile.mkdtemp(prefix="inputs-", dir=str(root)))
-    except OSError as exc:
-        _refuse("run_private_dir", "exclusive tmp under run_private_root", f"OSError:{exc.errno}")
-    try:
-        os.chmod(path, 0o700)
-    except OSError as exc:
-        _refuse("run_private_dir", "0700", f"OSError:{exc.errno}")
-    return _require_run_private_dir(path)
+        path: Path | None = None
+        for _attempt in range(32):
+            name = f"inputs-{uuid.uuid4().hex[:12]}"
+            try:
+                os.mkdir(name, 0o700, dir_fd=root_fd)
+            except FileExistsError:
+                continue
+            except OSError as exc:
+                _refuse(
+                    "run_private_dir",
+                    "exclusive tmp under run_private_root",
+                    f"OSError:{exc.errno}",
+                )
+            path = root / name
+            break
+        if path is None:
+            _refuse("run_private_dir", "exclusive tmp under run_private_root", "name collision")
+        try:
+            os.chmod(path, 0o700)
+        except OSError as exc:
+            _refuse("run_private_dir", "0700", f"OSError:{exc.errno}")
+        return _require_run_private_dir(path)
+    finally:
+        _close_quietly(root_fd)
 
 
 def _read_fd_bytes(fd: int) -> bytes:
@@ -791,11 +1246,37 @@ def _read_fd_bytes(fd: int) -> bytes:
     return b"".join(chunks)
 
 
+def _fstat_trainer_file(fd: int, field: str, root_dev: int) -> os.stat_result:
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode):
+        _refuse(field, "regular file", "non-regular")
+    if info.st_nlink != 1:
+        _refuse(field, "nlink==1", info.st_nlink)
+    if info.st_uid != os.geteuid():
+        _refuse(field, f"uid {os.geteuid()}", info.st_uid)
+    if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        _refuse(field, "no group/other write", oct(stat.S_IMODE(info.st_mode)))
+    if info.st_dev != root_dev:
+        _refuse(field, root_dev, info.st_dev)
+    return info
+
+
+def _open_trainer_input_fd(named: str, field: str) -> int:
+    if is_proc_self_fd_path(named):
+        return _dup_proc_self_fd(named)
+    try:
+        return os.open(named, _open_flags_read())
+    except OSError as exc:
+        if getattr(exc, "errno", None) in (errno.ELOOP, getattr(errno, "EPERM", None)):
+            _refuse(field, "regular file", "symlink")
+        _refuse(field, "readable regular file", f"OSError:{exc.errno}")
+
+
 def _open_and_verify_trainer_inputs(evidence: Mapping[str, Any]) -> dict[str, bytes]:
     """O_NOFOLLOW open, fstat, hash that fd, constant-time compare to signed pin.
 
     Returns the bytes read from those fds. The trainer must use these bytes
-    (or the same held fd) and never reopen the path.
+    (or a sealed memfd / held fd of them) and never reopen a staging path.
     """
     pin = evidence.get("pin")
     if not isinstance(pin, Mapping):
@@ -803,6 +1284,12 @@ def _open_and_verify_trainer_inputs(evidence: Mapping[str, Any]) -> dict[str, by
     paths = evidence.get("paths")
     if not isinstance(paths, Mapping):
         _refuse("paths", "present", "missing")
+    root = _require_run_private_root()
+    try:
+        root_st = os.lstat(root)
+    except OSError as exc:
+        _refuse("run_private_root", "readable directory", f"OSError:{exc.errno}")
+    root_dev = int(root_st.st_dev)
     verified: dict[str, bytes] = {}
     for sha_field, path_key in PATH_KEY_BY_SHA.items():
         expected = pin.get(sha_field)
@@ -811,16 +1298,14 @@ def _open_and_verify_trainer_inputs(evidence: Mapping[str, Any]) -> dict[str, by
         named = paths.get(path_key)
         if type(named) is not str or not named:
             _refuse(f"paths.{path_key}", "present", "missing")
+        fd = _open_trainer_input_fd(named, sha_field)
         try:
-            fd = os.open(named, _open_flags_read())
-        except OSError as exc:
-            if getattr(exc, "errno", None) in (errno.ELOOP, getattr(errno, "EPERM", None)):
-                _refuse(sha_field, "regular file", "symlink")
-            _refuse(sha_field, "readable regular file", f"OSError:{exc.errno}")
-        try:
-            info = os.fstat(fd)
-            if not stat.S_ISREG(info.st_mode):
-                _refuse(sha_field, "regular file", "non-regular")
+            if not is_proc_self_fd_path(named):
+                _fstat_trainer_file(fd, sha_field, root_dev)
+            else:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode):
+                    _refuse(sha_field, "regular file", "non-regular")
             buf = _read_fd_bytes(fd)
             actual = hashlib.sha256(buf).hexdigest()
             if not hmac.compare_digest(actual, expected):
@@ -833,6 +1318,30 @@ def _open_and_verify_trainer_inputs(evidence: Mapping[str, Any]) -> dict[str, by
         finally:
             os.close(fd)
     return verified
+
+
+def _verify_manifest_copy(run_private: Path, expected_sha: str) -> bytes:
+    """Re-verify MANIFEST bytes at point of use against the digest taken at copy."""
+    named = str((Path(run_private) / MANIFEST_FILE))
+    root = _require_run_private_root()
+    try:
+        root_dev = int(os.lstat(root).st_dev)
+    except OSError as exc:
+        _refuse("run_private_root", "readable directory", f"OSError:{exc.errno}")
+    fd = _open_trainer_input_fd(named, MANIFEST_FILE)
+    try:
+        _fstat_trainer_file(fd, MANIFEST_FILE, root_dev)
+        buf = _read_fd_bytes(fd)
+        actual = hashlib.sha256(buf).hexdigest()
+        if not hmac.compare_digest(actual, expected_sha):
+            _refuse(MANIFEST_FILE, expected_sha, actual)
+        return buf
+    except KickRefused:
+        raise
+    except OSError as exc:
+        _refuse(MANIFEST_FILE, "readable regular file", f"OSError:{exc.errno}")
+    finally:
+        os.close(fd)
 
 
 def sha256_file(path: Path, chunk: int = CHUNK) -> str:
@@ -978,16 +1487,17 @@ def _read_file_buffer(src: Path, field: str) -> bytes:
 def _write_buffer_exclusive(dest: Path, buf: bytes, field: str) -> None:
     """Write ``buf`` through O_CREAT|O_EXCL, fsync, fchmod 0400. Same bytes hashed."""
     dest = Path(dest)
+    dir_fd = _COPY_DIR_FD
+    if dir_fd is not None:
+        _write_buffer_exclusive_at(dir_fd, dest.name, buf, field)
+        return
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
         out_fd = os.open(dest, _open_flags_write(), 0o600)
     except OSError as exc:
         _refuse(field, "exclusive writable copy", f"OSError:{exc.errno}")
     try:
-        view = memoryview(buf)
-        offset = 0
-        while offset < len(buf):
-            offset += os.write(out_fd, view[offset:])
+        _write_all(out_fd, buf, field)
         if hasattr(os, "fsync"):
             os.fsync(out_fd)
         if os.name == "posix" and hasattr(os, "fchmod"):
@@ -1007,11 +1517,39 @@ def _write_buffer_exclusive(dest: Path, buf: bytes, field: str) -> None:
         os.close(out_fd)
 
 
+def _write_buffer_exclusive_at(dir_fd: int, name: str, buf: bytes, field: str) -> None:
+    """openat(dir_fd, name, O_CREAT|O_EXCL) so a swapped parent cannot redirect the copy."""
+    if Path(name).name != name or name in (".", "..") or not name:
+        _refuse(field, "basename", name)
+    try:
+        out_fd = os.open(name, _open_flags_write(), 0o600, dir_fd=dir_fd)
+    except OSError as exc:
+        _refuse(field, "exclusive writable copy", f"OSError:{exc.errno}")
+    try:
+        _write_all(out_fd, buf, field)
+        if hasattr(os, "fsync"):
+            os.fsync(out_fd)
+        if os.name == "posix" and hasattr(os, "fchmod"):
+            os.fchmod(out_fd, 0o400)
+        written = os.fstat(out_fd)
+        try:
+            named = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+        except OSError as exc:
+            _refuse(field, "same inode", f"OSError:{exc.errno}")
+        if (written.st_dev, written.st_ino) != (named.st_dev, named.st_ino):
+            _refuse(field, "same inode", "path swapped")
+    except OSError as exc:
+        _refuse(field, "writable copy", f"OSError:{exc.errno}")
+    finally:
+        os.close(out_fd)
+
+
 def _copy_and_hash(src: Path, dest: Path, field: str) -> str:
     """Read into a buffer, hash that buffer, write the same buffer to a private copy.
 
     The trainer must read only the private copy. Hashing a stream while writing
     and then reopening a shared path leaves a TOCTOU window (B-RACE).
+    Writes go through the held root dir-fd when one is installed.
     """
     buf = _read_file_buffer(src, field)
     digest = hashlib.sha256(buf).hexdigest()
@@ -1158,7 +1696,7 @@ def _split_soundness(run_private: Path, computed_shas: Mapping[str, str]) -> Non
 
 
 def trainer_input_paths(run_private: Path) -> dict[str, str]:
-    """Resolved absolute run-dir copy paths. These are the trainer inputs."""
+    """Resolved absolute run-dir copy paths (staging only). Trainer argv uses held fds."""
     root = Path(run_private).resolve()
     return {key: str((root / name).resolve()) for key, name in TRAINER_PATH_FILES.items()}
 
@@ -2767,80 +3305,130 @@ def verify_and_stage(
     refuse_implicit_inbox_pack(pack_root)
     _refuse_local_pin_files(pack_root)
     run_private = _require_run_private_dir(Path(run_private))
-
-    manifest_dest = run_private / MANIFEST_FILE
-    _copy_and_hash(_regular_file_in_pack(pack_root, MANIFEST_FILE), manifest_dest, MANIFEST_FILE)
-    manifest = _read_manifest(run_private)
-    pack_id = manifest.get("pack_id")
-    if type(pack_id) is not str or not pack_id:
-        _refuse("pack_id", "present", "missing")
-    if manifest.get("champion_touched") is not False:
-        _refuse("champion_touched", False, manifest.get("champion_touched"))
-    pin = _require_cam_pin(fetch_cam_pin(pack_id), pack_id)
-
-    computed_shas: dict[str, str] = {}
-    manifest_shas: dict[str, str] = {}
-    row_counts: dict[str, dict[str, int]] = {}
-
-    for sha_field, filename, rows_field, pin_rows_field in ARTIFACTS:
+    need = 0
+    for filename in (MANIFEST_FILE, PACK_FILE, TRAIN_FILE, HOLDOUT_FILE):
         src = _regular_file_in_pack(pack_root, filename)
-        dest = run_private / filename
-        computed = _copy_and_hash(src, dest, sha_field)
-        if rows_field not in manifest:
-            _refuse(rows_field, "present", "missing")
-        expected_rows = _require_int(rows_field, manifest[rows_field])
-        actual_rows = count_rows(dest)
-        pin_rows = pin[pin_rows_field]
-        if pin_rows != expected_rows:
-            _refuse(pin_rows_field, pin_rows, expected_rows)
-        if pin_rows != actual_rows:
-            _refuse(pin_rows_field, pin_rows, actual_rows)
-        if actual_rows != expected_rows:
-            _refuse(rows_field, expected_rows, actual_rows)
-        manifest_value = manifest.get(sha_field)
-        if not isinstance(manifest_value, str) or not manifest_value:
-            _refuse(sha_field, "present", "missing")
-        manifest_sha = _require_sha256_hex(sha_field, manifest_value)
-        pin_sha = pin[sha_field]
-        if pin_sha != manifest_sha:
-            _refuse(sha_field, pin_sha, manifest_sha)
-        if pin_sha != computed:
-            _refuse(sha_field, pin_sha, computed)
-        computed_shas[sha_field] = computed
-        manifest_shas[sha_field] = manifest_sha
-        row_counts[filename] = {"expected": expected_rows, "actual": actual_rows}
+        try:
+            need += os.path.getsize(src)
+        except OSError as exc:
+            _refuse(filename, "readable regular file", f"OSError:{exc.errno}")
+    try:
+        for child in pack_root.iterdir():
+            if child.suffix != ".jsonl" or child.name in _LEAK_PACK_JSONL:
+                continue
+            try:
+                need += os.path.getsize(child)
+            except OSError as exc:
+                _refuse(child.name, "readable regular file", f"OSError:{exc.errno}")
+    except OSError as exc:
+        _refuse("sidecar", "readable jsonl", f"OSError:{exc.errno}")
+    # Staged copies plus sealed memfds share the tmpfs (shmem).
+    _require_run_private_capacity(run_private, need * 2)
 
-    trainer_paths = trainer_input_paths(run_private)
-    _split_soundness(run_private, computed_shas)
-    enforce_pack_gates(
-        manifest,
-        trainer_paths,
-        smoke=smoke,
-        pack_dir=pack_root,
-        reserved_content_uuids=reserved_content_uuids,
-        reserved_content_uuids_sha256=reserved_content_uuids_sha256,
-    )
+    copy_dir_fd = _open_dir_nofollow(str(run_private))
+    global _COPY_DIR_FD
+    prev_copy_fd = _COPY_DIR_FD
+    _COPY_DIR_FD = copy_dir_fd
+    try:
+        manifest_dest = run_private / MANIFEST_FILE
+        manifest_sha = _copy_and_hash(
+            _regular_file_in_pack(pack_root, MANIFEST_FILE), manifest_dest, MANIFEST_FILE
+        )
+        manifest_buf = _verify_manifest_copy(run_private, manifest_sha)
+        try:
+            manifest = json.loads(manifest_buf.decode("utf-8"), object_pairs_hook=_no_duplicate_keys)
+        except UnicodeDecodeError:
+            _refuse(MANIFEST_FILE, "utf-8 text", "invalid encoding")
+        except ValueError as exc:
+            _refuse(MANIFEST_FILE, "valid JSON object", f"invalid JSON ({exc})")
+        if not isinstance(manifest, dict):
+            _refuse(MANIFEST_FILE, "valid JSON object", type(manifest).__name__)
+        pack_id = manifest.get("pack_id")
+        if type(pack_id) is not str or not pack_id:
+            _refuse("pack_id", "present", "missing")
+        if manifest.get("champion_touched") is not False:
+            _refuse("champion_touched", False, manifest.get("champion_touched"))
+        pin = _require_cam_pin(fetch_cam_pin(pack_id), pack_id)
 
-    return {
-        "pack_id": pack_id,
-        "host": socket.gethostname(),
-        "anchor_source": PIN_SOURCE,
-        "pin": pin,
-        "computed_shas": computed_shas,
-        "private_copy_shas": dict(computed_shas),
-        "expected_shas": {
-            "sha256_pack": pin["sha256_pack"],
-            "sha256_train": pin["sha256_train"],
-            "sha256_holdout": pin["sha256_holdout"],
-        },
-        "manifest_shas": manifest_shas,
-        "row_counts": row_counts,
-        "paths": trainer_paths,
-        "run_private_dir": str(run_private.resolve()),
-        "source_pack_dir": str(pack_root),
-        "checked_at": _utc_now(),
-        "ok": True,
-    }
+        computed_shas: dict[str, str] = {}
+        manifest_shas: dict[str, str] = {}
+        row_counts: dict[str, dict[str, int]] = {}
+
+        for sha_field, filename, rows_field, pin_rows_field in ARTIFACTS:
+            src = _regular_file_in_pack(pack_root, filename)
+            dest = run_private / filename
+            computed = _copy_and_hash(src, dest, sha_field)
+            if rows_field not in manifest:
+                _refuse(rows_field, "present", "missing")
+            expected_rows = _require_int(rows_field, manifest[rows_field])
+            actual_rows = count_rows(dest)
+            pin_rows = pin[pin_rows_field]
+            if pin_rows != expected_rows:
+                _refuse(pin_rows_field, pin_rows, expected_rows)
+            if pin_rows != actual_rows:
+                _refuse(pin_rows_field, pin_rows, actual_rows)
+            if actual_rows != expected_rows:
+                _refuse(rows_field, expected_rows, actual_rows)
+            manifest_value = manifest.get(sha_field)
+            if not isinstance(manifest_value, str) or not manifest_value:
+                _refuse(sha_field, "present", "missing")
+            file_manifest_sha = _require_sha256_hex(sha_field, manifest_value)
+            pin_sha = pin[sha_field]
+            if pin_sha != file_manifest_sha:
+                _refuse(sha_field, pin_sha, file_manifest_sha)
+            if pin_sha != computed:
+                _refuse(sha_field, pin_sha, computed)
+            computed_shas[sha_field] = computed
+            manifest_shas[sha_field] = file_manifest_sha
+            row_counts[filename] = {"expected": expected_rows, "actual": actual_rows}
+
+        try:
+            for child in pack_root.iterdir():
+                if not child.is_file() or child.suffix != ".jsonl":
+                    continue
+                if child.name in _LEAK_PACK_JSONL:
+                    continue
+                src = _regular_file_in_pack(pack_root, child.name)
+                _copy_and_hash(src, run_private / child.name, child.name)
+        except OSError as exc:
+            _refuse("sidecar", "readable jsonl", f"OSError:{exc.errno}")
+
+        trainer_paths = trainer_input_paths(run_private)
+        _split_soundness(run_private, computed_shas)
+        enforce_pack_gates(
+            manifest,
+            trainer_paths,
+            smoke=smoke,
+            pack_dir=run_private,
+            reserved_content_uuids=reserved_content_uuids,
+            reserved_content_uuids_sha256=reserved_content_uuids_sha256,
+        )
+        _verify_manifest_copy(run_private, manifest_sha)
+
+        return {
+            "pack_id": pack_id,
+            "host": socket.gethostname(),
+            "anchor_source": PIN_SOURCE,
+            "pin": pin,
+            "computed_shas": computed_shas,
+            "private_copy_shas": dict(computed_shas),
+            "expected_shas": {
+                "sha256_pack": pin["sha256_pack"],
+                "sha256_train": pin["sha256_train"],
+                "sha256_holdout": pin["sha256_holdout"],
+            },
+            "manifest_shas": manifest_shas,
+            "sha256_manifest": manifest_sha,
+            "row_counts": row_counts,
+            "paths": trainer_paths,
+            "run_private_dir": str(run_private.resolve()),
+            "source_pack_dir": str(pack_root),
+            "checked_at": _utc_now(),
+            "ok": True,
+        }
+    finally:
+        _COPY_DIR_FD = prev_copy_fd
+        _close_quietly(copy_dir_fd)
 
 
 def write_evidence(
@@ -3105,19 +3693,71 @@ def default_start_training(pack_dir: Path, evidence: dict[str, Any], log_path: P
     _refuse("start_training", "via kick() after integrity gate", "direct call")
 
 
+_TRAINER_FD_CONSUME = (
+    "import hashlib, os, sys\n"
+    "out = []\n"
+    "for raw in sys.argv[1:]:\n"
+    "    fd = int(raw)\n"
+    "    h = hashlib.sha256()\n"
+    "    while True:\n"
+    "        block = os.read(fd, 1 << 20)\n"
+    "        if not block:\n"
+    "            break\n"
+    "        h.update(block)\n"
+    "    out.append(h.hexdigest())\n"
+    "sys.stdout.write(','.join(out))\n"
+)
+
+
 def _authorized_start_training(
     pack_dir: Path,
     evidence: dict[str, Any],
     log_path: Path,
     *,
     _gate: object,
+    sealed_fds: Mapping[str, int] | None = None,
+    verified: Mapping[str, bytes] | None = None,
 ) -> dict[str, Any]:
     if _gate is not _GATE_OK:
         _refuse("start_training", "via kick() after integrity gate", "direct call")
-    inputs = _open_and_verify_trainer_inputs(evidence)
+    inputs = dict(verified) if verified is not None else _open_and_verify_trainer_inputs(evidence)
     train_buf = inputs["train"]
     pack_buf = inputs["pack"]
     holdout_buf = inputs["holdout"]
+    pin = evidence.get("pin") if isinstance(evidence.get("pin"), Mapping) else {}
+    train_sha = hashlib.sha256(train_buf).hexdigest()
+    pack_sha = hashlib.sha256(pack_buf).hexdigest()
+    holdout_sha = hashlib.sha256(holdout_buf).hexdigest()
+    pin_train = pin.get("sha256_train")
+    pin_pack = pin.get("sha256_pack")
+    pin_holdout = pin.get("sha256_holdout")
+    if type(pin_train) is str and not hmac.compare_digest(train_sha, pin_train):
+        _refuse("sha256_train", pin_train, train_sha)
+    if type(pin_pack) is str and not hmac.compare_digest(pack_sha, pin_pack):
+        _refuse("sha256_pack", pin_pack, pack_sha)
+    if type(pin_holdout) is str and not hmac.compare_digest(holdout_sha, pin_holdout):
+        _refuse("sha256_holdout", pin_holdout, holdout_sha)
+    fds = dict(sealed_fds) if sealed_fds is not None else seal_verified_buffers(inputs)
+    ordered_keys = ("pack", "train", "holdout")
+    pass_fds = tuple(int(fds[key]) for key in ordered_keys if key in fds)
+    argv = [sys.executable, "-c", _TRAINER_FD_CONSUME, *[str(fd) for fd in pass_fds]]
+    proc = subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        pass_fds=pass_fds,
+        close_fds=True,
+    )
+    stdout, stderr = proc.communicate()
+    if proc.returncode != 0:
+        _refuse(
+            "trainer.exit",
+            0,
+            f"rc={proc.returncode} stderr={stderr[-200:]!r}",
+        )
+    consumed = stdout.decode("utf-8").strip().split(",") if stdout else []
+    if len(consumed) >= 2 and not hmac.compare_digest(consumed[1], train_sha):
+        _refuse("sha256_train", train_sha, consumed[1])
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     line = (
@@ -3132,9 +3772,12 @@ def _authorized_start_training(
         "training_started": True,
         "auto_promote": False,
         "pack_dir": str(pack_dir),
-        "train_bytes": len(train_buf),
-        "pack_bytes": len(pack_buf),
-        "holdout_bytes": len(holdout_buf),
+        "ok": True,
+        "exit_code": 0,
+        "train_sha256": train_sha,
+        "pack_sha256": pack_sha,
+        "holdout_sha256": holdout_sha,
+        "process": proc,
     }
 
 
@@ -3314,7 +3957,8 @@ def kick(
         log_path = run_dir / DEFAULT_LOG_NAME
     run_dir.mkdir(parents=True, exist_ok=True)
     evidence_path = run_dir / f"pack_integrity_evidence_{run_id}.json"
-    run_private = _make_run_private_dir()
+    run_private: Path | None = None
+    sealed_fds: dict[str, int] | None = None
     pinned = load_pinned_copy_mode()
     if pinned is not None:
         git_sha = None
@@ -3358,6 +4002,8 @@ def kick(
         write_evidence(evidence, evidence_path)
 
     try:
+        run_private = _make_run_private_dir()
+        _register_run_private_cleanup(run_private)
         staged = verify_and_stage(
             pack_dir,
             run_private=run_private,
@@ -3388,10 +4034,19 @@ def kick(
         if smoke:
             evidence["smoke"] = True
         persist()
-        trainer_paths = trainer_input_paths(run_private)
-        evidence["paths"] = trainer_paths
-        trainer_config = {"host": evidence["host"], "paths": trainer_paths}
-        trainer_argv = build_trainer_argv(trainer_paths)
+        staged_paths = trainer_input_paths(run_private)
+        evidence["paths"] = staged_paths
+        evidence["staged_paths"] = dict(staged_paths)
+        if "sha256_manifest" in evidence:
+            _verify_manifest_copy(run_private, str(evidence["sha256_manifest"]))
+        verified = _open_and_verify_trainer_inputs(evidence)
+        manifest_sha = evidence.get("sha256_manifest")
+        if type(manifest_sha) is str and len(manifest_sha) == SHA256_LEN:
+            verified["manifest"] = _verify_manifest_copy(run_private, manifest_sha)
+        sealed_fds = seal_verified_buffers(verified)
+        fd_paths = trainer_fd_paths(sealed_fds)
+        trainer_config = {"host": evidence["host"], "paths": fd_paths}
+        trainer_argv = build_trainer_argv(fd_paths)
         evidence["trainer_config"] = trainer_config
         evidence["trainer_argv"] = trainer_argv
         persist()
@@ -3404,6 +4059,7 @@ def kick(
             }
             kick_event.update(_entrypoint_event_fields(evidence))
             _post_hq_event("kick", kick_event)
+        hook_evidence = dict(evidence)
         body = {
             "mode": "helper-ft-smoke" if smoke else "helper-ft",
             "pack_id": evidence["pack_id"],
@@ -3413,45 +4069,51 @@ def kick(
             "expected_shas": dict(evidence["expected_shas"]),
             "pin": dict(evidence["pin"]),
             "run_private_dir": evidence["run_private_dir"],
-            "paths": trainer_paths,
+            "paths": fd_paths,
             "trainer_config": trainer_config,
             "trainer_argv": trainer_argv,
-            "evidence": dict(evidence),
+            "evidence": hook_evidence,
             "evidence_path": evidence["evidence_path"],
             "run_id": run_id,
             "checked_at": evidence["checked_at"],
         }
         if smoke:
             body["smoke"] = True
-        if kickoff is not None:
-            result = kickoff(body)
-            if not isinstance(result, dict) or result.get("ok") is not True:
-                if isinstance(result, dict) and result.get("field"):
-                    _refuse(result.get("field"), result.get("expected"), result.get("actual"))
-                _refuse("kickoff", "ok", result)
-        else:
-            result = post_kickoff(body, url=kickoff_url)
-        launcher_ckpt = (
-            result.get("checkpoint_id") if isinstance(result, dict) else None
-        )
-        if smoke:
-            evidence["checkpoint_id"] = assigned_ckpt
-            persist()
-        elif launcher_ckpt:
-            evidence["checkpoint_id"] = launcher_ckpt
-            persist()
-        # Training must finish before the end-of-training re-hash. Wait in this
-        # same process/host, then re-hash the recorded run-dir copy paths.
-        exits: list[Mapping[str, Any]] = []
-        exits.append(wait_for_training_exit(result if isinstance(result, dict) else None))
-        captured = StringIO()
-        with redirect_stdout(captured):
-            if start_training is None:
-                started = _authorized_start_training(run_private, evidence, log_path, _gate=_GATE_OK)
+        with guard_trainer_fd_writes(fd_paths, evidence["pin"]):
+            if kickoff is not None:
+                result = kickoff(body)
+                if not isinstance(result, dict) or result.get("ok") is not True:
+                    if isinstance(result, dict) and result.get("field"):
+                        _refuse(result.get("field"), result.get("expected"), result.get("actual"))
+                    _refuse("kickoff", "ok", result)
             else:
-                _open_and_verify_trainer_inputs(evidence)
-                started = start_training(run_private, evidence, log_path)
-        trainer_stdout = captured.getvalue()
+                result = post_kickoff(body, url=kickoff_url)
+            launcher_ckpt = (
+                result.get("checkpoint_id") if isinstance(result, dict) else None
+            )
+            if smoke:
+                evidence["checkpoint_id"] = assigned_ckpt
+                persist()
+            elif launcher_ckpt:
+                evidence["checkpoint_id"] = launcher_ckpt
+                persist()
+            exits: list[Mapping[str, Any]] = []
+            exits.append(wait_for_training_exit(result if isinstance(result, dict) else None))
+            captured = StringIO()
+            evidence["paths"] = fd_paths
+            with redirect_stdout(captured):
+                if start_training is None:
+                    started = _authorized_start_training(
+                        run_private,
+                        evidence,
+                        log_path,
+                        _gate=_GATE_OK,
+                        sealed_fds=sealed_fds,
+                        verified=verified,
+                    )
+                else:
+                    started = start_training(run_private, evidence, log_path)
+            trainer_stdout = captured.getvalue()
         if trainer_stdout:
             sys.stdout.write(trainer_stdout)
             sys.stdout.flush()
@@ -3461,14 +4123,26 @@ def kick(
         persist()
         exits.append(wait_for_training_exit(started if isinstance(started, dict) else None))
         exit_info = combine_trainer_exits(exits)
-        _recheck_copies(
-            run_private,
+        host = socket.gethostname()
+        record = rehash_held_fds(
+            sealed_fds,
+            pin=evidence["pin"],
+            manifest_shas=evidence["manifest_shas"],
+            host=host,
+            refuse_on_mismatch=False,
+        )
+        apply_trainer_exit(record, exit_info)
+        if smoke:
+            record["smoke"] = True
+        _apply_post_train_record(
             evidence,
+            record,
             run_dir=run_dir,
             log_path=log_path,
-            exit_info=exit_info,
-            smoke=smoke,
+            post_completion=not smoke,
         )
+        if record["status"] != CHECKPOINT_MATCH:
+            _refuse(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
         if smoke:
             evidence["smoke"] = True
             evidence["scorable"] = False
@@ -3551,6 +4225,16 @@ def kick(
         except OSError:
             pass
         _refuse("kickoff", "success", f"{type(exc).__name__}: {exc}")
+    finally:
+        if sealed_fds:
+            for fd in sealed_fds.values():
+                _close_quietly(fd)
+        if run_private is not None:
+            _force_remove(run_private)
+            try:
+                _CLEANUP_PATHS.remove(run_private)
+            except ValueError:
+                pass
 
 
 def build_parser() -> argparse.ArgumentParser:

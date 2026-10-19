@@ -9,12 +9,16 @@ A pin carried only in the request body is not provenance.
 
 ``inbox: latest`` and every other HELPER FT start route are refused.
 ``default_launch_trainer`` refuses unless a real launcher is wired.
-The trainer is passed only run-dir copy paths. After the launcher
-returns (this process waits), those recorded paths are re-hashed on
-this host. Does not promote, does not touch serve, :8770, or champion files.
+``run_private_dir`` must sit under ``FORGE_RUN_PRIVATE_ROOT`` (realpath plus
+a dir-fd walk). This handler hashes the exact fd it will pass to the
+trainer and never reopens that file by path; the trainer receives sealed
+memfds or held ``/proc/self/fd/N`` descriptors. An end-of-training re-hash
+is informational and uses those same fds. Does not promote, does not touch
+serve, :8770, or champion files.
 """
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -345,17 +349,10 @@ def handle_train_kickoff(
     run_private = body.get("run_private_dir")
     if type(run_private) is not str or not run_private:
         return _bad("run_private_dir", "present", "missing")
-    root = Path(run_private)
     try:
-        info = os.lstat(root)
-    except FileNotFoundError:
-        return _bad("run_private_dir", "present", "missing")
-    except OSError as exc:
-        return _bad("run_private_dir", "readable directory", f"OSError:{exc.errno}")
-    if stat.S_ISLNK(info.st_mode):
-        return _bad("run_private_dir", "real directory", "symlink")
-    if not stat.S_ISDIR(info.st_mode):
-        return _bad("run_private_dir", "directory", "not a directory")
+        root = kick_helper_ft._require_run_private_dir(Path(run_private))
+    except kick_helper_ft.KickRefused as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
     manifest = _read_run_private_manifest(root)
     if manifest.get("ok") is False and "field" in manifest:
         return manifest
@@ -363,174 +360,240 @@ def handle_train_kickoff(
         return _bad("pack_id", pack_id, manifest.get("pack_id"))
     fetched_pin = {"ok": True, "pin": hq_pin, "source": PIN_SOURCE}
     evidence["kickoff_pin_fetch"] = fetched_pin
-    trainer_paths = kick_helper_ft.trainer_input_paths(root)
+    staged_paths = kick_helper_ft.trainer_input_paths(root)
     claimed_paths = body.get("paths")
     if isinstance(claimed_paths, dict):
         pack_dir_claim = claimed_paths.get("pack_dir")
         if pack_dir_claim:
-            claimed_dir = str(Path(str(pack_dir_claim)).resolve())
-            if claimed_dir != str(root.resolve()):
-                return _bad("paths.pack_dir", "absent (run-dir copies only)", pack_dir_claim)
-        for key, expected in trainer_paths.items():
+            return _bad("paths.pack_dir", "absent (run-dir copies only)", pack_dir_claim)
+        for key, expected in staged_paths.items():
             got = claimed_paths.get(key)
             if type(got) is not str:
                 return _bad(f"paths.{key}", expected, "missing")
+            if kick_helper_ft.is_proc_self_fd_path(got):
+                continue
             if str(Path(got).resolve()) != expected:
                 return _bad(f"paths.{key}", expected, got)
-    recorded_paths = dict(trainer_paths)
+    held_fds: dict[str, int] = {}
+    sealed_fds: dict[str, int] = {}
+    verified_bufs: dict[str, bytes] = {}
     manifest_shas: dict[str, str] = {}
-    for sha_field, filename, manifest_rows_field, pin_rows_field in ARTIFACTS:
-        req = _require_sha(sha_field, body.get(sha_field))
-        if isinstance(req, dict):
-            return req
-        hq_sha = hq_pin[sha_field]
-        if req != hq_sha:
-            return _bad(sha_field, hq_sha, req)
-        pin_rows = hq_pin[pin_rows_field]
-        if manifest_rows_field not in manifest:
-            return _bad(manifest_rows_field, "present", "missing")
-        expected_rows = _require_int(manifest_rows_field, manifest[manifest_rows_field])
-        if isinstance(expected_rows, dict):
-            return expected_rows
-        if pin_rows != expected_rows:
-            return _bad(pin_rows_field, pin_rows, expected_rows)
-        man_sha = _require_sha(f"manifest.{sha_field}", manifest.get(sha_field))
-        if isinstance(man_sha, dict):
-            return man_sha
-        if man_sha != hq_sha:
-            return _bad(sha_field, hq_sha, man_sha)
-        manifest_shas[sha_field] = man_sha
-        path_key = kick_helper_ft.PATH_KEY_BY_SHA[sha_field]
-        path = Path(recorded_paths[path_key])
-        try:
-            finfo = os.lstat(path)
-        except FileNotFoundError:
-            return _bad(filename, "present", "missing")
-        except OSError as exc:
-            return _bad(filename, "readable regular file", f"OSError:{exc.errno}")
-        if stat.S_ISLNK(finfo.st_mode):
-            return _bad(filename, "regular file", "symlink")
-        if not stat.S_ISREG(finfo.st_mode):
-            return _bad(filename, "regular file", "non-regular")
-        if os.name == "posix" and finfo.st_mode & 0o222:
-            return _bad(filename, "0400", oct(stat.S_IMODE(finfo.st_mode)))
-        counted = _count_rows(path)
-        if isinstance(counted, dict):
-            return counted
-        if pin_rows != counted:
-            return _bad(pin_rows_field, pin_rows, counted)
-        try:
-            actual = _sha256_file(path)
-        except OSError as exc:
-            return _bad(filename, "readable regular file", f"OSError:{exc.errno}")
-        if actual != hq_sha:
-            return _bad(sha_field, hq_sha, actual)
-        if actual != req:
-            return _bad(sha_field, req, actual)
-    source_pack = body.get("source_pack_dir") or evidence.get("source_pack_dir")
     try:
-        kick_helper_ft.enforce_pack_gates(
-            manifest,
-            recorded_paths,
-            smoke=smoke,
-            pack_dir=source_pack if isinstance(source_pack, str) else None,
-        )
-    except kick_helper_ft.KickRefused as exc:
-        return _bad(exc.field, exc.expected, exc.actual)
-    host = socket.gethostname()
-    trainer_config = {"host": host, "paths": recorded_paths}
-    trainer_argv = kick_helper_ft.build_trainer_argv(recorded_paths)
-    launch_body = dict(body)
-    launch_body["paths"] = recorded_paths
-    launch_body["trainer_config"] = trainer_config
-    launch_body["trainer_argv"] = trainer_argv
-    ev_paths = evidence.get("paths") if isinstance(evidence.get("paths"), dict) else {}
-    launch_evidence = dict(evidence)
-    launch_evidence["paths"] = recorded_paths
-    launch_evidence["run_private_dir"] = str(root.resolve())
-    if isinstance(ev_paths, dict) and ev_paths.get("pack_dir"):
-        return _bad("paths.pack_dir", "absent (run-dir copies only)", ev_paths.get("pack_dir"))
-    launch_body["evidence"] = launch_evidence
-    launcher = launch_trainer if launch_trainer is not None else default_launch_trainer
-    launched = launcher(launch_body)
-    if not isinstance(launched, dict) or launched.get("ok") is not True:
-        return _bad("trainer", "ok", launched)
-    exit_info = kick_helper_ft.wait_for_training_exit(launched)
-    record = kick_helper_ft.rehash_recorded_trainer_paths(
-        recorded_paths,
-        pin=hq_pin,
-        manifest_shas=manifest_shas,
-        host=host,
-    )
-    kick_helper_ft.apply_trainer_exit(record, exit_info)
-    ckpt_id = launched.get("checkpoint_id")
-    run_dir = Path(evidence_path).parent if isinstance(evidence_path, str) and evidence_path else root.parent
-    if ckpt_id:
+        dir_fd = kick_helper_ft._open_dir_nofollow(str(root))
         try:
-            ckpt_dir = kick_helper_ft.checkpoint_dir_for(run_dir, ckpt_id)
-        except kick_helper_ft.KickRefused as exc:
-            return _bad(exc.field, exc.expected, exc.actual)
-        if ckpt_dir is not None:
-            ckpt_path = ckpt_dir / kick_helper_ft.INTEGRITY_EVIDENCE_NAME
-            if smoke:
-                record["smoke"] = True
-            public = kick_helper_ft._public_integrity_record(record)
-            if isinstance(evidence.get("private_copy_shas"), dict):
-                public["private_copy_shas"] = dict(evidence["private_copy_shas"])
+            for sha_field, filename, manifest_rows_field, pin_rows_field in ARTIFACTS:
+                req = _require_sha(sha_field, body.get(sha_field))
+                if isinstance(req, dict):
+                    return req
+                hq_sha = hq_pin[sha_field]
+                if req != hq_sha:
+                    return _bad(sha_field, hq_sha, req)
+                pin_rows = hq_pin[pin_rows_field]
+                if manifest_rows_field not in manifest:
+                    return _bad(manifest_rows_field, "present", "missing")
+                expected_rows = _require_int(manifest_rows_field, manifest[manifest_rows_field])
+                if isinstance(expected_rows, dict):
+                    return expected_rows
+                if pin_rows != expected_rows:
+                    return _bad(pin_rows_field, pin_rows, expected_rows)
+                man_sha = _require_sha(f"manifest.{sha_field}", manifest.get(sha_field))
+                if isinstance(man_sha, dict):
+                    return man_sha
+                if man_sha != hq_sha:
+                    return _bad(sha_field, hq_sha, man_sha)
+                manifest_shas[sha_field] = man_sha
+                path_key = kick_helper_ft.PATH_KEY_BY_SHA[sha_field]
+                claimed = None
+                if isinstance(claimed_paths, dict):
+                    claimed = claimed_paths.get(path_key)
+                if type(claimed) is str and kick_helper_ft.is_proc_self_fd_path(claimed):
+                    try:
+                        fd = kick_helper_ft._dup_proc_self_fd(claimed)
+                    except kick_helper_ft.KickRefused as exc:
+                        return _bad(exc.field, exc.expected, exc.actual)
+                else:
+                    try:
+                        fd = os.open(
+                            filename,
+                            kick_helper_ft._open_flags_read(),
+                            dir_fd=dir_fd,
+                        )
+                    except OSError as exc:
+                        if getattr(exc, "errno", None) in (errno.ELOOP, getattr(errno, "EPERM", None)):
+                            return _bad(sha_field, "regular file", "symlink")
+                        return _bad(filename, "readable regular file", f"OSError:{exc.errno}")
+                held_fds[path_key] = fd
+                try:
+                    info = os.fstat(fd)
+                    if not stat.S_ISREG(info.st_mode):
+                        return _bad(sha_field, "regular file", "non-regular")
+                    buf = kick_helper_ft._read_fd_bytes(fd)
+                    try:
+                        os.lseek(fd, 0, os.SEEK_SET)
+                    except OSError:
+                        pass
+                except OSError as exc:
+                    return _bad(filename, "readable regular file", f"OSError:{exc.errno}")
+                counted = sum(1 for line in buf.splitlines() if line.strip())
+                if pin_rows != counted:
+                    return _bad(pin_rows_field, pin_rows, counted)
+                actual = hashlib.sha256(buf).hexdigest()
+                if actual != hq_sha:
+                    return _bad(sha_field, hq_sha, actual)
+                if actual != req:
+                    return _bad(sha_field, req, actual)
+                verified_bufs[path_key] = buf
             try:
-                sealed = kick_helper_ft.write_integrity_evidence_held(public, ckpt_path)
+                man_fd = os.open(
+                    MANIFEST_FILE,
+                    kick_helper_ft._open_flags_read(),
+                    dir_fd=dir_fd,
+                )
+            except OSError as exc:
+                return _bad(MANIFEST_FILE, "readable regular file", f"OSError:{exc.errno}")
+            held_fds["manifest"] = man_fd
+            try:
+                man_buf = kick_helper_ft._read_fd_bytes(man_fd)
+                try:
+                    os.lseek(man_fd, 0, os.SEEK_SET)
+                except OSError:
+                    pass
+            except OSError as exc:
+                return _bad(MANIFEST_FILE, "readable regular file", f"OSError:{exc.errno}")
+            verified_bufs["manifest"] = man_buf
+        finally:
+            kick_helper_ft._close_quietly(dir_fd)
+        incoming_already_held = bool(
+            isinstance(claimed_paths, dict)
+            and all(
+                kick_helper_ft.is_proc_self_fd_path(claimed_paths.get(key))
+                for key in ("pack", "train", "holdout", "manifest")
+            )
+        )
+        if incoming_already_held:
+            fd_paths = {
+                key: claimed_paths[key]
+                for key in ("pack", "train", "holdout", "manifest")
+            }
+            sealed_fds = {
+                key: kick_helper_ft._dup_proc_self_fd(fd_paths[key])
+                for key in fd_paths
+            }
+        else:
+            try:
+                sealed_fds = kick_helper_ft.seal_verified_buffers(verified_bufs)
             except kick_helper_ft.KickRefused as exc:
                 return _bad(exc.field, exc.expected, exc.actual)
-            in_memory_result = (
-                record["status"]
-                if record.get("status")
-                in (kick_helper_ft.CHECKPOINT_MATCH, kick_helper_ft.CHECKPOINT_REFUSED)
-                else kick_helper_ft.CHECKPOINT_REFUSED
+            fd_paths = kick_helper_ft.trainer_fd_paths(sealed_fds)
+        try:
+            kick_helper_ft.enforce_pack_gates(
+                manifest,
+                staged_paths,
+                smoke=smoke,
+                pack_dir=str(root),
             )
-            evidence["sha256_evidence"] = sealed["sha256_evidence"]
-            evidence["integrity_evidence"] = sealed["integrity_evidence"]
-            evidence["result"] = in_memory_result
-            evidence["exit_code"] = record.get("exit_code", 0)
-            if smoke:
-                evidence["smoke"] = True
-                evidence["checkpoint_integrity_status"] = kick_helper_ft.CHECKPOINT_UNSCORED
-            else:
-                evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
-                evidence["checkpoint_integrity_status"] = record["status"]
-    evidence["post_train_shas"] = record["computed_shas"]
-    evidence["post_train_host"] = record["host"]
-    evidence["post_train_paths"] = record["paths"]
-    evidence["trust_blobs"] = blobs
-    evidence["head_sha"] = blobs.get("HEAD")
-    if record["status"] != kick_helper_ft.CHECKPOINT_MATCH:
-        return _bad(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
-    result = {
-        "ok": True,
-        "pack_id": pack_id,
-        "run_id": run_id,
-        "launched": True,
-        "host": host,
-        "paths": recorded_paths,
-        "trainer_config": trainer_config,
-        "trainer_argv": trainer_argv,
-        "post_train_shas": record["computed_shas"],
-        "post_train_host": record["host"],
-        "post_train_paths": record["paths"],
-        "kickoff_pin_fetch": fetched_pin,
-        "trust_blobs": blobs,
-        "head_sha": blobs.get("HEAD"),
-        "exit_code": record.get("exit_code", 0),
-    }
-    if ckpt_id and not smoke:
-        result["checkpoint_id"] = ckpt_id
-    if smoke:
-        result["smoke"] = True
-        result.pop("checkpoint_id", None)
-    if evidence.get("sha256_evidence"):
-        result["sha256_evidence"] = evidence.get("sha256_evidence")
-        result["integrity_evidence"] = evidence.get("integrity_evidence")
-        result["result"] = evidence.get("result")
-    return result
+        except kick_helper_ft.KickRefused as exc:
+            return _bad(exc.field, exc.expected, exc.actual)
+        host = socket.gethostname()
+        trainer_config = {"host": host, "paths": fd_paths}
+        trainer_argv = kick_helper_ft.build_trainer_argv(fd_paths)
+        launch_body = dict(body)
+        launch_body["paths"] = fd_paths
+        launch_body["trainer_config"] = trainer_config
+        launch_body["trainer_argv"] = trainer_argv
+        ev_paths = evidence.get("paths") if isinstance(evidence.get("paths"), dict) else {}
+        launch_evidence = dict(evidence)
+        launch_evidence["paths"] = fd_paths
+        launch_evidence["run_private_dir"] = str(root.resolve())
+        if isinstance(ev_paths, dict) and ev_paths.get("pack_dir"):
+            return _bad("paths.pack_dir", "absent (run-dir copies only)", ev_paths.get("pack_dir"))
+        launch_body["evidence"] = launch_evidence
+        launcher = launch_trainer if launch_trainer is not None else default_launch_trainer
+        launched = launcher(launch_body)
+        if not isinstance(launched, dict) or launched.get("ok") is not True:
+            return _bad("trainer", "ok", launched)
+        exit_info = kick_helper_ft.wait_for_training_exit(launched)
+        record = kick_helper_ft.rehash_held_fds(
+            sealed_fds,
+            pin=hq_pin,
+            manifest_shas=manifest_shas,
+            host=host,
+            refuse_on_mismatch=False,
+        )
+        kick_helper_ft.apply_trainer_exit(record, exit_info)
+        ckpt_id = launched.get("checkpoint_id")
+        run_dir = Path(evidence_path).parent if isinstance(evidence_path, str) and evidence_path else root.parent
+        if ckpt_id:
+            try:
+                ckpt_dir = kick_helper_ft.checkpoint_dir_for(run_dir, ckpt_id)
+            except kick_helper_ft.KickRefused as exc:
+                return _bad(exc.field, exc.expected, exc.actual)
+            if ckpt_dir is not None:
+                ckpt_path = ckpt_dir / kick_helper_ft.INTEGRITY_EVIDENCE_NAME
+                if smoke:
+                    record["smoke"] = True
+                public = kick_helper_ft._public_integrity_record(record)
+                if isinstance(evidence.get("private_copy_shas"), dict):
+                    public["private_copy_shas"] = dict(evidence["private_copy_shas"])
+                try:
+                    sealed = kick_helper_ft.write_integrity_evidence_held(public, ckpt_path)
+                except kick_helper_ft.KickRefused as exc:
+                    return _bad(exc.field, exc.expected, exc.actual)
+                in_memory_result = (
+                    record["status"]
+                    if record.get("status")
+                    in (kick_helper_ft.CHECKPOINT_MATCH, kick_helper_ft.CHECKPOINT_REFUSED)
+                    else kick_helper_ft.CHECKPOINT_REFUSED
+                )
+                evidence["sha256_evidence"] = sealed["sha256_evidence"]
+                evidence["integrity_evidence"] = sealed["integrity_evidence"]
+                evidence["result"] = in_memory_result
+                evidence["exit_code"] = record.get("exit_code", 0)
+                if smoke:
+                    evidence["smoke"] = True
+                    evidence["checkpoint_integrity_status"] = kick_helper_ft.CHECKPOINT_UNSCORED
+                else:
+                    evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
+                    evidence["checkpoint_integrity_status"] = record["status"]
+        evidence["post_train_shas"] = record["computed_shas"]
+        evidence["post_train_host"] = record["host"]
+        evidence["post_train_paths"] = record["paths"]
+        evidence["trust_blobs"] = blobs
+        evidence["head_sha"] = blobs.get("HEAD")
+        if record["status"] != kick_helper_ft.CHECKPOINT_MATCH:
+            return _bad(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
+        result = {
+            "ok": True,
+            "pack_id": pack_id,
+            "run_id": run_id,
+            "launched": True,
+            "host": host,
+            "paths": fd_paths,
+            "trainer_config": trainer_config,
+            "trainer_argv": trainer_argv,
+            "post_train_shas": record["computed_shas"],
+            "post_train_host": record["host"],
+            "post_train_paths": record["paths"],
+            "kickoff_pin_fetch": fetched_pin,
+            "trust_blobs": blobs,
+            "head_sha": blobs.get("HEAD"),
+            "exit_code": record.get("exit_code", 0),
+        }
+        if ckpt_id and not smoke:
+            result["checkpoint_id"] = ckpt_id
+        if smoke:
+            result["smoke"] = True
+            result.pop("checkpoint_id", None)
+        if evidence.get("sha256_evidence"):
+            result["sha256_evidence"] = evidence.get("sha256_evidence")
+            result["integrity_evidence"] = evidence.get("integrity_evidence")
+            result["result"] = evidence.get("result")
+        return result
+    except kick_helper_ft.KickRefused as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
+    finally:
+        for fd in list(held_fds.values()) + list(sealed_fds.values()):
+            kick_helper_ft._close_quietly(fd)
 
 
 def _json_status(payload: dict[str, Any]) -> str:

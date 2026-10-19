@@ -794,8 +794,7 @@ def _stop_hq_http_mock(owner: unittest.TestCase) -> None:
 
 
 def _stage_run_private(dest: Path) -> Path:
-    run_private = Path(tempfile.mkdtemp(prefix="inputs-", dir=str(dest.parent)))
-    os.chmod(run_private, 0o700)
+    run_private = kick_helper_ft._make_run_private_dir()
     for name in (
         "curated_pack_v2.jsonl",
         "curated_pack_v2_train.jsonl",
@@ -806,6 +805,10 @@ def _stage_run_private(dest: Path) -> Path:
         shutil.copyfile(dest / name, target)
         os.chmod(target, 0o400)
     return run_private
+
+
+def _is_held_trainer_fd(path: object) -> bool:
+    return kick_helper_ft.is_proc_self_fd_path(path)
 
 
 def _wrap_hash_fns(*targets: tuple[object, str]) -> tuple[list[str], list[tuple[object, str, object]]]:
@@ -872,7 +875,10 @@ class HelperFtIntegrityTests(unittest.TestCase):
             self.assertEqual(evidence["computed_shas"], evidence["manifest_shas"])
             self.assertEqual(log_path.name, "helper_ft.log")
             self.assertNotEqual(pack_dir.resolve(), original.resolve() if original else pack_dir)
-            self.assertTrue((pack_dir / "curated_pack_v2.jsonl").is_file())
+            self.assertTrue(
+                (pack_dir / "curated_pack_v2.jsonl").is_file()
+                or _is_held_trainer_fd(evidence["paths"]["pack"])
+            )
             if os.name == "posix":
                 self.assertEqual(stat.S_IMODE(pack_dir.stat().st_mode), 0o700)
                 self.assertEqual(
@@ -940,7 +946,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(on_disk["row_counts"]["curated_pack_v2_train.jsonl"]["actual"], 1)
         self.assertEqual(on_disk["row_counts"]["curated_pack_v2_holdout.jsonl"]["actual"], 1)
         self.assertNotEqual(Path(on_disk["evidence_path"]).parent, dest)
-        self.assertTrue(Path(on_disk["paths"]["train"]).is_absolute())
+        self.assertTrue(str(on_disk["paths"]["train"]).startswith("/"))
         self.assertIn("script_git_sha", on_disk)
         self.assertTrue(on_disk["script_sha256"])
         self.assertEqual(len(on_disk["script_sha256"]), 64)
@@ -953,11 +959,11 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(set(kickoff_body["paths"]), {"pack", "train", "holdout", "manifest"})
         self.assertNotIn("pack_dir", kickoff_body["paths"])
         for path in kickoff_body["paths"].values():
-            self.assertEqual(Path(path).resolve().parent, run_private)
-            self.assertNotEqual(Path(path).resolve().parent, dest.resolve())
+            self.assertTrue(_is_held_trainer_fd(path), path)
+            self.assertNotEqual(Path(run_private).resolve(), dest.resolve())
         self.assertEqual(kickoff_body["trainer_config"]["paths"], kickoff_body["paths"])
         self.assertEqual(kickoff_body["trainer_argv"], kick_helper_ft.build_trainer_argv(kickoff_body["paths"]))
-        self.assertEqual(on_disk["paths"], kickoff_body["paths"])
+        self.assertEqual(on_disk["trainer_argv"], kickoff_body["trainer_argv"])
         self.assertEqual(rec["status"], "MATCH")
         self.assertEqual(rec["host"], on_disk["host"])
         self.assertEqual(rec["paths"], kickoff_body["paths"])
@@ -1441,36 +1447,41 @@ class HelperFtIntegrityTests(unittest.TestCase):
             self.assertNotIn(banned, option_strings)
 
     def test_post_train_copy_mismatch_marks_evidence_not_ok(self) -> None:
+        """Staged-path rewrite after fd seal is not the integrity gate."""
+        seen: dict[str, str] = {}
+
+        def start(copy_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del log_path
+            target = copy_dir / "curated_pack_v2.jsonl"
+            if target.is_file():
+                os.chmod(target, 0o600)
+                target.write_bytes(target.read_bytes() + b"x")
+                os.chmod(target, 0o400)
+            pack_fd = Path(evidence["paths"]["pack"])
+            seen["sha"] = hashlib.sha256(pack_fd.read_bytes()).hexdigest()
+            return {"ok": True, "exit_code": 0}
+
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
             self._pin(manifest)
             log_path = Path(tmp) / "runs" / "helper_ft.log"
-
-            def start(copy_dir: Path, evidence: dict, log_path: Path) -> None:
-                target = copy_dir / "curated_pack_v2.jsonl"
-                os.chmod(target, 0o600)
-                target.write_bytes(target.read_bytes() + b"x")
-                os.chmod(target, 0o400)
-
-            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.kick(
-                    dest, log_path=log_path, start_training=start)
+            evidence = kick_helper_ft.kick(dest, log_path=log_path, start_training=start)
             files = list(log_path.parent.glob("pack_integrity_evidence_*.json"))
             self.assertEqual(len(files), 1)
             on_disk = json.loads(files[0].read_text(encoding="utf-8"))
-            ckpt = log_path.parent / "ckpt-test" / "integrity_evidence.json"
+            ckpt = Path(evidence["checkpoint_integrity_evidence_path"])
             rec = json.loads(ckpt.read_text(encoding="utf-8"))
-            status = kick_helper_ft.checkpoint_integrity_status(log_path.parent / "ckpt-test")
-        self.assertFalse(on_disk["ok"])
-        self.assertEqual(ctx.exception.field, "sha256_pack")
+            status = kick_helper_ft.checkpoint_integrity_status(ckpt.parent)
+        self.assertTrue(on_disk["ok"])
+        self.assertEqual(evidence["result"], "MATCH")
+        self.assertEqual(seen["sha"], manifest["sha256_pack"])
         self.assertEqual(len(self.kickoff_calls), 1)
-        self.assertEqual(rec["status"], "REFUSED")
+        self.assertEqual(rec["status"], "MATCH")
         self.assertEqual(rec["host"], on_disk["host"])
-        self.assertEqual(rec["paths"], on_disk["paths"])
-        self.assertFalse(rec["match"])
-        self.assertEqual(status, "REFUSED")
+        self.assertTrue(rec["match"])
+        self.assertEqual(status, "MATCH")
 
     def test_refused_run_never_leaves_ok_true_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2272,8 +2283,9 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
         self.assertEqual(launch["trainer_config"]["paths"], launch["paths"])
         self.assertEqual(set(launch["paths"]), {"pack", "train", "holdout", "manifest"})
         for path in launch["paths"].values():
-            self.assertEqual(Path(path).resolve().parent, run_private)
+            self.assertTrue(_is_held_trainer_fd(path), path)
         self.assertEqual(payload["paths"], launch["paths"])
+        self.assertTrue(str(run_private).startswith(os.path.realpath(os.environ[kick_helper_ft.FORGE_RUN_PRIVATE_ROOT_ENV])))
         self.assertEqual(payload["post_train_paths"], launch["paths"])
         self.assertEqual(payload["post_train_host"], launch["trainer_config"]["host"])
         self.assertEqual(payload["trust_blobs"], _TEST_TRUST_BLOBS)
@@ -2925,22 +2937,29 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             self._restart_trust_patcher()
 
     def test_rehash_after_training_not_when_kickoff_returns(self) -> None:
-        def start(pack_dir: Path, evidence: dict, log_path: Path) -> None:
-            del evidence, log_path
+        """Staged-path rewrite during start_training must not reach sealed trainer fds."""
+        seen: dict[str, str] = {}
+
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del log_path
+            train = Path(evidence["paths"]["train"])
+            seen["sha"] = hashlib.sha256(train.read_bytes()).hexdigest()
             target = pack_dir / "curated_pack_v2.jsonl"
-            os.chmod(target, 0o600)
-            _flip_one_ascii_byte(target)
-            os.chmod(target, 0o400)
+            if target.is_file():
+                os.chmod(target, 0o600)
+                _flip_one_ascii_byte(target)
+                os.chmod(target, 0o400)
+            return {"ok": True, "exit_code": 0}
 
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
             self._pin(manifest)
-            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.kick(dest, start_training=start)
+            evidence = kick_helper_ft.kick(dest, start_training=start)
         self.assertEqual(len(self.kickoff_calls), 1)
-        self.assertEqual(ctx.exception.field, "sha256_pack")
+        self.assertEqual(evidence["result"], "MATCH")
+        self.assertEqual(seen["sha"], manifest["sha256_train"])
 
     def test_trainer_argv_and_evidence_use_only_run_dir_paths(self) -> None:
         captured: list[dict] = []
@@ -2950,8 +2969,8 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             return {"ok": True, "checkpoint_id": "ckpt-host", "exit_code": 0}
 
         def start(copy_dir: Path, evidence: dict, log_path: Path) -> dict:
-            del log_path
-            self.assertEqual(evidence["paths"]["pack"], str((copy_dir / "curated_pack_v2.jsonl").resolve()))
+            del log_path, copy_dir
+            self.assertTrue(_is_held_trainer_fd(evidence["paths"]["pack"]))
             return {"ok": True, "checkpoint_id": "ckpt-host", "exit_code": 0}
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -2970,12 +2989,11 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(body["trainer_config"]["paths"], body["paths"])
         self.assertEqual(body["trainer_argv"], kick_helper_ft.build_trainer_argv(body["paths"]))
         for path in (*body["paths"].values(), *body["trainer_argv"][1::2]):
-            resolved = Path(path).resolve()
-            self.assertEqual(resolved.parent, run_private)
-            self.assertNotEqual(resolved.parent, dest.resolve())
-            self.assertFalse(str(resolved).startswith(str(dest.resolve()) + os.sep))
+            self.assertTrue(_is_held_trainer_fd(path), path)
+            self.assertFalse(str(path).startswith(str(dest.resolve()) + os.sep))
         self.assertEqual(rec["paths"], body["paths"])
         self.assertEqual(rec["paths"], evidence["paths"])
+        self.assertNotEqual(run_private, dest.resolve())
         self.assertEqual(rec["host"], evidence["host"])
         self.assertEqual(rec["host"], socket.gethostname())
         self.assertEqual(rec["status"], "MATCH")
@@ -2984,12 +3002,18 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(rec["manifest_shas"], evidence["manifest_shas"])
 
     def test_mid_run_chmod_edit_writes_refused_checkpoint_evidence(self) -> None:
-        def start(copy_dir: Path, evidence: dict, log_path: Path) -> None:
-            del evidence, log_path
+        """Staged-path rewrite after fd seal must not poison the trainer digest."""
+
+        def start(copy_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del log_path
             target = copy_dir / "curated_pack_v2.jsonl"
-            os.chmod(target, 0o600)
-            target.write_bytes(target.read_bytes() + b"x")
-            os.chmod(target, 0o400)
+            if target.is_file():
+                os.chmod(target, 0o600)
+                target.write_bytes(target.read_bytes() + b"x")
+                os.chmod(target, 0o400)
+            train = Path(evidence["paths"]["train"])
+            digest = hashlib.sha256(train.read_bytes()).hexdigest()
+            return {"ok": True, "exit_code": 0, "train_sha256": digest}
 
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -2997,14 +3021,14 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             manifest = _write_helper_pack(dest)
             self._pin(manifest)
             log_path = Path(tmp) / "runs" / "helper_ft.log"
-            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.kick(dest, log_path=log_path, start_training=start)
-            ckpt_dir = log_path.parent / "ckpt-test"
-            rec = json.loads((ckpt_dir / "integrity_evidence.json").read_text(encoding="utf-8"))
-        self.assertEqual(ctx.exception.field, "sha256_pack")
-        self.assertEqual(rec["status"], "REFUSED")
+            evidence = kick_helper_ft.kick(dest, log_path=log_path, start_training=start)
+            ckpt = Path(evidence["checkpoint_integrity_evidence_path"])
+            rec = json.loads(ckpt.read_text(encoding="utf-8"))
+        self.assertEqual(evidence["result"], "MATCH")
+        self.assertEqual(rec["status"], "MATCH")
         self.assertEqual(rec["host"], socket.gethostname())
-        self.assertFalse(rec["match"])
+        self.assertTrue(rec["match"])
+        self.assertEqual(evidence["post_train_shas"]["sha256_train"], manifest["sha256_train"])
 
     def test_missing_checkpoint_evidence_is_unscored(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3421,11 +3445,11 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         seen: dict[str, str] = {}
 
         def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
-            del log_path
+            del log_path, pack_dir
             train_copy = Path(evidence["paths"]["train"])
             pack_copy = Path(evidence["paths"]["pack"])
-            self.assertTrue(str(train_copy).startswith(str(Path(evidence["run_private_dir"]))))
-            self.assertNotEqual(train_copy.resolve(), (source / "curated_pack_v2_train.jsonl").resolve())
+            self.assertTrue(_is_held_trainer_fd(str(train_copy)))
+            self.assertNotEqual(str(train_copy), str((source / "curated_pack_v2_train.jsonl").resolve()))
             seen["train"] = hashlib.sha256(train_copy.read_bytes()).hexdigest()
             seen["pack"] = hashlib.sha256(pack_copy.read_bytes()).hexdigest()
             src_train = source / "curated_pack_v2_train.jsonl"
@@ -3470,41 +3494,100 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertNotEqual(rewritten_train_sha, seen["train"])
 
     def test_k3_rewrite_after_prexec_hash_reaches_child(self) -> None:
-        """K3: rewrite of the staged copy after the pre-exec hash must not train."""
+        """K3: real launcher+trainer. Staged-copy rewrite after seal must not train."""
         for size_change in (False, True):
             with self.subTest(size_change=size_change):
-                reached = {"child": False}
+                seen: dict[str, bytes] = {}
 
-                def kickoff(body: dict, *, _size_change: bool = size_change) -> dict:
-                    train = Path(body["run_private_dir"]) / kick_helper_ft.TRAIN_FILE
-                    os.chmod(train, 0o600)
+                def trainer(body: dict, *, _size_change: bool = size_change) -> dict:
+                    argv = body["trainer_argv"]
+                    train_arg = argv[argv.index("--train") + 1]
+                    staged = Path(body["run_private_dir"]) / kick_helper_ft.TRAIN_FILE
+                    os.chmod(staged, 0o600)
                     if _size_change:
-                        train.write_bytes(train.read_bytes() + b"#")
+                        staged.write_bytes(staged.read_bytes() + b"#")
                     else:
-                        original = train.read_bytes()
-                        _flip_one_ascii_byte(train)
-                        self.assertEqual(len(train.read_bytes()), len(original))
-                    os.chmod(train, 0o400)
+                        original = staged.read_bytes()
+                        _flip_one_ascii_byte(staged)
+                        self.assertEqual(len(staged.read_bytes()), len(original))
+                    os.chmod(staged, 0o400)
+                    seen["trained"] = Path(train_arg).read_bytes()
                     return {"ok": True, "checkpoint_id": "ckpt-k3", "exit_code": 0}
 
-                def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
-                    del pack_dir, evidence, log_path
-                    reached["child"] = True
-                    return {"ok": True, "exit_code": 0}
+                def kickoff(body: dict) -> dict:
+                    return helper_ft_kickoff.handle_train_kickoff(
+                        body, launch_trainer=trainer
+                    )
 
                 with tempfile.TemporaryDirectory() as tmp:
                     dest = Path(tmp) / "inbox-pack"
                     dest.mkdir()
                     manifest = _write_helper_pack(dest)
                     self._pin(manifest)
-                    with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                        kick_helper_ft.kick(
-                            dest, kickoff=kickoff, start_training=start
-                        )
-                self.assertFalse(reached["child"])
-                self.assertEqual(ctx.exception.field, "sha256_train")
-                self.assertEqual(ctx.exception.expected, manifest["sha256_train"])
-                self.assertNotEqual(ctx.exception.actual, manifest["sha256_train"])
+                    evidence = kick_helper_ft.kick(dest, kickoff=kickoff)
+                self.assertEqual(
+                    hashlib.sha256(seen["trained"]).hexdigest(),
+                    manifest["sha256_train"],
+                )
+                self.assertEqual(evidence["result"], "MATCH")
+
+    def test_k3_cleanup_on_exception_and_signal(self) -> None:
+        root = Path(os.environ[kick_helper_ft.FORGE_RUN_PRIVATE_ROOT_ENV])
+
+        def leftovers() -> list[str]:
+            return [p.name for p in root.iterdir() if p.name.startswith("inputs-")]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused):
+                kick_helper_ft.kick(
+                    dest,
+                    kickoff=lambda _body: (_ for _ in ()).throw(RuntimeError("boom")),
+                )
+            self.assertEqual(leftovers(), [])
+            made = kick_helper_ft._make_run_private_dir()
+            kick_helper_ft._register_run_private_cleanup(made)
+            (made / "x").write_bytes(b"1")
+            kick_helper_ft._cleanup_run_privates()
+            self.assertFalse(os.path.lexists(made))
+            self.assertEqual(leftovers(), [])
+
+    def test_k3_swap_during_training_then_restore_must_refuse(self) -> None:
+        """Swap the hashed trainer fd during training, restore, must refuse."""
+
+        def trainer(body: dict) -> dict:
+            argv = body["trainer_argv"]
+            train_arg = argv[argv.index("--train") + 1]
+            train = Path(train_arg)
+            good = train.read_bytes()
+            os.chmod(train, 0o600)
+            flipped = bytearray(good)
+            for idx, byte in enumerate(flipped):
+                if 97 <= byte <= 122:
+                    flipped[idx] = byte ^ 0x20
+                    break
+            fd = os.open(train_arg, os.O_WRONLY)
+            try:
+                os.pwrite(fd, bytes(flipped), 0)
+            finally:
+                os.close(fd)
+            os.chmod(train, 0o400)
+            return {"ok": True, "checkpoint_id": "ckpt-k3-swap", "exit_code": 0}
+
+        def kickoff(body: dict) -> dict:
+            return helper_ft_kickoff.handle_train_kickoff(body, launch_trainer=trainer)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, kickoff=kickoff)
+        self.assertEqual(ctx.exception.field, "sha256_train")
 
     def test_evidence_swapper_cannot_post_match_on_refused_exit(self) -> None:
         stop = threading.Event()
