@@ -201,6 +201,7 @@ def config_from_evidence(evidence: Mapping[str, Any] | None) -> dict[str, Any]:
         "rows_holdout": pin.get("rows_holdout") if pin.get("rows_holdout") is not None else hold_rows.get("actual"),
         "git_head": ev.get("head_sha") or ev.get("script_git_sha"),
         "host": ev.get("host") or socket.gethostname(),
+        "smoke": True if ev.get("smoke") is True else False,
     }
     for key, value in trainer.items():
         if key in {"paths"} or not _scalar(value):
@@ -427,6 +428,9 @@ class RunSession:
             "sha256_holdout",
             "result",
             "status",
+            "exit_code",
+            "smoke",
+            "scorable",
             "host",
         ):
             if record.get(key) is not None:

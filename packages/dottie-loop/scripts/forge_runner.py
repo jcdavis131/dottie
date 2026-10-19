@@ -191,6 +191,71 @@ def _track_helper_ft_refuse(body: dict[str, Any] | None, payload: dict[str, Any]
         return
 
 
+_STATE_LEAK_KEYS = frozenset(
+    {"risk_hint", "halt_class", "provenance", "agent_config", "category"}
+)
+
+
+def _fallback_state_leaks(body: dict[str, Any]) -> list[str]:
+    """Off-tree runner still refuses leaked state keys when jsonl paths exist."""
+    paths = body.get("paths")
+    if not isinstance(paths, dict):
+        return []
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def walk(value: object, path: str, row_id: str) -> None:
+        if len(found) >= 10:
+            return
+        if isinstance(value, dict):
+            for key, child in value.items():
+                key_s = str(key)
+                child_path = f"{path}.{key_s}"
+                if key_s in _STATE_LEAK_KEYS:
+                    item = f"{row_id}:{child_path}"
+                    if item not in seen:
+                        seen.add(item)
+                        found.append(item)
+                        if len(found) >= 10:
+                            return
+                walk(child, child_path, row_id)
+        elif isinstance(value, list):
+            for idx, child in enumerate(value):
+                walk(child, f"{path}[{idx}]", row_id)
+
+    for key in ("pack", "train", "holdout"):
+        raw = paths.get(key)
+        if not isinstance(raw, str) or not raw:
+            continue
+        path = Path(raw)
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            row_id = obj.get("id") or obj.get("trajectory_id") or "?"
+            walk(obj.get("state"), "state", str(row_id))
+            if len(found) >= 10:
+                return found
+    return found
+
+
+def _fallback_refuse(body: dict[str, Any] | None, field: str, expected: object, actual: object) -> dict[str, Any]:
+    payload = {"ok": False, "field": field, "expected": expected, "actual": actual}
+    _track_helper_ft_refuse(body, payload)
+    return payload
+
+
 def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     """HELPER FT ``POST /train/kickoff``. Never accepts ``inbox: latest``.
 
@@ -206,14 +271,20 @@ def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
         _track_helper_ft_refuse(body, payload)
         return payload
     inbox = body.get("inbox")
-    if isinstance(inbox, str) and inbox.strip().lower() == "latest":
-        payload = {"ok": False, "field": "inbox", "expected": "named pack_id", "actual": "latest"}
-        _track_helper_ft_refuse(body, payload)
-        return payload
+    if "inbox_latest" in body:
+        return _fallback_refuse(body, "inbox_latest", "absent", "present")
+    if isinstance(inbox, str) and inbox.strip().lower() in {"latest", "inbox_latest", "inbox-latest"}:
+        return _fallback_refuse(body, "inbox", "named pack_id", inbox)
     if body.get("mode") == "inbox-validate":
-        payload = {"ok": False, "field": "mode", "expected": "helper-ft", "actual": "inbox-validate"}
-        _track_helper_ft_refuse(body, payload)
-        return payload
+        return _fallback_refuse(body, "mode", "helper-ft", "inbox-validate")
+    if body.get("not_for_train") is True or (
+        isinstance(body.get("evidence"), dict) and body["evidence"].get("not_for_train") is True
+    ):
+        if body.get("smoke") is not True and body.get("mode") != "helper-ft-smoke":
+            return _fallback_refuse(body, "not_for_train", False, True)
+    leaks = _fallback_state_leaks(body)
+    if leaks:
+        return _fallback_refuse(body, "state.leak", "absent", leaks[:10])
     if not body.get("evidence"):
         payload = {"ok": False, "field": "evidence", "expected": "present", "actual": "missing"}
         _track_helper_ft_refuse(body, payload)

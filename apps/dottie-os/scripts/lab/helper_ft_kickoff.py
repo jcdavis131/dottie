@@ -41,6 +41,10 @@ _HEX = frozenset("0123456789abcdef")
 MAX_EVIDENCE_AGE_SECONDS = 15 * 60
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+# Radar: the only HTTP training-start route in this repository.
+TRAINING_START_ROUTES = (("POST", "/train/kickoff"),)
+# jev-ava's trainer is not served from this tree. Empty on purpose.
+JEV_AVA_TRAINING_START_ROUTES: tuple[tuple[str, str], ...] = ()
 SWARM_HQ_AGENT_TOKEN_ENV = cam_pin_spec.SWARM_HQ_AGENT_TOKEN_ENV
 PIN_SOURCE = "swarm-hq-cam-pin"
 HQ_PIN_REQUIRED_KEYS = cam_pin_spec.HQ_PIN_REQUIRED_KEYS
@@ -67,6 +71,7 @@ OTHER_HELPER_FT_START_PATHS = frozenset(
         "/train/inbox",
         "/train/kick",
         "/inbox/latest",
+        "/inbox_latest",
         "/train/kickoff/latest",
     }
 )
@@ -278,20 +283,17 @@ def _track_kickoff_result(
     try:
         evidence = body.get("evidence") if isinstance(body, dict) and isinstance(body.get("evidence"), dict) else {}
         config = helper_ft_trackio.config_from_evidence({**evidence, **payload})
-        post = payload.get("post_train_shas") if isinstance(payload.get("post_train_shas"), dict) else {}
         if payload.get("ok") is True:
             if not session.inited:
                 session.start(config)
+            smoke = payload.get("smoke") is True
             session.log_integrity(
                 {
-                    "sha256_evidence": payload.get("sha256_evidence") or evidence.get("sha256_evidence"),
-                    "sha256_pack": post.get("sha256_pack") or payload.get("sha256_pack") or evidence.get("sha256_pack"),
-                    "sha256_train": post.get("sha256_train") or payload.get("sha256_train") or evidence.get("sha256_train"),
-                    "sha256_holdout": post.get("sha256_holdout")
-                    or payload.get("sha256_holdout")
-                    or evidence.get("sha256_holdout"),
-                    "result": kick_helper_ft.CHECKPOINT_MATCH,
-                    "status": kick_helper_ft.CHECKPOINT_MATCH,
+                    "sha256_evidence": payload.get("sha256_evidence"),
+                    "result": payload.get("result"),
+                    "exit_code": payload.get("exit_code"),
+                    "smoke": smoke,
+                    "scorable": False if smoke else True,
                     "host": payload.get("host"),
                 }
             )
@@ -330,13 +332,15 @@ def _handle_train_kickoff(
         blobs = cam_pin_spec.require_committed_trust()
     except cam_pin_spec.CamPinError as exc:
         return _bad(exc.field, exc.expected, exc.actual)
-    inbox = body.get("inbox")
+    try:
+        kick_helper_ft.refuse_inbox_latest(body)
+    except kick_helper_ft.KickRefused as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
     mode = body.get("mode")
-    if isinstance(inbox, str) and inbox.strip().lower() == "latest":
-        return _bad("inbox", "named pack_id", "latest")
     if mode == "inbox-validate":
         return _bad("mode", "helper-ft", "inbox-validate")
-    if mode != "helper-ft":
+    smoke = kick_helper_ft.is_smoke_mode(body)
+    if mode not in ("helper-ft", "helper-ft-smoke"):
         return _bad("mode", "helper-ft", mode)
     evidence = body.get("evidence")
     if not isinstance(evidence, dict) or not evidence:
@@ -477,6 +481,10 @@ def _handle_train_kickoff(
             return _bad(sha_field, hq_sha, actual)
         if actual != req:
             return _bad(sha_field, req, actual)
+    try:
+        kick_helper_ft.enforce_pack_gates(manifest, recorded_paths, smoke=smoke)
+    except kick_helper_ft.KickRefused as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
     host = socket.gethostname()
     trainer_config = {"host": host, "paths": recorded_paths}
     trainer_argv = kick_helper_ft.build_trainer_argv(recorded_paths)
@@ -520,13 +528,14 @@ def _handle_train_kickoff(
         if isinstance(evidence_path, str) and evidence_path:
             log_path = Path(evidence_path).parent / kick_helper_ft.DEFAULT_LOG_NAME
         session.log_losses_from_launch(launched, log_path=log_path)
-    kick_helper_ft.wait_for_training_exit(launched)
+    exit_info = kick_helper_ft.wait_for_training_exit(launched)
     record = kick_helper_ft.rehash_recorded_trainer_paths(
         recorded_paths,
         pin=hq_pin,
         manifest_shas=manifest_shas,
         host=host,
     )
+    kick_helper_ft.apply_trainer_exit(record, exit_info)
     ckpt_id = launched.get("checkpoint_id")
     run_dir = Path(evidence_path).parent if isinstance(evidence_path, str) and evidence_path else root.parent
     if ckpt_id:
@@ -536,21 +545,27 @@ def _handle_train_kickoff(
             return _bad(exc.field, exc.expected, exc.actual)
         if ckpt_dir is not None:
             ckpt_path = ckpt_dir / kick_helper_ft.INTEGRITY_EVIDENCE_NAME
+            if smoke:
+                record["smoke"] = True
             kick_helper_ft.write_evidence(
                 kick_helper_ft._public_integrity_record(record),
                 ckpt_path,
                 mode=0o400,
             )
-            log_path = run_dir / kick_helper_ft.DEFAULT_LOG_NAME
-            line = kick_helper_ft.emit_integrity_evidence_line(
-                ckpt_path, record, log_path=log_path
-            )
-            evidence["integrity_evidence_line"] = line
-            evidence["sha256_evidence"] = kick_helper_ft.parse_integrity_evidence_line(line)[
-                "sha256_evidence"
-            ]
-            evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
-            evidence["checkpoint_integrity_status"] = record["status"]
+            try:
+                sealed = kick_helper_ft.load_integrity_completion(ckpt_path)
+            except kick_helper_ft.KickRefused as exc:
+                return _bad(exc.field, exc.expected, exc.actual)
+            evidence["sha256_evidence"] = sealed["sha256_evidence"]
+            evidence["integrity_evidence"] = sealed["integrity_evidence"]
+            evidence["result"] = sealed["result"]
+            evidence["exit_code"] = record.get("exit_code", 0)
+            if smoke:
+                evidence["smoke"] = True
+                evidence["checkpoint_integrity_status"] = kick_helper_ft.CHECKPOINT_UNSCORED
+            else:
+                evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
+                evidence["checkpoint_integrity_status"] = record["status"]
     evidence["post_train_shas"] = record["computed_shas"]
     evidence["post_train_host"] = record["host"]
     evidence["post_train_paths"] = record["paths"]
@@ -585,12 +600,17 @@ def _handle_train_kickoff(
         "kickoff_pin_fetch": fetched_pin,
         "trust_blobs": blobs,
         "head_sha": blobs.get("HEAD"),
+        "exit_code": record.get("exit_code", 0),
     }
-    if ckpt_id:
+    if ckpt_id and not smoke:
         result["checkpoint_id"] = ckpt_id
-    if evidence.get("integrity_evidence_line"):
-        result["integrity_evidence_line"] = evidence["integrity_evidence_line"]
+    if smoke:
+        result["smoke"] = True
+        result.pop("checkpoint_id", None)
+    if evidence.get("sha256_evidence"):
         result["sha256_evidence"] = evidence.get("sha256_evidence")
+        result["integrity_evidence"] = evidence.get("integrity_evidence")
+        result["result"] = evidence.get("result")
     return result
 
 
@@ -609,7 +629,8 @@ def dispatch(
     """Route table for :8765. Only POST /train/kickoff can start HELPER FT."""
     method = (method or "").upper()
     path = path or "/"
-    if "inbox=latest" in (query or "").lower():
+    query_l = (query or "").lower()
+    if "inbox=latest" in query_l or "inbox_latest" in query_l:
         payload = _bad("inbox", "named pack_id", "latest")
         return _json_status(payload), payload
     if path.rstrip("/").endswith("/latest"):

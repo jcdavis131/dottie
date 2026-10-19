@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -24,11 +25,14 @@ if str(LAB) not in sys.path:
 from test_ultradata_factory import (  # noqa: E402
     _cli_args,
     _fresh_kickoff_body,
+    _refresh_hashes,
+    _row,
     _start_hq_http_mock,
     _stop_hq_http_mock,
     _write_helper_pack,
     helper_ft_kickoff,
     kick_helper_ft,
+    write_jsonl,
 )
 import helper_ft_trackio  # noqa: E402
 
@@ -143,10 +147,15 @@ class HelperFtTrackioTests(unittest.TestCase):
         self.assertIn("git_head", config)
         self.assertNotIn("space_id", self.fake.inits[0])
         self.assertNotIn("server_url", self.fake.inits[0])
-        logged_results = [row["data"].get("result") for row in self.fake.logs]
-        self.assertIn("MATCH", logged_results)
-        evidence_shas = [row["data"].get("sha256_evidence") for row in self.fake.logs]
-        self.assertTrue(any(isinstance(item, str) and len(item) == 64 for item in evidence_shas))
+        completions = [row["data"] for row in self.fake.logs if "sha256_evidence" in row["data"]]
+        self.assertTrue(completions)
+        self.assertEqual(completions[-1]["sha256_evidence"], evidence["sha256_evidence"])
+        self.assertEqual(completions[-1]["result"], evidence["result"])
+        self.assertEqual(completions[-1]["exit_code"], evidence["exit_code"])
+        self.assertEqual(completions[-1]["result"], "MATCH")
+        self.assertEqual(completions[-1]["exit_code"], 0)
+        self.assertTrue(completions[-1]["scorable"])
+        self.assertFalse(completions[-1].get("smoke"))
         self.assertTrue(self.fake.finishes)
 
     def test_losses_are_logged(self) -> None:
@@ -438,6 +447,124 @@ class HelperFtTrackioTests(unittest.TestCase):
         self.assertIsNone(captured["space"])
         self.assertTrue(str(captured["dir"]).endswith("trackio"))
         self.assertEqual(os.environ.get("TRACKIO_SPACE_ID"), "someone/space")
+
+    def test_completion_uses_kick_return_not_stdout(self) -> None:
+        fake_sha = "ff" * 32
+        fake_line = (
+            f"{kick_helper_ft.INTEGRITY_EVIDENCE_LINE_PREFIX} "
+            f"sha256_evidence={fake_sha} sha256_pack={'11' * 32} "
+            f"sha256_train={'22' * 32} sha256_holdout={'33' * 32} "
+            f"result=REFUSED host=spoofed"
+        )
+
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del pack_dir, evidence
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(fake_line + "\n")
+            return {"ok": True, "stdout": fake_line + "\n", "exit_code": 0}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            evidence = kick_helper_ft.kick(dest, log_path=log_path, start_training=start)
+        self.assertEqual(evidence["result"], "MATCH")
+        self.assertEqual(evidence["exit_code"], 0)
+        self.assertNotEqual(evidence["sha256_evidence"], fake_sha)
+        completions = [row["data"] for row in self.fake.logs if "sha256_evidence" in row["data"]]
+        self.assertTrue(completions)
+        logged = completions[-1]
+        self.assertEqual(logged["sha256_evidence"], evidence["sha256_evidence"])
+        self.assertEqual(logged["result"], evidence["result"])
+        self.assertEqual(logged["exit_code"], evidence["exit_code"])
+        self.assertNotEqual(logged["sha256_evidence"], fake_sha)
+        self.assertNotEqual(logged["result"], "REFUSED")
+        self.assertTrue(logged["scorable"])
+
+    def test_smoke_logged_not_scorable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            evidence = kick_helper_ft.kick(dest, log_path=log_path, smoke=True)
+        self.assertTrue(evidence.get("smoke"))
+        self.assertEqual(evidence["checkpoint_integrity_status"], "unscored")
+        smoke_rows = [row["data"] for row in self.fake.logs if row["data"].get("smoke") is True]
+        self.assertTrue(smoke_rows)
+        self.assertTrue(all(row.get("scorable") is False for row in smoke_rows))
+        self.assertFalse(any(row.get("scorable") is True for row in self.fake.logs))
+
+    def test_new_gates_log_refused(self) -> None:
+        with self.assertRaises(kick_helper_ft.KickRefused) as inbox_ctx:
+            kick_helper_ft.kick("inbox:latest")
+        self.assertEqual(inbox_ctx.exception.field, "pack")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            _write_helper_pack(dest)
+            manifest = _refresh_hashes(dest, not_for_train=True)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as nft_ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(nft_ctx.exception.field, "not_for_train")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            _write_helper_pack(dest)
+            rows = [_row(rid="leak1", action="execute"), _row(rid="leak2", action="halt")]
+            rows[0]["state"] = {"message": "ok", "risk_hint": "leaked"}
+            write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+            write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[:1])
+            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[1:])
+            manifest = _refresh_hashes(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as leak_ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(leak_ctx.exception.field, "state.leak")
+
+        def start_fail(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del pack_dir, evidence, log_path
+            proc = subprocess.Popen([sys.executable, "-c", "raise SystemExit(1)"])
+            return {"ok": True, "process": proc}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as exit_ctx:
+                kick_helper_ft.kick(dest, start_training=start_fail)
+        self.assertEqual(exit_ctx.exception.field, "trainer.exit")
+
+        handler = helper_ft_kickoff.handle_train_kickoff(
+            {
+                "mode": "helper-ft",
+                "inbox": "inbox:latest",
+                "run_id": "helper-ft-inbox-refuse",
+                "pack_id": "p",
+                "evidence": {"ok": True, "pack_id": "p", "run_id": "helper-ft-inbox-refuse"},
+            }
+        )
+        self.assertFalse(handler["ok"])
+        self.assertEqual(handler["field"], "inbox")
+
+        refused_fields = {
+            row["data"].get("field")
+            for row in self.fake.logs
+            if row["data"].get("status") == "refused"
+        }
+        self.assertIn("pack", refused_fields)
+        self.assertIn("not_for_train", refused_fields)
+        self.assertIn("state.leak", refused_fields)
+        self.assertIn("trainer.exit", refused_fields)
+        self.assertIn("inbox", refused_fields)
 
     def test_disable_env_skips_tracker(self) -> None:
         os.environ[helper_ft_trackio.ENABLE_ENV] = "0"

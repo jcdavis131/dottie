@@ -19,6 +19,10 @@ current word):
   says `live_gate_eligible: true`. The gate source is in the private repo.
 - **`:8770` is not dottie-os.** It is the Grok Swarm's Laya lane (the
   `swarm-jev-ava` container). Dottie never calls it.
+- **`:8769` (jev-ava CUDA/peft trainer) is not in this repository.** It lives
+  on nugatron with the `swarm-jev-ava` stack. This tree has no `:8769` HTTP
+  routes. The only HELPER FT training-start route here is
+  `POST :8765/train/kickoff`.
 
 The Dottie router's System One backend (`DOTTIE_OS_URL`, see
 `docs/ROUTER.md`) is off by default, and neither the advisor nor the gate is
@@ -72,7 +76,7 @@ console app). Do not swap those trees.
 | `scripts/lab/run_ultradata_harvest.py` | Lean harvest (agent 40 / code 40 / math 30) |
 | `scripts/lab/finalize_manifest.py` | Rewrite `MANIFEST.json` to the pack-hop schema |
 | `scripts/lab/cam_pin_spec.py` | Shared Cam pack-pin byte spec, Ed25519 verify, hardcoded `SWARM_HQ_ORIGIN`. CLI and `:8765` both import this module. |
-| `scripts/lab/kick_helper_ft.py` | Stage-5 HELPER FT kick: fetch Cam-signed Swarm HQ pin from the hardcoded origin, verify Ed25519 (cofactor `[8]A != identity`, prime-order `[L]A == identity`, canonical `y < p`, `S < L`), re-hash pack/train/holdout vs that pin and MANIFEST, copy 0400 into a 0700 run dir, pass the trainer only those run-dir copy paths, write evidence, POST `:8765/train/kickoff` (never `inbox:latest`). After the trainer exits on the training host, re-hash those recorded paths into `<checkpoint>/integrity_evidence.json` (0400) and emit one `INTEGRITY_EVIDENCE sha256_evidence=... result=MATCH|REFUSED` line to stdout/log. No override, no paste path, no `SWARM_HQ_URL`. |
+| `scripts/lab/kick_helper_ft.py` | Stage-5 HELPER FT kick: fetch Cam-signed Swarm HQ pin from the hardcoded origin, verify Ed25519 (cofactor `[8]A != identity`, prime-order `[L]A == identity`, canonical `y < p`, `S < L`), re-hash pack/train/holdout vs that pin and MANIFEST, copy 0400 into a 0700 run dir, pass the trainer only those run-dir copy paths, write evidence, POST `:8765/train/kickoff` (never `inbox:latest`). POSTs kick and completion events to the pinned HQ origin (no redirects) except in explicit `--smoke` mode. After the trainer exits on the training host, re-hash those recorded paths into `<checkpoint>/integrity_evidence.json` (0400). `result` and `sha256_evidence` come from that file, never scraped stdout. Nonzero trainer exit/signal/timeout is `REFUSED` even when hashes match. `not_for_train:true` and leaked `state` labels refuse a real kick. Emits one `HELPER_FT_INTEGRITY_EVIDENCE` line from `kick()` only. No override, no paste path, no `SWARM_HQ_URL`. |
 | `scripts/lab/helper_ft_kickoff.py` | In-repo `:8765` HELPER FT kickoff handler: re-fetch the Cam pin, verify the signature, hash only run-private copies; a body-only pin is not provenance. Trainer argv/config is run-dir copies only (no source-pack fallback). Wait for the trainer in this process, then re-hash those recorded paths. Refuse `inbox:latest` and every other HELPER FT start route. `default_launch_trainer` refuses unless a real launcher is wired. |
 | `scripts/lab/helper_ft_trackio.py` | Optional local Trackio dashboard for HELPER FT (`init`/`log`/`finish`). Fail-open. Not stamp-gate evidence — verdicts come only from the sha-pinned results files and the HQ events. |
 | `tools/gen_cam_pin_key.py` | Cam runs on his device: write a 0600 Ed25519 private key and print the public key to commit at `trust/cam_pin_ed25519.pub`. |

@@ -64,6 +64,8 @@ SIGNED_KEYS = (
 SWARM_HQ_ORIGIN = ""
 SWARM_HQ_AGENT_TOKEN_ENV = "SWARM_HQ_AGENT_TOKEN"
 PIN_PATH = "/api/packs/{pack_id}/pin"
+HQ_EVENT_PATH = "/api/helper-ft/events/{event}"
+HQ_EVENTS = frozenset({"kick", "completion"})
 MAX_PIN_BYTES = 64 * 1024
 HQ_DEADLINE_SECONDS = 15.0
 SHA256_LEN = 64
@@ -536,8 +538,136 @@ def build_hq_opener() -> urllib.request.OpenerDirector:
 
 
 def open_hq(request: urllib.request.Request, *, timeout: float) -> Any:
-    """Open one HQ GET. Tests patch this. Production uses the no-redirect opener."""
+    """Open one HQ request (GET pin or POST event). Tests patch this."""
     return build_hq_opener().open(request, timeout=timeout)
+
+
+def event_url(event: str) -> str:
+    if type(event) is not str or event not in HQ_EVENTS:
+        _refuse("hq.event", "kick|completion", event)
+    origin = pinned_origin()
+    return origin + "/api/helper-ft/events/" + event
+
+
+def _require_event_payload(event: str, payload: object) -> dict[str, Any]:
+    if not isinstance(payload, dict) or not payload:
+        _refuse("hq.event", "JSON object", type(payload).__name__)
+    body: dict[str, Any] = dict(payload)
+    if event == "kick":
+        required = ("run_id", "sha256_pack", "sha256_train", "sha256_holdout")
+    elif event == "completion":
+        required = (
+            "run_id",
+            "sha256_evidence",
+            "sha256_pack",
+            "sha256_train",
+            "sha256_holdout",
+            "result",
+            "exit_code",
+        )
+    else:
+        _refuse("hq.event", "kick|completion", event)
+        raise AssertionError("unreachable")
+    for key in required:
+        if key not in body:
+            _refuse(f"hq.event.{key}", "present", "missing")
+    run_id = body.get("run_id")
+    if type(run_id) is not str or not run_id:
+        _refuse("hq.event.run_id", "present", "missing")
+    sha_keys = ("sha256_pack", "sha256_train", "sha256_holdout")
+    if event == "completion":
+        sha_keys = ("sha256_evidence", *sha_keys)
+    for key in sha_keys:
+        require_sha256_hex(f"hq.event.{key}", body.get(key))
+    if event == "completion":
+        result = body.get("result")
+        if result not in ("MATCH", "REFUSED"):
+            _refuse("hq.event.result", "MATCH|REFUSED", result)
+        exit_code = body.get("exit_code")
+        if exit_code is not None and type(exit_code) is not int:
+            _refuse("hq.event.exit_code", "int or null", type(exit_code).__name__)
+    return body
+
+
+def post_hq_event(event: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """POST a kick or completion event to the pinned origin. No redirects.
+
+    ``x-agent-token`` is attached only after the URL matches ``pinned_origin()``.
+    A placeholder origin refuses the same way pin GETs refuse.
+    Tests patch ``open_hq``.
+    """
+    if type(event) is not str or event not in HQ_EVENTS:
+        _refuse("hq.event", "kick|completion", event)
+    origin = pinned_origin()
+    token = os.environ.get(SWARM_HQ_AGENT_TOKEN_ENV)
+    if type(token) is not str or not token:
+        _refuse(SWARM_HQ_AGENT_TOKEN_ENV, "present", "missing")
+    body = _require_event_payload(event, payload)
+    url = event_url(event)
+    if not _url_is_pinned(url, origin):
+        _refuse("hq.event", f"origin {origin}", url)
+    blob_out = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=blob_out,
+        method="POST",
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "x-agent-token": token,
+        },
+    )
+    deadline = time.monotonic() + HQ_DEADLINE_SECONDS
+    timeout = HQ_DEADLINE_SECONDS
+    try:
+        response = open_hq(request, timeout=timeout)
+        try:
+            status = getattr(response, "status", None) or response.getcode()
+            if status is not None and 300 <= int(status) < 400:
+                _refuse("cam-pin", "no redirect", f"HTTP {status}")
+            if status not in (200, None) and int(status) != 200:
+                if int(status) == 401:
+                    _refuse("cam-pin", "authorized", "HTTP 401")
+                if int(status) == 404:
+                    _refuse("cam-pin", "present", "HTTP 404")
+                _refuse("hq.event", "HTTPS Swarm HQ event", f"HTTP {status}")
+            blob = _read_capped(response, deadline)
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+    except CamPinError:
+        raise
+    except urllib.error.HTTPError as exc:
+        if 300 <= int(exc.code) < 400:
+            _refuse("cam-pin", "no redirect", f"HTTP {exc.code}")
+        if exc.code == 401:
+            _refuse("cam-pin", "authorized", "HTTP 401")
+        if exc.code == 404:
+            _refuse("cam-pin", "present", "HTTP 404")
+        _refuse("hq.event", "HTTPS Swarm HQ event", f"HTTP {exc.code}")
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", None) or exc
+        _refuse("hq.event", "HTTPS Swarm HQ event", f"unreachable:{reason}")
+    except OSError as exc:
+        _refuse("hq.event", "HTTPS Swarm HQ event", f"OSError:{getattr(exc, 'errno', None)}")
+    if not blob:
+        return {"ok": True}
+    try:
+        raw = blob.decode("utf-8")
+    except UnicodeDecodeError:
+        _refuse("hq.event", "utf-8 JSON", "invalid encoding")
+    try:
+        parsed = json.loads(raw) if raw else {}
+    except ValueError:
+        _refuse("hq.event", "JSON object", "invalid JSON")
+    if parsed in (None, ""):
+        return {"ok": True}
+    if not isinstance(parsed, dict):
+        _refuse("hq.event", "JSON object", type(parsed).__name__)
+    if parsed.get("ok") is False:
+        _refuse("hq.event", "ok", parsed)
+    return parsed if parsed else {"ok": True}
 
 
 def _read_capped(response: Any, deadline: float) -> bytes:
