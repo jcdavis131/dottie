@@ -14,8 +14,11 @@ import stat
 import sys
 import tempfile
 import unittest
+import urllib.error
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 APP = Path(__file__).resolve().parents[1]
 SCRIPTS = APP / "scripts"
@@ -355,6 +358,35 @@ def _cam_pin(manifest: dict, **overrides: object) -> dict:
     return pin
 
 
+class _FakeHqHttpResponse:
+    """urllib-compatible HTTPS response for mocked Swarm HQ pin GETs."""
+
+    def __init__(self, body: bytes, status: int = 200) -> None:
+        self._body = body
+        self.status = status
+
+    def read(self) -> bytes:
+        return self._body
+
+    def getcode(self) -> int:
+        return self.status
+
+    def __enter__(self) -> "_FakeHqHttpResponse":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+
+def _pack_id_from_pin_url(url: str) -> str:
+    marker = "/api/packs/"
+    start = url.index(marker) + len(marker)
+    rest = url[start:]
+    if rest.endswith("/pin"):
+        rest = rest[: -len("/pin")]
+    return urllib.parse.unquote(rest)
+
+
 def _refresh_hashes(dest: Path, **overrides: object) -> dict:
     pack = dest / "curated_pack_v2.jsonl"
     train_path = dest / "curated_pack_v2_train.jsonl"
@@ -394,6 +426,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.kickoff_calls: list[dict] = []
         self.hq_pins: dict[str, dict] = {}
         self.hq_error: str | None = None
+        self.hq_requests: list[str] = []
         os.environ["SWARM_HQ_URL"] = "https://swarm-hq.test"
 
         def fake_post(body: dict, url: str | None = None) -> dict:
@@ -403,22 +436,30 @@ class HelperFtIntegrityTests(unittest.TestCase):
             self.assertEqual(body.get("pin", {}).get("recordedBy"), "cam")
             return {"ok": True, "checkpoint_id": "ckpt-test"}
 
-        def fake_fetch(pack_id: str) -> dict:
+        def fake_urlopen(request: object, timeout: object = None) -> _FakeHqHttpResponse:
+            url = getattr(request, "full_url", None) or str(request)
+            method = request.get_method() if hasattr(request, "get_method") else "GET"
+            self.hq_requests.append(url)
+            self.assertEqual(method, "GET")
+            self.assertTrue(str(url).startswith("https://"), url)
+            self.assertIn("/api/packs/", str(url))
+            self.assertTrue(str(url).endswith("/pin"), url)
             if self.hq_error is not None:
-                kick_helper_ft._refuse("cam-pin", "HTTPS Swarm HQ pin", self.hq_error)
+                raise urllib.error.URLError(self.hq_error)
+            pack_id = _pack_id_from_pin_url(str(url))
             pin = self.hq_pins.get(pack_id)
             if pin is None:
-                kick_helper_ft._refuse("cam-pin", "present", "missing")
-            return pin
+                return _FakeHqHttpResponse(b"{}")
+            return _FakeHqHttpResponse(json.dumps({"pin": pin}).encode("utf-8"))
 
         self._orig_post = kick_helper_ft.post_kickoff
-        self._orig_fetch = kick_helper_ft.fetch_cam_pin
         kick_helper_ft.post_kickoff = fake_post
-        kick_helper_ft.fetch_cam_pin = fake_fetch
+        self._urlopen_patcher = patch("urllib.request.urlopen", side_effect=fake_urlopen)
+        self._urlopen_patcher.start()
 
     def tearDown(self) -> None:
         kick_helper_ft.post_kickoff = self._orig_post
-        kick_helper_ft.fetch_cam_pin = self._orig_fetch
+        self._urlopen_patcher.stop()
         os.environ.pop("SWARM_HQ_URL", None)
 
     def _pin(self, manifest: dict, **overrides: object) -> dict:
@@ -456,6 +497,12 @@ class HelperFtIntegrityTests(unittest.TestCase):
             rc = kick_helper_ft.main(_cli_args(dest, log_path))
         self.assertEqual(len(started), 1)
         self.assertGreaterEqual(len(self.kickoff_calls), 1)
+        self.assertEqual(len(self.hq_requests), 2)
+        self.assertTrue(
+            self.hq_requests[0].startswith("https://swarm-hq.test/api/packs/"),
+            self.hq_requests[0],
+        )
+        self.assertTrue(self.hq_requests[0].endswith("/pin"), self.hq_requests[0])
         kickoff_body = self.kickoff_calls[0]
         self.assertNotIn("inbox", kickoff_body)
         self.assertEqual(kickoff_body["pack_id"], "curated_pack_v2-test")
@@ -638,6 +685,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             rc = kick_helper_ft.main(_cli_args(dest))
         self.assertEqual(started, [])
         self.assertEqual(self.kickoff_calls, [])
+        self.assertGreaterEqual(len(self.hq_requests), 1)
         self.assertEqual(rc, 1)
         self.assertEqual(ctx.exception.field, "cam-pin")
         self.assertEqual(ctx.exception.expected, "present")
@@ -668,6 +716,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(len(self.hq_requests), 1)
         self.assertEqual(ctx.exception.field, "cam-pin.pack_id")
         self.assertEqual(ctx.exception.expected, manifest["pack_id"])
         self.assertEqual(ctx.exception.actual, "other-pack")
@@ -681,6 +730,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(len(self.hq_requests), 1)
         self.assertEqual(ctx.exception.field, "cam-pin.stampVerified")
         self.assertEqual(ctx.exception.expected, True)
 
@@ -693,6 +743,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(len(self.hq_requests), 1)
         self.assertEqual(ctx.exception.field, "cam-pin.recordedBy")
         self.assertEqual(ctx.exception.expected, "cam")
         self.assertEqual(ctx.exception.actual, "agent")
@@ -706,6 +757,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(len(self.hq_requests), 1)
         self.assertEqual(ctx.exception.field, "sha256_train")
         self.assertEqual(ctx.exception.expected, "0" * 64)
 
@@ -714,10 +766,12 @@ class HelperFtIntegrityTests(unittest.TestCase):
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             _write_helper_pack(dest)
-            self.hq_error = "unreachable:timed out"
+            self.hq_error = "timed out"
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(len(self.hq_requests), 1)
+        self.assertTrue(self.hq_requests[0].startswith("https://swarm-hq.test/api/packs/"))
         self.assertEqual(ctx.exception.field, "cam-pin")
         self.assertEqual(ctx.exception.expected, "HTTPS Swarm HQ pin")
         self.assertIn("unreachable", str(ctx.exception.actual))
@@ -736,10 +790,11 @@ class HelperFtIntegrityTests(unittest.TestCase):
             for flag in action.option_strings
         ]
         self.assertNotIn("--cam-pin", option_strings)
-        kick_helper_ft.fetch_cam_pin = self._orig_fetch
         os.environ["SWARM_HQ_URL"] = "http://swarm-hq.test"
+        before = list(self.hq_requests)
         with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
             kick_helper_ft.fetch_cam_pin("curated_pack_v2-test")
+        self.assertEqual(self.hq_requests, before)
         self.assertEqual(ctx.exception.field, "SWARM_HQ_URL")
         self.assertEqual(ctx.exception.expected, "https URL")
 
