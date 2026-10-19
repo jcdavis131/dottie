@@ -4094,6 +4094,19 @@ PACK_GUARD_ROOT_PACK = "curated_pack_x.jsonl"
 PACK_GUARD_FIXTURES_PACK = (
     "apps/dottie-os/tests/fixtures/leakgate_eval/packs/a/curated_pack_v2.jsonl"
 )
+# Step may only be {name, run}: shell, working-directory, env, if, and
+# continue-on-error all change whether the extracted block is what CI runs.
+PACK_GUARD_STEP_KEYS = frozenset({"name", "run"})
+# dottie-os-smoke on main (a3872eab) and on 8762693 has exactly these job keys.
+# No name, timeout-minutes, if, continue-on-error, defaults, env, container,
+# or services. Keep this set identical to main; do not grow it to silence a test.
+PACK_GUARD_JOB_KEYS = frozenset({"runs-on", "steps"})
+PACK_GUARD_INDEX_MUTATION_RE = re.compile(
+    r"git\s+rm|update-index|\bsparse\b", re.IGNORECASE
+)
+PACK_GUARD_GIT_ENV_KEYS = frozenset(
+    {"GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE"}
+)
 LEAKGATE_TRACKED_NAMES = frozenset(
     {
         "EVAL_ONLY",
@@ -4113,6 +4126,48 @@ RFC4122_UUID_RE = re.compile(
 HEX_ID_10_RE = re.compile(
     r"(?i)(?<![0-9a-f])(?=[0-9a-f]{10,})[0-9a-f]*[a-f][0-9a-f]*(?![0-9a-f])"
 )
+# Real UltraData row ids (S5): anywhere in source.json raw text.
+AGENT_ID_RE = re.compile(r"(Code|General)_Agent_\d{6}")
+
+
+def _assert_source_json_is_synthetic(raw: str) -> None:
+    """Fail if source.json raw text or payload looks like real UltraData.
+
+    Isolated from sha pins so a mutated copy still goes red when
+    HelperFtLeakGateEvalTests.setUpClass is stubbed.
+    """
+    lowered = raw.lower()
+    if "ultradata" in lowered:
+        raise AssertionError("source.json must not contain an ultradata substring")
+    if "openbmb" in lowered:
+        raise AssertionError("source.json must not contain an openbmb substring")
+    agent_ids = [match.group(0) for match in AGENT_ID_RE.finditer(raw)]
+    if agent_ids:
+        raise AssertionError(f"real agent ids: {agent_ids[:5]}")
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise AssertionError("source.json must be a JSON object")
+    if payload.get("synthetic") is not True:
+        raise AssertionError("source.json must set synthetic: true")
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        raise AssertionError("source.json rows must be a list")
+    if len(rows) != 16:
+        raise AssertionError(f"source.json rows {len(rows)} != 16")
+    uuids = _source_uuid_values(payload)
+    if len(uuids) != 16:
+        raise AssertionError(f"uuid values {len(uuids)} != 16")
+    if len(set(uuids)) != 16:
+        raise AssertionError("uuid values must be unique")
+    for value in uuids:
+        if SYNTHETIC_UUID_RE.fullmatch(value) is None:
+            raise AssertionError(f"non-synthetic uuid: {value!r}")
+    rfc = RFC4122_UUID_RE.findall(raw)
+    if rfc:
+        raise AssertionError(f"rfc4122 uuids: {rfc[:5]}")
+    hex_ids = HEX_ID_10_RE.findall(raw)
+    if hex_ids:
+        raise AssertionError(f"10+ hex-char ids: {hex_ids[:5]}")
 
 
 def _source_uuid_values(obj: object) -> list[str]:
@@ -4284,28 +4339,11 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
 
         The wrapper is ``{"synthetic": true, "rows": [...]}`` with 16
         ``"uuid"`` values matching ``synthetic-NNN``. Forbid UltraData
-        text and uuid-like (RFC4122 / 10+ hex) ids.
+        text, ``openbmb``, ``(Code|General)_Agent_\\d{6}``, and
+        uuid-like (RFC4122 / 10+ hex) ids.
         """
         raw = (LEAKGATE_EVAL_DIR / "source.json").read_text(encoding="utf-8")
-        self.assertFalse(
-            "ultradata" in raw.lower(),
-            "source.json must not contain an ultradata substring",
-        )
-        payload = json.loads(raw)
-        self.assertIsInstance(payload, dict)
-        self.assertIs(payload.get("synthetic"), True)
-        rows = payload.get("rows")
-        self.assertIsInstance(rows, list)
-        self.assertEqual(len(rows), 16)
-        uuids = _source_uuid_values(payload)
-        self.assertEqual(len(uuids), 16)
-        self.assertEqual(len(set(uuids)), 16)
-        for value in uuids:
-            self.assertRegex(value, SYNTHETIC_UUID_RE)
-        rfc = RFC4122_UUID_RE.findall(raw)
-        self.assertEqual(rfc, [], msg=f"rfc4122 uuids: {rfc[:5]}")
-        hex_ids = HEX_ID_10_RE.findall(raw)
-        self.assertEqual(hex_ids, [], msg=f"10+ hex-char ids: {hex_ids[:5]}")
+        _assert_source_json_is_synthetic(raw)
 
     def test_mill_leakgate_fixtures_end_to_end(self) -> None:
         cases = self.index["case_list"]
@@ -4404,6 +4442,87 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
             )
 
 
+class SourceJsonSyntheticRawTextTests(unittest.TestCase):
+    """S5: raw-text bans, independent of HelperFtLeakGateEvalTests sha pins."""
+
+    def _mill_payload(self) -> dict:
+        raw = (LEAKGATE_EVAL_DIR / "source.json").read_text(encoding="utf-8")
+        payload = json.loads(raw)
+        self.assertIsInstance(payload, dict)
+        return payload
+
+    def test_mill_source_json_still_passes(self) -> None:
+        raw = (LEAKGATE_EVAL_DIR / "source.json").read_text(encoding="utf-8")
+        _assert_source_json_is_synthetic(raw)
+
+    def test_four_real_id_placements_go_red_with_setupclass_stubbed(self) -> None:
+        mill = self._mill_payload()
+
+        def dump(payload: dict) -> str:
+            return json.dumps(payload, ensure_ascii=False)
+
+        def in_message() -> str:
+            payload = json.loads(json.dumps(mill))
+            payload["rows"][0]["state"]["message"] += " Code_Agent_039442"
+            return dump(payload)
+
+        def in_trajectory_id() -> str:
+            payload = json.loads(json.dumps(mill))
+            payload["rows"][0]["trajectory_id"] = "openbmb/x:General_Agent_112972"
+            return dump(payload)
+
+        def openbmb_without_ultradata() -> str:
+            payload = json.loads(json.dumps(mill))
+            payload["rows"][0]["source"]["hf"] = "openbmb/SFT-Agent-2609"
+            raw = dump(payload)
+            self.assertNotIn("ultradata", raw.lower())
+            return raw
+
+        def in_any_field() -> str:
+            payload = json.loads(json.dumps(mill))
+            payload["note"] = str(payload.get("note") or "") + " General_Agent_112990"
+            return dump(payload)
+
+        placements = (
+            ("Code_Agent_039442 inside a message", in_message),
+            ("openbmb/x:General_Agent_112972 in trajectory_id", in_trajectory_id),
+            ("openbmb/SFT-Agent-2609 without ultradata", openbmb_without_ultradata),
+            ("General_Agent_112990 in any field", in_any_field),
+        )
+
+        def _noop_setup(cls: type) -> None:
+            return None
+
+        with (
+            patch.object(
+                HelperFtLeakGateEvalTests,
+                "setUpClass",
+                classmethod(_noop_setup),
+            ),
+            patch.object(
+                HelperFtLeakGateEvalTests,
+                "tearDownClass",
+                classmethod(_noop_setup),
+            ),
+        ):
+            for label, mutate in placements:
+                with self.subTest(placement=label):
+                    raw = mutate()
+                    with tempfile.TemporaryDirectory() as tmp:
+                        fake_dir = Path(tmp)
+                        (fake_dir / "source.json").write_text(
+                            raw, encoding="utf-8"
+                        )
+                        with patch(
+                            f"{__name__}.LEAKGATE_EVAL_DIR", fake_dir
+                        ):
+                            case = HelperFtLeakGateEvalTests(
+                                "test_source_json_is_synthetic"
+                            )
+                            with self.assertRaises(AssertionError):
+                                case.test_source_json_is_synthetic()
+
+
 def _parse_yaml_scalar(raw: str) -> object:
     value = raw.strip()
     if value in ("true", "True", "yes", "Yes", "on"):
@@ -4457,6 +4576,26 @@ def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
                 idx += 1
             text = "\n".join(block).rstrip("\n") + "\n"
             step[key] = text
+            continue
+        if raw == "":
+            nested: dict[str, object] = {}
+            idx += 1
+            nested_indent: int | None = None
+            while idx < len(step_lines):
+                nested_line = step_lines[idx]
+                if not nested_line.strip() or nested_line.strip().startswith("#"):
+                    idx += 1
+                    continue
+                nested_line_indent = len(nested_line) - len(nested_line.lstrip(" "))
+                if nested_line_indent <= key_indent:
+                    break
+                if nested_indent is None:
+                    nested_indent = nested_line_indent
+                if nested_line_indent == nested_indent and ":" in nested_line:
+                    nested_key, nested_raw = nested_line.strip().split(":", 1)
+                    nested[nested_key.strip()] = _parse_yaml_scalar(nested_raw)
+                idx += 1
+            step[key] = nested
             continue
         step[key] = _parse_yaml_scalar(raw)
         idx += 1
@@ -4535,6 +4674,130 @@ def _load_pack_guard_step(text: str | None = None) -> dict[str, object]:
     if yaml is not None:
         return _pack_guard_step_from_yaml(raw)
     return _pack_guard_step_from_text(raw)
+
+
+def _workflow_top_level_keys(text: str) -> list[str]:
+    keys: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if line[0] in " \t" or ":" not in line:
+            continue
+        keys.append(line.split(":", 1)[0].strip().strip("\"'"))
+    return keys
+
+
+def _job_keys_from_text(text: str) -> set[str]:
+    lines = text.splitlines()
+    start = _job_line_index(lines, PACK_GUARD_JOB)
+    end = _job_end_index(lines, start)
+    keys: set[str] = set()
+    for line in lines[start + 1 : end]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if indent == 4 and ":" in stripped:
+            keys.add(stripped.split(":", 1)[0].strip().strip("\"'"))
+    return keys
+
+
+def _job_step_blocks_from_text(text: str) -> list[list[str]]:
+    lines = text.splitlines()
+    start = _job_line_index(lines, PACK_GUARD_JOB)
+    job_lines = lines[start : _job_end_index(lines, start)]
+    blocks: list[list[str]] = []
+    idx = 0
+    while idx < len(job_lines):
+        line = job_lines[idx]
+        if line.startswith("      - "):
+            block = [line]
+            idx += 1
+            while idx < len(job_lines):
+                nxt = job_lines[idx]
+                if nxt.startswith("      - "):
+                    break
+                if re.match(r"^  [A-Za-z0-9_-]+:\s*$", nxt):
+                    break
+                nxt_stripped = nxt.strip()
+                nxt_indent = len(nxt) - len(nxt.lstrip(" "))
+                if (
+                    nxt_indent == 4
+                    and nxt_stripped
+                    and not nxt_stripped.startswith("#")
+                    and ":" in nxt_stripped
+                ):
+                    break
+                block.append(nxt)
+                idx += 1
+            blocks.append(block)
+            continue
+        idx += 1
+    return blocks
+
+
+def _step_env_keys(step: dict[str, object]) -> set[str]:
+    env = step.get("env")
+    if isinstance(env, dict):
+        return {str(key) for key in env}
+    if not isinstance(env, str) or not env:
+        return set()
+    found: set[str] = set()
+    for key in PACK_GUARD_GIT_ENV_KEYS:
+        if key in env:
+            found.add(key)
+    return found
+
+
+def _assert_pack_guard_context(text: str) -> dict[str, object]:
+    """S4: step/job/workflow allowlists and no earlier index mutation."""
+    top_keys = _workflow_top_level_keys(text)
+    if "defaults" in top_keys:
+        raise AssertionError(
+            "workflow must not set top-level defaults "
+            "(shell/working-directory would apply to the pack-guard step)"
+        )
+    job_keys = _job_keys_from_text(text)
+    if job_keys != PACK_GUARD_JOB_KEYS:
+        raise AssertionError(
+            f"job {PACK_GUARD_JOB!r} keys {sorted(job_keys)} != "
+            f"{sorted(PACK_GUARD_JOB_KEYS)}"
+        )
+    blocks = _job_step_blocks_from_text(text)
+    guard_at: int | None = None
+    steps: list[dict[str, object]] = []
+    for idx, block in enumerate(blocks):
+        step = _parse_gha_step_lines(block)
+        steps.append(step)
+        if step.get("name") == PACK_GUARD_STEP_NAME and guard_at is None:
+            guard_at = idx
+    if guard_at is None:
+        raise AssertionError(
+            f"missing step {PACK_GUARD_STEP_NAME!r} in job {PACK_GUARD_JOB!r}"
+        )
+    guard = steps[guard_at]
+    if set(guard) != PACK_GUARD_STEP_KEYS:
+        raise AssertionError(
+            f"pack-guard step keys {sorted(guard)} != "
+            f"{sorted(PACK_GUARD_STEP_KEYS)}"
+        )
+    for step in steps[:guard_at]:
+        run = step.get("run")
+        run_text = run if isinstance(run, str) else ""
+        hit = PACK_GUARD_INDEX_MUTATION_RE.search(run_text)
+        if hit is not None:
+            raise AssertionError(
+                f"earlier step {step.get('name')!r} run mutates the index: "
+                f"{hit.group(0)!r}"
+            )
+        bad_env = _step_env_keys(step) & PACK_GUARD_GIT_ENV_KEYS
+        if bad_env:
+            raise AssertionError(
+                f"earlier step {step.get('name')!r} sets "
+                f"{sorted(bad_env)} in env"
+            )
+    return guard
 
 
 def _pack_guard_git_env() -> dict[str, str]:
@@ -4619,7 +4882,11 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
     """CI pack guard is the real dottie-os-smoke step, executed with bash."""
 
     def _run_block(self, text: str | None = None) -> str:
-        step = _load_pack_guard_step(text)
+        raw = CI_WORKFLOW.read_text(encoding="utf-8") if text is None else text
+        context_step = _assert_pack_guard_context(raw)
+        step = _load_pack_guard_step(raw)
+        self.assertEqual(set(context_step), PACK_GUARD_STEP_KEYS)
+        self.assertEqual(set(step), PACK_GUARD_STEP_KEYS)
         self.assertNotIn("if", step, "pack-guard step must not have if:")
         self.assertNotIn(
             "continue-on-error",
@@ -4633,18 +4900,36 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
 
     def test_ci_pack_guard_step_is_unconditional(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")
+        context_step = _assert_pack_guard_context(text)
         step = _load_pack_guard_step(text)
+        self.assertEqual(set(context_step), PACK_GUARD_STEP_KEYS)
+        self.assertEqual(set(step), PACK_GUARD_STEP_KEYS)
         self.assertEqual(step.get("name"), PACK_GUARD_STEP_NAME)
         self.assertNotIn("if", step)
         self.assertNotIn("continue-on-error", step)
+        self.assertNotIn("shell", step)
+        self.assertNotIn("working-directory", step)
+        self.assertNotIn("env", step)
         self.assertIsInstance(step.get("run"), str)
+        self.assertEqual(_job_keys_from_text(text), PACK_GUARD_JOB_KEYS)
+        self.assertNotIn("defaults", _workflow_top_level_keys(text))
         stdlib_step = _pack_guard_step_from_text(text)
+        self.assertEqual(set(stdlib_step), PACK_GUARD_STEP_KEYS)
         self.assertEqual(stdlib_step.get("name"), step.get("name"))
         self.assertEqual(stdlib_step.get("run"), step.get("run"))
         self.assertEqual("if" in stdlib_step, "if" in step)
         self.assertEqual(
             "continue-on-error" in stdlib_step, "continue-on-error" in step
         )
+        if yaml is not None:
+            doc = yaml.safe_load(text)
+            self.assertIsInstance(doc, dict)
+            self.assertNotIn("defaults", doc)
+            jobs = doc.get("jobs")
+            self.assertIsInstance(jobs, dict)
+            job = jobs.get(PACK_GUARD_JOB)
+            self.assertIsInstance(job, dict)
+            self.assertEqual(set(job), PACK_GUARD_JOB_KEYS)
 
     def test_ci_pack_guard_run_block_trips_on_tracked_packs(self) -> None:
         run = self._run_block()
@@ -4702,6 +4987,64 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             0,
             msg=f"stdout={proc.stdout!r} stderr={proc.stderr!r}",
         )
+
+    def test_pack_guard_fails_closed_outside_git_repo(self) -> None:
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            outside = Path(tmp) / "not-a-repo"
+            outside.mkdir()
+            proc = _run_pack_guard_script(outside, run, _pack_guard_git_env())
+        self.assertNotEqual(
+            proc.returncode,
+            0,
+            msg=(
+                "guard must not fail open outside a git repo; "
+                f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            ),
+        )
+
+    def test_pack_guard_fails_closed_with_null_index(self) -> None:
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            (repo / "README").write_text("ok\n", encoding="utf-8")
+            _commit_pack_guard_paths(repo, env, ["README"], "clean")
+            env = dict(env)
+            env["GIT_INDEX_FILE"] = "/dev/null"
+            proc = _run_pack_guard_script(repo, run, env)
+        self.assertNotEqual(
+            proc.returncode,
+            0,
+            msg=(
+                "guard must not fail open when GIT_INDEX_FILE=/dev/null; "
+                f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            ),
+        )
+
+    def test_pack_guard_from_subdirectory_catches_root_pack(self) -> None:
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            (repo / PACK_GUARD_ROOT_PACK).write_text(
+                '{"eval_only": true}\n', encoding="utf-8"
+            )
+            _commit_pack_guard_paths(
+                repo, env, [PACK_GUARD_ROOT_PACK], "root pack jsonl"
+            )
+            sub = repo / "apps" / "nested"
+            sub.mkdir(parents=True)
+            proc = _run_pack_guard_script(sub, run, env)
+        self.assertNotEqual(
+            proc.returncode,
+            0,
+            msg=(
+                "subdirectory must still catch a root pack; "
+                f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            ),
+        )
+        self.assertIn(PACK_GUARD_ROOT_PACK, proc.stdout)
 
 
 class HelperFtLeakGateSyntheticTests(unittest.TestCase):
