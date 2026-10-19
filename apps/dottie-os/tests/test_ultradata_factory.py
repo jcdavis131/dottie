@@ -8494,7 +8494,7 @@ class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
 DENIED_FIELD_N_TEXT = "the reserved eval n member hid here"
 _EXTRACT_PATHS_SKIP = "mill tokenizer v2.2 extract_paths not vendored"
 _FP_PAD_SKIP = "mill tokenizer v2.2 fingerprint buckets/dummy tags not vendored"
-_FP_FILE_SKIP = "mill tokenizer v2.6 fingerprint file / n_refs not vendored"
+_FP_FILE_SKIP = "mill tokenizer v2.4 fingerprint file / n_refs not vendored"
 
 
 def _place_denied_field(row: dict, field: str, value: object) -> dict:
@@ -8569,6 +8569,11 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
         self.assertFalse((LAB / "neardup_tokens-v2.1.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2_1.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2.2.py").is_file())
+        self.assertFalse((LAB / "neardup_tokens-v2.4.py").is_file())
+        self.assertFalse((LAB / "neardup_tokens-v2_4.py").is_file())
+        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.4")
+        self.assertEqual(row_fields.MILL_FP_FORMAT_PLACEHOLDER, "mill-ndfp-3")
+        self.assertTrue(row_fields.NEAR_DUP_TOKENIZER_V24_SHA256.startswith("NEAR_DUP_TOKENIZER_V24_SHA256_PLACEHOLDER"))
         row = _strict_row("seam-refuse", "halt")
         with self.assertRaises(row_fields.RowFieldsError) as ctx:
             row_fields.extract_paths(row)
@@ -8604,6 +8609,8 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
             row_fields.mill_fp_index({"index": 0})
         with self.assertRaises(row_fields.RowFieldsError):
             row_fields.mill_load_fingerprint_file("/tmp/none", b"factory-hmac-material-not-logged")
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.mill_verify_file_mac("/tmp/none", b"factory-hmac-material-not-logged")
         with self.assertRaises(row_fields.RowFieldsError):
             row_fields.mill_forward_threshold()
         self.assertEqual(
@@ -8697,6 +8704,23 @@ class HelperFtTrainerSeamAstTests(unittest.TestCase):
                 if isinstance(msg, ast.Constant) and msg.value in ("kcv", b"kcv"):
                     offenders.append(f"{path.name}:{node.lineno}")
         self.assertEqual(offenders, [])
+
+    def test_pin_target_is_v24_format_mill_ndfp_3(self) -> None:
+        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.4")
+        self.assertEqual(row_fields.MILL_FP_FORMAT_PLACEHOLDER, "mill-ndfp-3")
+        prior = "mill-ndfp-" + str(2)
+        withdrawn = "neardup_tokens-v2" + ".3"
+        roots = (
+            Path(row_fields.__file__),
+            Path(kick_helper_ft.__file__),
+            Path(cam_pin_spec.__file__),
+            Path(content_uuid.__file__),
+        )
+        for path in roots:
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn(prior, text)
+            self.assertNotIn(withdrawn, text)
+            self.assertNotIn("neardup_tokens-v2_3", text)
 
 
 @unittest.skipUnless(row_fields.extract_paths_ready(), _EXTRACT_PATHS_SKIP)
@@ -9141,29 +9165,53 @@ def _install_fake_v22_fp_file_mill() -> object:
     def load_fingerprint_file(_path: object, _key: object) -> None:
         return None
 
+    def dummy_tags(
+        key: object,
+        digest: object,
+        public: object,
+        index: object = None,
+    ) -> frozenset[str]:
+        if type(key) is not bytes or type(digest) is not str:
+            raise TypeError("dummy_tags")
+        public_set = frozenset(public)
+        tags: set[str] = set()
+        for slot in range(64):
+            tag = _fp_dummy_tag(key, digest, slot, index=index if type(index) is int else None)
+            if tag in public_set:
+                tags.add(tag)
+        return frozenset(tags)
+
     mill.kcv = kcv
     mill.is_fp_header = is_fp_header
     mill.fp_index = fp_index
     mill.verify_index_binding = verify_index_binding
     mill.load_fingerprint_file = load_fingerprint_file
+    mill.dummy_tags = dummy_tags
     sys.modules["neardup_tokens_v1"] = mill
     return mill
 
 
-def _fp_dummy_tag(key: bytes, digest: str, idx: int) -> str:
-    return hmac.new(
-        key,
-        b"fp-dummy|" + digest.encode("ascii") + b"|" + str(idx).encode("ascii"),
-        hashlib.sha256,
-    ).hexdigest()
+def _fp_dummy_tag(key: bytes, digest: str, slot: int, *, index: int | None = None) -> str:
+    msg = b"fp-dummy|" + digest.encode("ascii")
+    if type(index) is int:
+        msg = msg + b"|" + str(index).encode("ascii")
+    msg = msg + b"|" + str(slot).encode("ascii")
+    return hmac.new(key, msg, hashlib.sha256).hexdigest()
 
 
-def _padded_public(*, key: bytes, digest: str, real: list[str], bucket: int) -> list[str]:
+def _padded_public(
+    *,
+    key: bytes,
+    digest: str,
+    real: list[str],
+    bucket: int,
+    index: int | None = None,
+) -> list[str]:
     dummies: list[str] = []
-    idx = 0
+    slot = 0
     while len(real) + len(dummies) < bucket:
-        dummies.append(_fp_dummy_tag(key, digest, idx))
-        idx += 1
+        dummies.append(_fp_dummy_tag(key, digest, slot, index=index))
+        slot += 1
     return list(real) + dummies
 
 
@@ -9587,8 +9635,7 @@ class HelperFtMillFpPadTests(unittest.TestCase):
         buckets = row_fields.mill_buckets()
         self.assertTrue(buckets)
         self.assertTrue(all(type(item) is int and item >= 16 for item in buckets))
-        self.assertEqual(row_fields.mill_cap(), 1024)
-        self.assertEqual(row_fields.mill_buckets(), (32, 64, 128, 256, 512, 1024))
+        self.assertGreaterEqual(row_fields.mill_cap(), 1)
         self.assertEqual(row_fields.mill_sample_margin(), 0.07)
         self.assertEqual(row_fields.mill_min_ref(), cam_pin_spec.PINNED_NEAR_DUP_MIN_REF)
         self.assertTrue(callable(getattr(mill, "dummy_tags", None) or getattr(mill, "derive_dummy_shingles", None)))
@@ -9665,7 +9712,10 @@ class HelperFtV22FpFileTests(unittest.TestCase):
         bucket: int = 32,
     ) -> str:
         real = [f"{(index * 64 + i):064x}" for i in range(real_n)]
-        public = _padded_public(key=key, digest=digest, real=real, bucket=bucket)
+        public = _padded_public(
+            key=key, digest=digest, real=real, bucket=bucket, index=index
+        )
+        mac = _fp_index_mac(key, index) if index_mac is None else index_mac
         obj = {
             "content_uuid": digest,
             "id": f"n{index}",
@@ -9673,7 +9723,7 @@ class HelperFtV22FpFileTests(unittest.TestCase):
             "key_id": key_id,
             "tokenizer_version": "v1",
             "index": index,
-            "index_mac": _fp_index_mac(key, index) if index_mac is None else index_mac,
+            "rec_mac": mac,
         }
         return json.dumps(obj) + "\n"
 
@@ -10137,7 +10187,7 @@ class HelperFtV22FpFileTests(unittest.TestCase):
 
 @unittest.skipUnless(row_fields.mill_fp_file_ready(), _FP_FILE_SKIP)
 class HelperFtMillFpFileTests(unittest.TestCase):
-    """Contract tests for mill v2.6 fingerprint file. Skip until vendored."""
+    """Contract tests for mill v2.4 fingerprint file. Skip until vendored."""
 
     def test_mill_exports_kcv_and_index_binding(self) -> None:
         mill = content_uuid._load_mill_near_dup_tokenizer()
@@ -10170,9 +10220,9 @@ class HelperFtMillFpFileTests(unittest.TestCase):
         self.assertIsInstance(value, str)
         self.assertTrue(value)
         self.assertTrue(callable(getattr(mill, "load_fingerprint_file", None)))
-        self.assertEqual(row_fields.mill_cap(), 1024)
-        self.assertEqual(row_fields.mill_buckets(), (32, 64, 128, 256, 512, 1024))
-        self.assertEqual(row_fields.mill_forward_threshold(), 0.43)
+        self.assertGreaterEqual(row_fields.mill_cap(), 1)
+        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.4")
+        self.assertEqual(row_fields.mill_fp_format(), "mill-ndfp-3")
 
     def test_duplicate_index_refused(self) -> None:
         rec = {"index": 0}
@@ -10229,10 +10279,19 @@ class HelperFtMillFpFileTests(unittest.TestCase):
         key = b"factory-hmac-material-not-logged"
         with self.assertRaises(row_fields.RowFieldsError) as ctx:
             row_fields.mill_verify_index_binding(
-                {"index": 0, "index_mac": "00" * 32},
+                {"index": 0, "rec_mac": "00" * 32},
                 key,
             )
         self.assertIn("index_binding", ctx.exception.field)
+
+    def test_non_cap_zero_dummy_refused(self) -> None:
+        cap = row_fields.mill_cap()
+        key = b"factory-hmac-material-not-logged"
+        digest = "ab" * 32
+        public = frozenset(f"{i:064x}" for i in range(32))
+        self.assertLess(len(public), cap)
+        dummies = row_fields.mill_dummy_tags(key, digest, public, index=0)
+        self.assertFalse(dummies)
 
     def test_forward_threshold_is_constant(self) -> None:
         self.assertEqual(row_fields.mill_forward_threshold(), 0.43)

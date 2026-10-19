@@ -8,7 +8,7 @@ json_path strings), ``get_by_path(row, json_path)`` path round-trips, and
 reads row values only through ``get_by_path``. The gate and the trainer
 import this module only.
 
-Until mill v2.6 is vendored (Critic GO), every extract_paths / get_by_path /
+Until mill v2.4 is vendored (Critic GO), every extract_paths / get_by_path /
 check_denied / trainer / gate-tokenize / load_fingerprint_file call
 fail-closes. v1 stays pinned for near-dup tokens, HMAC, and the rest of
 the kick. Do not vendor later mill files until Critic GO.
@@ -19,9 +19,16 @@ import sys
 from typing import Any, Mapping, Sequence
 
 MILL_EXTRACT_PATHS_VERSION = "v2.2"
-# Pin target is mill v2.6. Placeholders until Mill posts shas and Critic GO.
-MILL_PIN_TARGET_VERSION = "v2.6"
+# Pin target is mill v2.4 (format mill-ndfp-3). Placeholders until Mill posts
+# shas and Critic GO. Do not vendor later mill files until then.
+MILL_PIN_TARGET_VERSION = "v2.4"
 MILL_FP_FORMAT_PLACEHOLDER = "mill-ndfp-3"
+NEAR_DUP_TOKENIZER_V24_SHA256 = (
+    "NEAR_DUP_TOKENIZER_V24_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
+)
+NEAR_DUP_GOLDEN_V24_SHA256 = (
+    "NEAR_DUP_GOLDEN_V24_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
+)
 STOPLIST_SHA256 = "STOPLIST_SHA256_PLACEHOLDER_NOT_A_LIVE_DIGEST"
 STOPLIST_SOURCE_PACK_SHA256 = "STOPLIST_SOURCE_PACK_SHA256_PLACEHOLDER"
 STOPLIST_SOURCE_ROWS = 0
@@ -145,8 +152,16 @@ def _mill_load_fp_fn(mill: Any) -> Any:
     return None
 
 
+def _mill_file_mac_fn(mill: Any) -> Any:
+    for name in ("verify_file_mac", "check_file_mac", "fp_file_mac"):
+        fn = getattr(mill, name, None)
+        if callable(fn):
+            return fn
+    return None
+
+
 def mill_fp_file_ready() -> bool:
-    """True when mill v2.6 exports KCV, rec_mac binding, and load_fingerprint_file."""
+    """True when mill v2.4 exports KCV, rec_mac index-binding, and load_fingerprint_file."""
     mill = _pinned_mill()
     thresh = getattr(mill, "FORWARD_THRESHOLD", None)
     return (
@@ -215,8 +230,16 @@ def mill_min_ref() -> dict[str, int]:
     return {"nchar_ge": nchar, "b_ge": b_min}
 
 
-def mill_dummy_tags(key: bytes, digest: str, public: frozenset[str]) -> frozenset[str]:
-    """Recompute mill dummy tags. Never logs the key or the tags."""
+def mill_dummy_tags(
+    key: bytes,
+    digest: str,
+    public: frozenset[str],
+    index: int | None = None,
+) -> frozenset[str]:
+    """Recompute mill dummy tags. Dummies are index-bound; real tags are not.
+
+    Mill owns dummy HMAC. Gate never derives tags. Never logs the key or the tags.
+    """
     mill = _require_v22()
     fn = _mill_dummy_fn(mill)
     if not callable(fn):
@@ -225,17 +248,39 @@ def mill_dummy_tags(key: bytes, digest: str, public: frozenset[str]) -> frozense
     if type(key) is not bytes or not key:
         _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher missing")
         raise AssertionError("unreachable")
-    try:
-        tags = fn(key, digest, public)
-    except TypeError:
+    tags = None
+    if type(index) is int:
         try:
-            tags = fn(key=key, digest=digest, public=public)
+            tags = fn(key, digest, public, index)
+        except TypeError:
+            try:
+                tags = fn(key=key, digest=digest, public=public, index=index)
+            except TypeError:
+                try:
+                    tags = fn(key=key, digest=digest, public=public, fp_index=index)
+                except TypeError:
+                    tags = None
+                except Exception as exc:
+                    _refuse_mill(exc)
+                    raise AssertionError("unreachable")
+            except Exception as exc:
+                _refuse_mill(exc)
+                raise AssertionError("unreachable")
         except Exception as exc:
             _refuse_mill(exc)
             raise AssertionError("unreachable")
-    except Exception as exc:
-        _refuse_mill(exc)
-        raise AssertionError("unreachable")
+    if tags is None:
+        try:
+            tags = fn(key, digest, public)
+        except TypeError:
+            try:
+                tags = fn(key=key, digest=digest, public=public)
+            except Exception as exc:
+                _refuse_mill(exc)
+                raise AssertionError("unreachable")
+        except Exception as exc:
+            _refuse_mill(exc)
+            raise AssertionError("unreachable")
     if tags is None:
         _refuse("extract_paths", "mill dummy-tag function returned nothing")
         raise AssertionError("unreachable")
@@ -318,7 +363,11 @@ def mill_header_kcv(obj: Mapping[str, Any]) -> str | None:
 
 
 def mill_verify_index_binding(record: object, key: bytes) -> None:
-    """Call mill's index-binding verifier only. Re-implement nothing."""
+    """Call mill's rec_mac index-binding verifier only. Re-implement nothing.
+
+    Real tags stay unbound HMAC(SH||shingle). The record MAC binds the index.
+    Dummy tags stay index-bound inside mill dummy derivation.
+    """
     mill = _require_v22()
     fn = _mill_index_bind_fn(mill)
     if not callable(fn):
@@ -342,8 +391,32 @@ def mill_verify_index_binding(record: object, key: bytes) -> None:
         _refuse("reserved_near_dup_fingerprints.index_binding", "mill index-binding failed")
 
 
+def mill_verify_file_mac(path: object, key: bytes) -> None:
+    """Mill-owned file MAC over the fingerprint file. No-op when mill folds it into load."""
+    mill = _require_v22()
+    fn = _mill_file_mac_fn(mill)
+    if not callable(fn):
+        return
+    if type(key) is not bytes or not key:
+        _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher missing")
+        raise AssertionError("unreachable")
+    try:
+        result = fn(path, key)
+    except TypeError:
+        try:
+            result = fn(path=path, key=key)
+        except Exception as exc:
+            _refuse_fp_load(exc)
+            raise AssertionError("unreachable")
+    except Exception as exc:
+        _refuse_fp_load(exc)
+        raise AssertionError("unreachable")
+    if result is False:
+        _refuse("reserved_near_dup_fingerprints.file_mac", "mill file MAC failed")
+
+
 def mill_load_fingerprint_file(path: object, key: bytes) -> Any:
-    """Mill-owned fingerprint file load. Gate backstops n_refs / KCV / rec_mac after this."""
+    """Mill-owned fingerprint file load (file MAC). Gate backstops n_refs / KCV / rec_mac after this."""
     mill = _require_v22()
     fn = _mill_load_fp_fn(mill)
     if not callable(fn):

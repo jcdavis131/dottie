@@ -2865,6 +2865,7 @@ def install_signed_fp_counts(counts: Mapping[str, int] | None) -> None:
 
 
 def _hmac_digest_hex(key: bytes, shingle: str) -> str:
+    """Real tags: HMAC(SH||shingle). Unbound to the fingerprint index."""
     return hmac.new(key, shingle.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -3074,9 +3075,12 @@ def load_reserved_near_dup_fingerprints(
     if fp_file:
         try:
             row_fields.mill_load_fingerprint_file(path, key)
+            row_fields.mill_verify_file_mac(path, key)
         except row_fields.RowFieldsError as exc:
             if "kcv" in exc.field or "HasherMismatch" in exc.reason:
                 _refuse_fp_kcv("mismatch")
+            if "file_mac" in exc.field:
+                _refuse("reserved_near_dup_fingerprints.file_mac", "mill file MAC", "mismatch")
             _refuse("reserved_near_dup_fingerprints", "mill load_fingerprint_file", "mismatch")
         signed_counts = _signed_fp_counts(signed)
     header_ok = False
@@ -3123,6 +3127,7 @@ def load_reserved_near_dup_fingerprints(
                 )
             header_ok = True
             continue
+        rec_index: int | None = None
         if fp_file:
             try:
                 row_fields.mill_verify_index_binding(obj, key)
@@ -3133,7 +3138,8 @@ def load_reserved_near_dup_fingerprints(
                     "mismatch",
                 )
             try:
-                indexes.append(row_fields.mill_fp_index(obj))
+                rec_index = row_fields.mill_fp_index(obj)
+                indexes.append(rec_index)
             except row_fields.RowFieldsError:
                 _refuse(
                     f"reserved_near_dup_fingerprints[{idx}].index",
@@ -3269,7 +3275,9 @@ def load_reserved_near_dup_fingerprints(
             if key is None:
                 _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher", "missing")
             try:
-                dummies = row_fields.mill_dummy_tags(key, digest, public)
+                dummies = row_fields.mill_dummy_tags(
+                    key, digest, public, index=rec_index
+                )
             except row_fields.RowFieldsError:
                 _refuse(
                     f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
