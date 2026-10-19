@@ -4157,11 +4157,14 @@ PACK_GUARD_GHA_KEYS = frozenset(
         "ref",
         "github-token",
         "script",
+        "run-name",
     }
 )
-PACK_GUARD_FORBIDDEN_TRIGGERS = frozenset(
-    {"pull_request_target", "workflow_run"}
+PACK_GUARD_ALLOWED_TRIGGERS = frozenset(
+    {"push", "pull_request", "schedule", "workflow_dispatch"}
 )
+PACK_GUARD_LOCAL_USES_PREFIX = "./.github/"
+PACK_GUARD_EXPR_RE = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
 PACK_GUARD_API_POST_RE = re.compile(
     r"github-script|\bgh\b.*\bapi\b|/statuses/|check-runs|check_runs|"
     r"createCommitStatus|api\.github\.com",
@@ -4184,13 +4187,22 @@ PACK_GUARD_LOOKALIKE_RE = re.compile(r"pack[-_ ]?guard")
 # S21: per-segment NFKC+alnum, refuse curatedpack / ultradataharvest;
 # exact-path allowlist only. Shared with the pack-guard CI python.
 PACK_GUARD_PATH_NEEDLES = ("curatedpack", "ultradataharvest")
-PACK_GUARD_PATH_ALLOWLIST = frozenset(
+PACK_GUARD_PATH_ALLOWLIST_PROD = frozenset(
     {
         "docs/curated-packing-notes.md",
-        "apps/x/uncurated_package.py",
         "scripts/run_ultradata_harvest.py",
         "apps/dottie-os/scripts/lab/run_ultradata_harvest.py",
     }
+)
+# Test-only name: S21 normalizes to contain curatedpack. ce30 P_MUST_PASS
+# runs the real guard, so the CI snippet unions this set in.
+PACK_GUARD_PATH_ALLOWLIST_TEST = frozenset(
+    {
+        "apps/x/uncurated_package.py",
+    }
+)
+PACK_GUARD_PATH_ALLOWLIST = (
+    PACK_GUARD_PATH_ALLOWLIST_PROD | PACK_GUARD_PATH_ALLOWLIST_TEST
 )
 PACK_GUARD_PATH_TRANSLIT = {
     "\u0430": "a",
@@ -4218,8 +4230,14 @@ PACK_GUARD_PATH_TRANSLIT = {
 _PACK_GUARD_ALLOW_REPR = (
     "{" + ",".join(repr(p) for p in sorted(PACK_GUARD_PATH_ALLOWLIST)) + "}"
 )
+PACK_GUARD_JSONL_OK_SEGS = frozenset(
+    "fixtures fixture sample sources evals probe_items benchmarks "
+    "hidden_files lessons orchestration reports bundles missions "
+    "examples corpus_proposals analytics coordination flags pipeline "
+    "goals lib data runs .scout".split()
+)
 PACK_GUARD_PATH_PY = (
-    "import sys,unicodedata;"
+    "import sys,unicodedata,subprocess,os;"
     f"A={_PACK_GUARD_ALLOW_REPR};"
     f"N={PACK_GUARD_PATH_NEEDLES!r};"
     "C=str.maketrans({"
@@ -4234,10 +4252,55 @@ PACK_GUARD_PATH_PY = (
     "hit=lambda s:(lambda segs:any(n in x for x in segs for n in N) or "
     "any(n in ''.join(segs) for n in N) or any(ord(c)>127 for c in s))"
     "([nrm(y) for y in s.split('/')]);"
-    "hits=[s for p in open(sys.argv[1],'rb').read().split(bytes([0])) if p"
-    " for s in [p.decode('utf-8','surrogateescape')] if s not in A and hit(s)];"
-    "[sys.stdout.write(s.encode('utf-8','backslashreplace').decode()+chr(10))"
-    " for s in hits];"
+    "OK=frozenset("
+    f"{tuple(sorted(PACK_GUARD_JSONL_OK_SEGS))!r}"
+    ");"
+    "fx=lambda p:any(s in OK for s in p.split('/'));"
+    "EXT=('.zip','.tar','.tgz','.7z','.rar','.gz','.bz2','.xz',"
+    "'.zst','.jsonl');"
+    "LFS=b'version https://git-lfs.github.com/spec/v1';"
+    "ge={'PATH':'/usr/bin:/bin','HOME':'/nonexistent',"
+    "'GIT_CONFIG_NOSYSTEM':'1','GIT_CONFIG_GLOBAL':'/dev/null',"
+    "'GIT_NO_REPLACE_OBJECTS':'1'};"
+    "G=lambda *a,inp=None:subprocess.run(["
+    "'/usr/bin/git','--no-replace-objects',"
+    "'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',*a"
+    "],capture_output=True,env=ge,input=inp);"
+    "parse=lambda out,tree:{p.decode('utf-8','surrogateescape'):"
+    "(w[0].decode(),(w[2] if tree else w[1]).decode())"
+    " for rec in out.split(bytes([0])) if rec and bytes([9]) in rec"
+    " for meta,p in [rec.split(bytes([9]),1)] for w in [meta.split()]};"
+    "info={};"
+    "info.update(parse(G('ls-files','-z','--stage').stdout,0));"
+    "sha=(sys.argv[2] if len(sys.argv)>2 and sys.argv[2] else"
+    " G('rev-parse','HEAD').stdout.decode().strip());"
+    "info.update(parse(G('ls-tree','-r','-z','--full-tree',sha).stdout,1)"
+    " if sha else {});"
+    "raw=b''.join((o+chr(10)).encode() for m,o in info.values() if o);"
+    "B={};"
+    "exec('out=G(\\'cat-file\\',\\'--batch\\',inp=raw).stdout\\n"
+    "i=0\\n"
+    "while i<len(out):\\n"
+    " nl=out.find(bytes([10]),i)\\n"
+    " if nl<0:break\\n"
+    " hdr=out[i:nl].split()\\n"
+    " if len(hdr)<3:\\n"
+    "  i=nl+1\\n"
+    "  continue\\n"
+    " sz=int(hdr[2]);st=nl+1;B[hdr[0].decode()]=out[st:st+sz];i=st+sz+1');"
+    "s26=lambda p:(lambda m,o: m in ('120000','160000') or"
+    " (any(p.casefold().endswith(e) for e in EXT) and not fx(p)) or"
+    " (bool(o) and (lambda b: b.startswith(LFS) or b.startswith(("
+    "b'PK\\x03\\x04',b'PK\\x05\\x06',b'Rar!',b'7z\\xbc\\xaf\\x27\\x1c'"
+    ")) or b[257:262]==b'ustar' or ((b[:2]==b'\\x1f\\x8b' or"
+    " b[:3]==b'BZh' or b[:6]==b'\\xfd7zXZ\\x00' or"
+    " b[:4]==b'(\\xb5/\\xfd') and not fx(p)))"
+    "(B.get(o,b''))))(*info.get(p,('','')));"
+    "names=[s for p in open(sys.argv[1],'rb').read().split(bytes([0]))"
+    " if p for s in [p.decode('utf-8','surrogateescape')]];"
+    "hits=[s for s in names if s not in A and (hit(s) or s26(s))];"
+    "[sys.stdout.write(s.encode('utf-8','backslashreplace').decode()"
+    "+chr(10)) for s in hits];"
     "sys.exit(0 if hits else 1)"
 )
 PACK_GUARD_PATH_RE = PACK_GUARD_PATH_PY
@@ -4298,6 +4361,9 @@ CRITIC_91_50D2_SHA256 = (
 )
 CRITIC_91_CE30_SHA256 = (
     "90a3ee41f87fd95714aab89402f151e72f4c2668e908238bc74fe4f1c80ee291"
+)
+CRITIC_91_F8F1_SHA256 = (
+    "4cdf999eef803bd20ee448a3c836230fcf9fe294bf2b3c11a20ffeba081986a0"
 )
 LEAKGATE_TRACKED_NAMES = frozenset(
     {
@@ -5531,21 +5597,98 @@ def _assert_no_duplicate_yaml_keys(text: str) -> None:
             in_block_at = indent
 
 
-def _assert_one_uses(uses: str, *, rel: str) -> None:
-    raw = uses.split("#", 1)[0].strip().strip("\"'")
-    if raw.startswith("./"):
+def _gha_expr_norm(expr: str) -> str:
+    return re.sub(r"\s+", "", expr).casefold()
+
+
+def _gha_expr_is_forbidden(expr: str) -> bool:
+    n = _gha_expr_norm(expr)
+    if "secrets" in n:
+        return True
+    if "github.token" in n:
+        return True
+    if "github['token']" in n or 'github["token"]' in n:
+        return True
+    return "github_token" in n
+
+
+def _workflow_body_has_forbidden_expr(body: str) -> bool:
+    return any(
+        _gha_expr_is_forbidden(match.group(1))
+        for match in PACK_GUARD_EXPR_RE.finditer(body)
+    )
+
+
+def _local_uses_norm(raw: str) -> str:
+    posix = raw.replace("\\", "/").split("@", 1)[0].strip()
+    if posix.startswith("./"):
+        posix = posix[2:]
+    posix = posix.lstrip("/")
+    return os.path.normpath(posix).replace("\\", "/")
+
+
+def _assert_local_gha_scanned(
+    uses: str, *, rel: str, root: Path, seen: set[str]
+) -> None:
+    norm = _local_uses_norm(uses)
+    if norm != ".github" and not norm.startswith(".github/"):
+        raise AssertionError(
+            f"{rel} local uses {uses!r} is outside ./.github/"
+        )
+    if norm in seen:
         return
+    seen.add(norm)
+    target = root / norm
+    files: list[Path] = []
+    if target.is_file():
+        files.append(target)
+    elif target.is_dir():
+        for name in ("action.yml", "action.yaml"):
+            cand = target / name
+            if cand.is_file():
+                files.append(cand)
+        if not files:
+            raise AssertionError(
+                f"{rel} local uses {uses!r} has no action.yml"
+            )
+    else:
+        raise AssertionError(f"{rel} local uses {uses!r} does not exist")
+    for path in files:
+        body = path.read_text(encoding="utf-8")
+        _assert_gha_file_surface(
+            body,
+            rel=str(path.relative_to(root)),
+            root=root,
+            seen=seen,
+            require_workflow=False,
+        )
+
+
+def _assert_one_uses(
+    uses: str,
+    *,
+    rel: str,
+    root: Path | None = None,
+    seen: set[str] | None = None,
+) -> None:
+    raw = uses.split("#", 1)[0].strip().strip("\"'")
+    repo = REPO_ROOT if root is None else root
+    visited = set() if seen is None else seen
+    if raw.startswith("./") or raw.startswith(".\\"):
+        _assert_local_gha_scanned(raw, rel=rel, root=repo, seen=visited)
+        return
+    if raw.startswith("docker://"):
+        raise AssertionError(f"{rel} refuses docker:// actions {raw!r}")
     owner_repo = raw.split("@", 1)[0]
     if owner_repo != owner_repo.casefold():
         raise AssertionError(f"{rel} mixed-case uses {raw!r}")
     lower = raw.casefold()
     if "github-script" in lower:
         raise AssertionError(f"{rel} refuses actions/github-script")
-    if "/.github/workflows/" in lower and not raw.startswith("./"):
-        if not PACK_GUARD_USES_PIN_RE.fullmatch(raw):
-            raise AssertionError(
-                f"{rel} external reusable workflow is not sha-pinned: {raw!r}"
-            )
+    if "/.github/workflows/" in lower:
+        raise AssertionError(
+            f"{rel} external reusable workflow {raw!r}"
+        )
     if not PACK_GUARD_USES_PIN_RE.fullmatch(raw):
         raise AssertionError(
             f"{rel} uses {raw!r} is not pinned to a 40-hex sha"
@@ -5569,7 +5712,7 @@ def _assert_uses_pinned_and_allowlisted(
         )
         for match in PACK_GUARD_USES_LINE_RE.finditer(body):
             found = True
-            _assert_one_uses(match.group(1), rel=rel)
+            _assert_one_uses(match.group(1), rel=rel, root=root)
     if not found:
         raise AssertionError("workflows have no uses: actions")
 
@@ -5894,22 +6037,26 @@ def _permissions_has_write(value: object) -> bool:
 
 
 def _on_has_forbidden_trigger(on_value: object) -> bool:
-    if isinstance(on_value, bool):
-        return False
+    names: list[str] = []
+    if on_value is None or isinstance(on_value, bool):
+        return True
     if isinstance(on_value, str):
-        return on_value.casefold() in PACK_GUARD_FORBIDDEN_TRIGGERS
-    if isinstance(on_value, list):
-        return any(
-            isinstance(item, str)
-            and item.casefold() in PACK_GUARD_FORBIDDEN_TRIGGERS
-            for item in on_value
-        )
-    if isinstance(on_value, dict):
-        return any(
-            str(key).casefold() in PACK_GUARD_FORBIDDEN_TRIGGERS
-            for key in on_value
-        )
-    return False
+        names = [on_value]
+    elif isinstance(on_value, list):
+        for item in on_value:
+            if isinstance(item, str):
+                names.append(item)
+            elif isinstance(item, dict):
+                names.extend(str(key) for key in item)
+    elif isinstance(on_value, dict):
+        names = [str(key) for key in on_value]
+    else:
+        return True
+    if not names:
+        return True
+    return any(
+        name.casefold() not in PACK_GUARD_ALLOWED_TRIGGERS for name in names
+    )
 
 
 def _dump_strings(value: object) -> str:
@@ -5925,13 +6072,18 @@ def _dump_strings(value: object) -> str:
 
 
 def _assert_step_attack_surface(
-    step: object, *, rel: str, job_id: str
+    step: object,
+    *,
+    rel: str,
+    job_id: str,
+    root: Path,
+    seen: set[str],
 ) -> None:
     if not isinstance(step, dict):
         return
     uses = str(step.get("uses") or "")
     if uses:
-        _assert_one_uses(uses, rel=rel)
+        _assert_one_uses(uses, rel=rel, root=root, seen=seen)
     uses_fold = uses.casefold()
     with_ = step.get("with")
     if "checkout" in uses_fold:
@@ -5950,67 +6102,106 @@ def _assert_step_attack_surface(
             f"{rel} job {job_id!r} posts statuses/check runs or uses "
             "github-script/gh/curl against the GitHub API"
         )
-    if PACK_GUARD_SECRETS_RE.search(blob):
+
+
+def _assert_gha_file_surface(
+    body: str,
+    *,
+    rel: str,
+    root: Path,
+    seen: set[str],
+    require_workflow: bool,
+) -> None:
+    """S24: file-wide expr + trigger allowlist + uses, every GHA YAML file."""
+    if _workflow_body_has_forbidden_expr(body):
         raise AssertionError(
-            f"{rel} job {job_id!r} uses secrets.* in a step"
+            f"{rel} ${{{{ }}}} expression mentions secrets or github.token"
         )
-
-
-def _assert_workflow_attack_surface(body: str, *, rel: str) -> None:
-    """S24: every workflow file, not just ci.yml."""
+    if "secrets: inherit" in body:
+        raise AssertionError(f"{rel} forbids secrets: inherit")
     doc = _load_workflow_yaml(body)
     if not isinstance(doc, dict):
         raise AssertionError(f"{rel} is not a YAML mapping")
-    if _on_has_forbidden_trigger(doc.get("on")):
+    on_value = None
+    for key, value in doc.items():
+        if str(key).casefold() == "on":
+            on_value = value
+            break
+    if require_workflow and _on_has_forbidden_trigger(on_value):
         raise AssertionError(
-            f"{rel} forbids pull_request_target and workflow_run"
+            f"{rel} on: must be push, pull_request, schedule, "
+            "or workflow_dispatch"
         )
-    top_perm = doc.get("permissions")
-    if top_perm is None or _permissions_has_write(top_perm):
-        raise AssertionError(
-            f"{rel} must set read-only top-level permissions"
-        )
-    if PACK_GUARD_SECRETS_RE.search(body) or "secrets: inherit" in body:
-        if "secrets: inherit" in body:
-            raise AssertionError(f"{rel} forbids secrets: inherit")
+    if require_workflow:
+        top_perm = doc.get("permissions")
+        if top_perm is None or _permissions_has_write(top_perm):
+            raise AssertionError(
+                f"{rel} must set read-only top-level permissions"
+            )
     jobs = doc.get("jobs")
-    if not isinstance(jobs, dict):
-        return
-    for job_id, job in jobs.items():
-        if not isinstance(job, dict):
-            continue
-        job_keys = {str(key) for key in job}
-        if any(key != key.casefold() for key in job_keys):
-            bad = sorted(k for k in job_keys if k != k.casefold())
-            if any(k.casefold() in PACK_GUARD_GHA_KEYS for k in bad):
+    if isinstance(jobs, dict):
+        for job_id, job in jobs.items():
+            if not isinstance(job, dict):
+                continue
+            job_keys = {str(key) for key in job}
+            if any(key != key.casefold() for key in job_keys):
+                bad = sorted(k for k in job_keys if k != k.casefold())
+                if any(k.casefold() in PACK_GUARD_GHA_KEYS for k in bad):
+                    raise AssertionError(
+                        f"{rel} job {job_id!r} mixed-case keys {bad}"
+                    )
+            if "permissions" in job and _permissions_has_write(
+                job.get("permissions")
+            ):
                 raise AssertionError(
-                    f"{rel} job {job_id!r} mixed-case keys {bad}"
+                    f"{rel} job {job_id!r} widens permissions"
                 )
-        if "permissions" in job and _permissions_has_write(
-            job.get("permissions")
-        ):
-            raise AssertionError(
-                f"{rel} job {job_id!r} widens permissions"
-            )
-        secrets = job.get("secrets")
-        if secrets == "inherit" or secrets is True:
-            raise AssertionError(
-                f"{rel} job {job_id!r} forbids secrets: inherit"
-            )
-        job_uses = str(job.get("uses") or "")
-        if job_uses:
-            _assert_one_uses(job_uses, rel=rel)
-            if job_uses.startswith("./"):
-                pass
-            elif "/.github/workflows/" in job_uses.replace("\\", "/"):
+            secrets = job.get("secrets")
+            if secrets == "inherit" or secrets is True:
                 raise AssertionError(
-                    f"{rel} job {job_id!r} external reusable workflow"
+                    f"{rel} job {job_id!r} forbids secrets: inherit"
                 )
-        steps = job.get("steps")
-        if not isinstance(steps, list):
-            continue
-        for step in steps:
-            _assert_step_attack_surface(step, rel=rel, job_id=str(job_id))
+            job_uses = str(job.get("uses") or "")
+            if job_uses:
+                _assert_one_uses(
+                    job_uses, rel=rel, root=root, seen=seen
+                )
+            steps = job.get("steps")
+            if not isinstance(steps, list):
+                continue
+            for step in steps:
+                _assert_step_attack_surface(
+                    step,
+                    rel=rel,
+                    job_id=str(job_id),
+                    root=root,
+                    seen=seen,
+                )
+    runs = doc.get("runs")
+    if isinstance(runs, dict):
+        steps = runs.get("steps")
+        if isinstance(steps, list):
+            for step in steps:
+                _assert_step_attack_surface(
+                    step,
+                    rel=rel,
+                    job_id="runs",
+                    root=root,
+                    seen=seen,
+                )
+
+
+def _assert_workflow_attack_surface(
+    body: str, *, rel: str, root: Path | None = None
+) -> None:
+    """S24: every workflow file, not just ci.yml."""
+    _assert_gha_file_surface(
+        body,
+        rel=rel,
+        root=REPO_ROOT if root is None else root,
+        seen=set(),
+        require_workflow=True,
+    )
 
 
 def _assert_read_only_token_and_checkouts(
@@ -6031,7 +6222,7 @@ def _assert_read_only_token_and_checkouts(
             if path.name == "ci.yml" and path.parent.name == "workflows"
             else path.read_text(encoding="utf-8")
         )
-        _assert_workflow_attack_surface(body, rel=rel)
+        _assert_workflow_attack_surface(body, rel=rel, root=root)
 
 
 def _assert_pack_guard_context(text: str) -> dict[str, object]:
@@ -6167,6 +6358,26 @@ def _assert_pack_guard_context(text: str) -> dict[str, object]:
         raise AssertionError(
             f"pack-guard path match must include {PACK_GUARD_PATH_RE!r}"
         )
+    scrub_m = re.search(r"git_scrub\(\) \{\n(.*?)\n\s*\}", run_text, re.S)
+    if scrub_m is None:
+        raise AssertionError("pack-guard missing git_scrub function")
+    scrub = scrub_m.group(1)
+    for pin in (
+        "/usr/bin/env -i",
+        f"PATH={PACK_GUARD_ENV_PATH}",
+        f"HOME={PACK_GUARD_ENV_HOME}",
+        f"LC_ALL={PACK_GUARD_ENV_LC_ALL} ",
+        "GIT_CONFIG_NOSYSTEM=1",
+        "GIT_CONFIG_GLOBAL=/dev/null",
+        "GIT_NO_REPLACE_OBJECTS=1",
+        "--no-replace-objects",
+        "core.fsmonitor=false",
+        "core.untrackedCache=false",
+        "core.hooksPath=/dev/null",
+        "core.quotePath=false",
+    ):
+        if pin not in scrub:
+            raise AssertionError(f"git_scrub must pin {pin!r}")
     return guard
 
 
@@ -6707,6 +6918,14 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         self.assertEqual(
             hashlib.sha256(path.read_bytes()).hexdigest(),
             CRITIC_91_CE30_SHA256,
+        )
+
+    def test_critic_91_f8f1_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_f8f1.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_F8F1_SHA256,
         )
 
     def test_ci_pack_guard_run_block_trips_on_tracked_packs(self) -> None:
