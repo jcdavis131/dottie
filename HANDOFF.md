@@ -18,14 +18,14 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-10-19 (supersedes every block below)
 
-**Stamped 2026-10-19 at HEAD `ac43c57`** (`cursor/serve-deterministic-veto-9952`,
-on top of `main` `43f4189`). Measured with `git rev-parse --short HEAD` +
-`scripts/check_handoff_fresh.py --check`.
+**Stamped 2026-10-19 at HEAD `566941e`** (`cursor/serve-deterministic-veto-9952`).
+Measured with `git rev-parse --short HEAD` + `scripts/check_handoff_fresh.py --check`.
 
-**Why this block exists:** `lint-and-test` failed because the 2026-10-13 stamp
-named `86b07bf` (`scout/dottie-lint-i001`), which is not an ancestor of this
-branch after that work squash-merged as `43f4189`. Merging current `main` does
-not bring `86b07bf` into history, so the recorded SHA has to be one that is.
+**Why this block exists:** `lint-and-test` on the PR merge ref was 21 commits
+behind the previous stamp `ac43c57` (budget 20). Local branch drift at `566941e`
+was exactly 20; GitHub's merge commit of the PR into `main` is the extra one.
+Re-stamp so the check stays inside the budget. Veto matcher at this SHA:
+`--selftest` 51/58 ok, dottie-core 71 OK, jev-v0 40 OK, T4 max 0.0070s.
 
 ---
 
