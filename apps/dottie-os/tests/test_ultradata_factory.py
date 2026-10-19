@@ -2632,56 +2632,65 @@ class CamPinCanonicalSpecTests(unittest.TestCase):
         self.assertNotIn(base64.b64encode(pub).decode("ascii"), pub_path)
 
 
-@unittest.skipUnless(HQ_VECTOR_PATH.is_file(), "HQ cam-pin-vector.json not in this checkout")
 class CamPinVectorTests(unittest.TestCase):
     """HQ-shipped cross-implementation vector. Test key never loaded from trust/."""
 
     def _vector(self) -> dict:
+        self.assertTrue(HQ_VECTOR_PATH.is_file(), HQ_VECTOR_PATH)
         raw = HQ_VECTOR_PATH.read_bytes()
         self.assertEqual(hashlib.sha256(raw).hexdigest(), HQ_VECTOR_SHA256)
         return json.loads(raw.decode("utf-8"))
 
-    def test_vector_file_sha256_and_canonical_bytes(self) -> None:
+    def _verify_paths(self) -> tuple[tuple[str, object], ...]:
+        return (
+            ("cli", kick_helper_ft.cam_pin_spec),
+            ("handler", helper_ft_kickoff.cam_pin_spec),
+        )
+
+    def test_vector_file_sha256_matches_hq_a2cf90e5(self) -> None:
+        raw = HQ_VECTOR_PATH.read_bytes()
+        self.assertEqual(len(raw), 2548)
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), HQ_VECTOR_SHA256)
+
+    def test_vector_canonical_and_sig_cli_and_8765(self) -> None:
         vector = self._vector()
         pin = vector["pin"]
         canonical = vector["canonical"]
         packed = json.dumps(pin, sort_keys=True, separators=(",", ":"))
         self.assertEqual(packed, canonical)
+        self.assertEqual(vector["prefix"].encode("utf-8"), cam_pin_spec.CANONICAL_PREFIX)
         message = cam_pin_spec.CANONICAL_PREFIX + canonical.encode("utf-8")
-        self.assertEqual(cam_pin_spec.canonical_pin_bytes(pin), message)
-        self.assertEqual(kick_helper_ft.cam_pin_spec.canonical_pin_bytes(pin), message)
-        self.assertEqual(helper_ft_kickoff.cam_pin_spec.canonical_pin_bytes(pin), message)
         sig_b64 = vector.get("cam_sig") or pin.get("cam_sig")
-        cam_pin_vector_helper.verify_with_key(
-            message, base64.b64decode(sig_b64, validate=True), vector["public_key_b64"]
-        )
+        sig = base64.b64decode(sig_b64, validate=True)
+        for name, spec in self._verify_paths():
+            with self.subTest(name=name):
+                self.assertEqual(json.dumps(pin, sort_keys=True, separators=(",", ":")), canonical)
+                self.assertEqual(spec.canonical_pin_bytes(pin), message)
+                cam_pin_vector_helper.verify_with_key(message, sig, vector["public_key_b64"])
         with self.assertRaises(cam_pin_spec.CamPinError) as ctx:
             cam_pin_spec.verify_ed25519(
-                message,
-                base64.b64decode(sig_b64, validate=True),
-                base64.b64decode(vector["public_key_b64"], validate=True),
+                message, sig, base64.b64decode(vector["public_key_b64"], validate=True)
             )
         self.assertEqual(ctx.exception.actual, "denied test key")
         pub_path = cam_pin_spec.CAM_PIN_PUB_PATH.read_text(encoding="utf-8")
         self.assertNotIn(vector["public_key_b64"].strip(), pub_path)
         self.assertNotIn(DENIED_VECTOR_PUB_B64, pub_path)
+        self.assertIn("CAM-PIN-ED25519-PLACEHOLDER", pub_path)
 
     def test_vector_tampered_recorded_at_refused_cli_and_8765(self) -> None:
         vector = self._vector()
         pin = dict(vector["pin"])
         sig_b64 = vector.get("cam_sig") or pin.get("cam_sig")
+        sig = base64.b64decode(sig_b64, validate=True)
         tampered = vector["tampered"]
         tamper_pin = tampered["pin"] if isinstance(tampered, dict) and "pin" in tampered else tampered
-        message = cam_pin_spec.canonical_pin_bytes(tamper_pin)
-        self.assertEqual(helper_ft_kickoff.cam_pin_spec.canonical_pin_bytes(tamper_pin), message)
-        with self.assertRaises(cam_pin_spec.CamPinError):
-            cam_pin_vector_helper.verify_with_key(
-                message, base64.b64decode(sig_b64, validate=True), vector["public_key_b64"]
-            )
-        self.assertNotEqual(
-            json.dumps(tamper_pin, sort_keys=True, separators=(",", ":")),
-            vector["canonical"],
-        )
+        self.assertEqual(json.dumps(tamper_pin, sort_keys=True, separators=(",", ":")), tampered["canonical"])
+        self.assertNotEqual(tamper_pin["recordedAt"], pin["recordedAt"])
+        for name, spec in self._verify_paths():
+            with self.subTest(name=name):
+                message = spec.canonical_pin_bytes(tamper_pin)
+                with self.assertRaises(cam_pin_spec.CamPinError):
+                    cam_pin_vector_helper.verify_with_key(message, sig, vector["public_key_b64"])
         pub_path = cam_pin_spec.CAM_PIN_PUB_PATH.read_text(encoding="utf-8")
         self.assertNotIn(vector["public_key_b64"].strip(), pub_path)
 
