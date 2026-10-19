@@ -728,7 +728,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             recorded_by = body.get("pin", {}).get("recordedBy")
             if recorded_by is not None:
                 self.assertIsInstance(recorded_by, str)
-            return {"ok": True, "checkpoint_id": "ckpt-test"}
+            return {"ok": True, "checkpoint_id": "ckpt-test", "exit_code": 0}
 
         self._orig_post = kick_helper_ft.post_kickoff
         kick_helper_ft.post_kickoff = fake_post
@@ -1665,7 +1665,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
 
         def stub(body: dict) -> dict:
             launched.append(body)
-            return {"ok": True, "checkpoint_id": "ckpt", "launched": True}
+            return {"ok": True, "checkpoint_id": "ckpt", "launched": True, "exit_code": 0}
 
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -1763,7 +1763,7 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
 
         def stub_trainer(body: dict) -> dict:
             self.launches.append(body)
-            return {"ok": True, "checkpoint_id": "stub-ckpt"}
+            return {"ok": True, "checkpoint_id": "stub-ckpt", "exit_code": 0}
 
         self.client = helper_ft_kickoff.TestClient(launch_trainer=stub_trainer)
 
@@ -2131,7 +2131,7 @@ class HelperFtCritic3dacTests(unittest.TestCase):
 
         def fake_post(body: dict, url: str | None = None) -> dict:
             self.kickoff_calls.append(body)
-            return {"ok": True, "checkpoint_id": "ckpt-test"}
+            return {"ok": True, "checkpoint_id": "ckpt-test", "exit_code": 0}
 
         self._orig_post = kick_helper_ft.post_kickoff
         kick_helper_ft.post_kickoff = fake_post
@@ -2578,12 +2578,12 @@ class HelperFtCritic3dacTests(unittest.TestCase):
 
         def kickoff(body: dict) -> dict:
             captured.append(body)
-            return {"ok": True, "checkpoint_id": "ckpt-host"}
+            return {"ok": True, "checkpoint_id": "ckpt-host", "exit_code": 0}
 
         def start(copy_dir: Path, evidence: dict, log_path: Path) -> dict:
             del log_path
             self.assertEqual(evidence["paths"]["pack"], str((copy_dir / "curated_pack_v2.jsonl").resolve()))
-            return {"ok": True, "checkpoint_id": "ckpt-host"}
+            return {"ok": True, "checkpoint_id": "ckpt-host", "exit_code": 0}
 
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -2989,6 +2989,26 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertTrue(rec["timeout"])
         self.assertFalse(rec["match"])
         self.assertEqual(rec["computed_shas"]["sha256_pack"], manifest["sha256_pack"])
+
+    def test_unobserved_trainer_exit_refuses(self) -> None:
+        def kickoff(body: dict) -> dict:
+            del body
+            return {"ok": True, "checkpoint_id": "ckpt-test"}
+
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del pack_dir, evidence, log_path
+            return {"ok": True}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, kickoff=kickoff, start_training=start)
+        self.assertEqual(ctx.exception.field, "trainer.exit")
+        self.assertEqual(ctx.exception.actual, "unobserved")
+        self.assertNotEqual(ctx.exception.actual, 0)
 
     def test_kick_posts_hq_kick_and_completion_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

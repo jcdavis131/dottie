@@ -1164,34 +1164,59 @@ def cleanup_smoke_artifacts(
 
 
 def _empty_trainer_exit(*, waited: bool = False) -> dict[str, Any]:
-    return {"exit_code": 0, "signal": None, "timeout": False, "waited": waited}
+    return {
+        "exit_code": None,
+        "signal": None,
+        "timeout": False,
+        "waited": waited,
+        "observed": False,
+    }
 
 
-def _trainer_exit_is_bad(info: Mapping[str, Any]) -> bool:
+def _trainer_exit_is_observed(info: Mapping[str, Any]) -> bool:
+    if not info.get("waited"):
+        return False
     if info.get("timeout"):
         return True
     if info.get("signal") is not None:
         return True
-    return info.get("exit_code", 0) not in (0,)
+    return info.get("exit_code") is not None
+
+
+def _trainer_exit_is_bad(info: Mapping[str, Any]) -> bool:
+    if not _trainer_exit_is_observed(info):
+        return True
+    if info.get("timeout"):
+        return True
+    if info.get("signal") is not None:
+        return True
+    return info.get("exit_code") not in (0,)
 
 
 def combine_trainer_exits(parts: list[Mapping[str, Any]]) -> dict[str, Any]:
-    """Prefer the last waited trainer; any nonzero/signal/timeout wins as REFUSED."""
+    """Prefer the last waited trainer; unobserved or nonzero/signal/timeout is REFUSED."""
     recorded = _empty_trainer_exit()
     bad: dict[str, Any] | None = None
     for part in parts:
         if not isinstance(part, Mapping):
             continue
         slim = {
-            "exit_code": part.get("exit_code", 0 if not part.get("timeout") else None),
+            "exit_code": part.get("exit_code"),
             "signal": part.get("signal"),
             "timeout": bool(part.get("timeout")),
+            "waited": bool(part.get("waited")),
+            "observed": False,
         }
-        if part.get("waited"):
+        slim["observed"] = _trainer_exit_is_observed(slim)
+        if slim["waited"]:
             recorded = slim
-        if _trainer_exit_is_bad(slim):
+        if _trainer_exit_is_bad(slim) and slim["observed"]:
             bad = slim
-    return bad if bad is not None else recorded
+    if bad is not None:
+        return bad
+    if not recorded.get("observed"):
+        return _empty_trainer_exit()
+    return recorded
 
 
 def _wait_process(proc: Any, wait_timeout: object) -> Any:
@@ -1212,7 +1237,13 @@ def _exit_from_wait_rc(rc: object) -> dict[str, Any]:
     except (TypeError, ValueError):
         _refuse("trainer.exit", "int exit_code", rc)
         raise AssertionError("unreachable")
-    info = {"exit_code": code, "signal": None, "timeout": False, "waited": True}
+    info = {
+        "exit_code": code,
+        "signal": None,
+        "timeout": False,
+        "waited": True,
+        "observed": True,
+    }
     if code < 0:
         info["signal"] = -code
     return info
@@ -1244,7 +1275,13 @@ def wait_for_training_exit(launched: Mapping[str, Any] | None) -> dict[str, Any]
                     _wait_process(proc, None)
                 except (OSError, subprocess.TimeoutExpired):
                     pass
-            return {"exit_code": None, "signal": None, "timeout": True, "waited": True}
+            return {
+                "exit_code": None,
+                "signal": None,
+                "timeout": True,
+                "waited": True,
+                "observed": True,
+            }
         if waited_rc is None:
             waited_rc = getattr(proc, "returncode", None)
         # The process wait return code is the source of truth. A launcher dict
@@ -1257,13 +1294,20 @@ def wait_for_training_exit(launched: Mapping[str, Any] | None) -> dict[str, Any]
             del _wpid
             if os.WIFSIGNALED(status):
                 sig = os.WTERMSIG(status)
-                return {"exit_code": -sig, "signal": sig, "timeout": False, "waited": True}
+                return {
+                    "exit_code": -sig,
+                    "signal": sig,
+                    "timeout": False,
+                    "waited": True,
+                    "observed": True,
+                }
             if os.WIFEXITED(status):
                 return {
                     "exit_code": os.WEXITSTATUS(status),
                     "signal": None,
                     "timeout": False,
                     "waited": True,
+                    "observed": True,
                 }
             return _exit_from_wait_rc(status)
         except ChildProcessError:
@@ -1276,6 +1320,7 @@ def wait_for_training_exit(launched: Mapping[str, Any] | None) -> dict[str, Any]
             "signal": launched.get("signal"),
             "timeout": True,
             "waited": True,
+            "observed": True,
         }
     if launched.get("signal") is not None:
         try:
@@ -1289,7 +1334,13 @@ def wait_for_training_exit(launched: Mapping[str, Any] | None) -> dict[str, Any]
         except (TypeError, ValueError):
             _refuse("trainer.exit", "int exit_code", code)
             raise AssertionError("unreachable")
-        return {"exit_code": code_i, "signal": sig, "timeout": False, "waited": True}
+        return {
+            "exit_code": code_i,
+            "signal": sig,
+            "timeout": False,
+            "waited": True,
+            "observed": True,
+        }
     if "exit_code" in launched:
         code = launched.get("exit_code")
         try:
@@ -1297,7 +1348,13 @@ def wait_for_training_exit(launched: Mapping[str, Any] | None) -> dict[str, Any]
         except (TypeError, ValueError):
             _refuse("trainer.exit", "int exit_code", code)
             raise AssertionError("unreachable")
-        info = {"exit_code": code_i, "signal": None, "timeout": False, "waited": True}
+        info = {
+            "exit_code": code_i,
+            "signal": None,
+            "timeout": False,
+            "waited": True,
+            "observed": True,
+        }
         if code_i < 0:
             info["signal"] = -code_i
         return info
@@ -1305,7 +1362,7 @@ def wait_for_training_exit(launched: Mapping[str, Any] | None) -> dict[str, Any]
 
 
 def apply_trainer_exit(record: dict[str, Any], exit_info: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Record trainer exit on the integrity evidence. Bad exit forces REFUSED."""
+    """Record trainer exit on the integrity evidence. Unobserved or bad exit is REFUSED."""
     info = dict(exit_info) if isinstance(exit_info, Mapping) else _empty_trainer_exit()
     timeout = bool(info.get("timeout"))
     signal = info.get("signal")
@@ -1319,7 +1376,7 @@ def apply_trainer_exit(record: dict[str, Any], exit_info: Mapping[str, Any] | No
     if timeout:
         pass
     elif exit_code is None:
-        exit_code = 0
+        pass
     else:
         try:
             exit_code = int(exit_code)
@@ -1327,17 +1384,22 @@ def apply_trainer_exit(record: dict[str, Any], exit_info: Mapping[str, Any] | No
             _refuse("trainer.exit", "int exit_code", exit_code)
             raise AssertionError("unreachable")
     record["exit_code"] = exit_code
+    record["trainer_exit_waited"] = bool(info.get("waited"))
+    record["trainer_exit_observed"] = _trainer_exit_is_observed(info)
     if signal is not None:
         record["signal"] = signal
     if timeout:
         record["timeout"] = True
-    bad = timeout or signal is not None or exit_code not in (0,)
+    unobserved = not _trainer_exit_is_observed(info)
+    bad = unobserved or timeout or signal is not None or exit_code not in (0,)
     if bad and record.get("status") == CHECKPOINT_MATCH:
         record["status"] = CHECKPOINT_REFUSED
         record["match"] = False
         record["field"] = "trainer.exit"
         record["expected"] = 0
-        if timeout:
+        if unobserved:
+            record["actual"] = "unobserved"
+        elif timeout:
             record["actual"] = "timeout"
         elif signal is not None:
             record["actual"] = f"signal {signal}"
