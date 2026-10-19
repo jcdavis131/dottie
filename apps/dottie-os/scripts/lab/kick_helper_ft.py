@@ -3530,6 +3530,7 @@ def _collect_v2x_near_dup(
                     )
                     break
                 threshold = row_fields.mill_forward_threshold()
+                # Forward containment uses NO stoplist.
                 if effective >= row_fields.mill_forward_sample_floor() and _containment_real_b(
                     hashed, n_tokens
                 ) >= threshold:
@@ -3544,6 +3545,8 @@ def _collect_v2x_near_dup(
                 cand_r = hashed - stoplist
                 ref_r = n_tokens - stoplist
                 shorter = min(len(cand_r), len(ref_r))
+                # Reverse hit only when the shorter side has >=64 shingles after the stoplist.
+                # Below-floor overlap is report-only and must not refuse.
                 if shorter >= row_fields.mill_reverse_floor() and ref_r and len(cand_r & ref_r) / shorter >= threshold:
                     hits.append(
                         (

@@ -8494,7 +8494,7 @@ class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
 DENIED_FIELD_N_TEXT = "the reserved eval n member hid here"
 _EXTRACT_PATHS_SKIP = "mill tokenizer v2.2 extract_paths not vendored"
 _FP_PAD_SKIP = "mill tokenizer v2.2 fingerprint buckets/dummy tags not vendored"
-_FP_FILE_SKIP = "mill tokenizer v2.4 fingerprint file / n_refs not vendored"
+_FP_FILE_SKIP = "mill tokenizer v2.5 fingerprint file / n_refs not vendored"
 
 
 def _place_denied_field(row: dict, field: str, value: object) -> dict:
@@ -8571,9 +8571,14 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
         self.assertFalse((LAB / "neardup_tokens-v2.2.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2.4.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2_4.py").is_file())
-        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.4")
+        self.assertFalse((LAB / "neardup_tokens-v2.5.py").is_file())
+        self.assertFalse((LAB / "neardup_tokens-v2_5.py").is_file())
+        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.5")
         self.assertEqual(row_fields.MILL_FP_FORMAT_PLACEHOLDER, "mill-ndfp-3")
-        self.assertTrue(row_fields.NEAR_DUP_TOKENIZER_V24_SHA256.startswith("NEAR_DUP_TOKENIZER_V24_SHA256_PLACEHOLDER"))
+        self.assertTrue(row_fields.NEAR_DUP_TOKENIZER_V25_SHA256.startswith("NEAR_DUP_TOKENIZER_V25_SHA256_PLACEHOLDER"))
+        self.assertTrue(row_fields.STOPLIST_SHA256.startswith("STOPLIST_SHA256_PLACEHOLDER"))
+        self.assertTrue(row_fields.STOPLIST_SOURCE_PACK_SHA256.startswith("STOPLIST_SOURCE_PACK_SHA256_PLACEHOLDER"))
+        self.assertEqual(row_fields.STOPLIST_SOURCE_ROWS, 0)
         row = _strict_row("seam-refuse", "halt")
         with self.assertRaises(row_fields.RowFieldsError) as ctx:
             row_fields.extract_paths(row)
@@ -8705,11 +8710,14 @@ class HelperFtTrainerSeamAstTests(unittest.TestCase):
                     offenders.append(f"{path.name}:{node.lineno}")
         self.assertEqual(offenders, [])
 
-    def test_pin_target_is_v24_format_mill_ndfp_3(self) -> None:
-        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.4")
+    def test_pin_target_is_v25_format_mill_ndfp_3(self) -> None:
+        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.5")
         self.assertEqual(row_fields.MILL_FP_FORMAT_PLACEHOLDER, "mill-ndfp-3")
+        self.assertEqual(row_fields.mill_stoplist_sha(), row_fields.STOPLIST_SHA256)
         prior = "mill-ndfp-" + str(2)
         withdrawn = "neardup_tokens-v2" + ".3"
+        unvendored = "3a5b" + "46b7"
+        critic_v24 = "12fab" + "fbd"
         roots = (
             Path(row_fields.__file__),
             Path(kick_helper_ft.__file__),
@@ -8721,6 +8729,11 @@ class HelperFtTrainerSeamAstTests(unittest.TestCase):
             self.assertNotIn(prior, text)
             self.assertNotIn(withdrawn, text)
             self.assertNotIn("neardup_tokens-v2_3", text)
+            self.assertNotIn(unvendored, text)
+            self.assertNotIn(critic_v24, text)
+        self.assertFalse((LAB / "neardup_tokens-v2.4.py").is_file())
+        self.assertFalse((LAB / "neardup_tokens-v2_4.py").is_file())
+        self.assertFalse((Path("apps/dottie-os/tests") / "critic_neardup_v2_4.py").is_file())
 
 
 @unittest.skipUnless(row_fields.extract_paths_ready(), _EXTRACT_PATHS_SKIP)
@@ -9129,7 +9142,9 @@ def _install_fake_v22_fp_file_mill() -> object:
     mill.BUCKETS = (32, 64, 128, 256, 512, 1024)
     mill.FP_BUCKETS = mill.BUCKETS
     mill.STOPLIST = frozenset()
+    mill.REVERSE_STOPLIST = frozenset()
     mill.STOPLIST_SHA256 = row_fields.STOPLIST_SHA256
+    mill.REVERSE_FLOOR = 64
     mill.FP_FORMAT = row_fields.MILL_FP_FORMAT_PLACEHOLDER
     mill.N_CANDIDATES_KEY = "n_ref_candidates"
 
@@ -10124,6 +10139,36 @@ class HelperFtV22FpFileTests(unittest.TestCase):
             )
         self.assertEqual(exc.actual, "mismatch")
         self.assertIn("stoplist_sha", exc.field)
+        self.assertEqual(row_fields.mill_stoplist_sha(), row_fields.STOPLIST_SHA256)
+
+    def test_forward_containment_uses_no_stoplist(self) -> None:
+        row = _strict_row("forward-stoplist-row", "halt")
+        row["subset"] = "Agent"
+        row["trajectory_id"] = "forward-stoplist-row"
+        toks = self._mill.row_tokens(row)
+        material = b"factory-hmac-material-not-logged"
+        key_id = "factory-hmac-test-key"
+        hashed_list = [
+            hmac.new(material, tok.encode("utf-8"), hashlib.sha256).hexdigest() for tok in toks
+        ]
+        self.assertGreaterEqual(len(hashed_list), 28)
+        overlap = hashed_list[:28]
+        stop = frozenset(overlap[:20])
+        fillers = [f"{i:064x}" for i in range(36)]
+        ref = frozenset(overlap) | frozenset(fillers)
+        self.assertEqual(len(ref), 64)
+        self._mill.STOPLIST = stop
+        self._mill.REVERSE_STOPLIST = stop
+        nsha = hashlib.sha256(b"n-fwd-stop").hexdigest()
+        content_uuid.install_kick_near_dup_fingerprints({nsha: ("n1", ref)})
+        with tempfile.TemporaryDirectory() as tmp:
+            key_path = self._hmac_key_file(Path(tmp), key_id, material)
+            with patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)), patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                kick_helper_ft.load_reserved_near_dup_hmac_key(key_path, key_id)
+                hits = kick_helper_ft._collect_v2x_near_dup(row, "forward-stoplist-row", {nsha})
+        self.assertTrue(any("near_dup of" in msg for _f, msg in hits), hits)
 
     def test_forward_threshold_is_constant(self) -> None:
         self.assertEqual(row_fields.mill_forward_threshold(), 0.43)
@@ -10184,10 +10229,44 @@ class HelperFtV22FpFileTests(unittest.TestCase):
             hits,
         )
 
+    def test_reverse_below_floor_after_stoplist_is_report_only(self) -> None:
+        row = _strict_row("rev-stop-row", "halt")
+        row["subset"] = "Agent"
+        row["trajectory_id"] = "rev-stop-row"
+        row["state"] = {"message": "tok" + "".join(f"{i:02x}" for i in range(80))}
+        toks = self._mill.row_tokens(row)
+        material = b"factory-hmac-material-not-logged"
+        key_id = "factory-hmac-test-key"
+        hashed_list = [
+            hmac.new(material, tok.encode("utf-8"), hashlib.sha256).hexdigest() for tok in toks
+        ]
+        self.assertGreaterEqual(len(hashed_list), 70)
+        cand = hashed_list[:70]
+        stop = frozenset(cand[:10])
+        fillers = [f"{i:064x}" for i in range(100)]
+        ref = frozenset(cand) | frozenset(fillers)
+        self.assertGreater(len(ref), 70 / 0.43)
+        self._mill.STOPLIST = stop
+        self._mill.REVERSE_STOPLIST = stop
+        nsha = hashlib.sha256(b"n-rev-stop").hexdigest()
+        content_uuid.install_kick_near_dup_fingerprints({nsha: ("n1", ref)})
+        with tempfile.TemporaryDirectory() as tmp:
+            key_path = self._hmac_key_file(Path(tmp), key_id, material)
+            with patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)), patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                kick_helper_ft.load_reserved_near_dup_hmac_key(key_path, key_id)
+                hits = kick_helper_ft._collect_v2x_near_dup(row, "rev-stop-row", {nsha})
+        self.assertFalse(any("near_dup of" in msg for _f, msg in hits), hits)
+        self.assertFalse(
+            any("forward_sample_too_small_refused" in field for field, _msg in hits),
+            hits,
+        )
+
 
 @unittest.skipUnless(row_fields.mill_fp_file_ready(), _FP_FILE_SKIP)
 class HelperFtMillFpFileTests(unittest.TestCase):
-    """Contract tests for mill v2.4 fingerprint file. Skip until vendored."""
+    """Contract tests for mill v2.5 fingerprint file. Skip until vendored."""
 
     def test_mill_exports_kcv_and_index_binding(self) -> None:
         mill = content_uuid._load_mill_near_dup_tokenizer()
@@ -10221,8 +10300,10 @@ class HelperFtMillFpFileTests(unittest.TestCase):
         self.assertTrue(value)
         self.assertTrue(callable(getattr(mill, "load_fingerprint_file", None)))
         self.assertGreaterEqual(row_fields.mill_cap(), 1)
-        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.4")
+        self.assertEqual(row_fields.MILL_PIN_TARGET_VERSION, "v2.5")
         self.assertEqual(row_fields.mill_fp_format(), "mill-ndfp-3")
+        self.assertEqual(row_fields.mill_stoplist_sha(), row_fields.STOPLIST_SHA256)
+        self.assertEqual(row_fields.mill_reverse_floor(), 64)
 
     def test_duplicate_index_refused(self) -> None:
         rec = {"index": 0}
@@ -10302,6 +10383,12 @@ class HelperFtMillFpFileTests(unittest.TestCase):
         self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 6))
         self.assertTrue(kick_helper_ft._forward_sample_too_small(1, 10))
         self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 63))
+
+    def test_stoplist_sha_is_pinned_constant(self) -> None:
+        self.assertEqual(row_fields.mill_stoplist_sha(), row_fields.STOPLIST_SHA256)
+
+    def test_reverse_floor_is_64(self) -> None:
+        self.assertEqual(row_fields.mill_reverse_floor(), 64)
 
 
 if __name__ == "__main__":

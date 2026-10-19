@@ -8,7 +8,7 @@ json_path strings), ``get_by_path(row, json_path)`` path round-trips, and
 reads row values only through ``get_by_path``. The gate and the trainer
 import this module only.
 
-Until mill v2.4 is vendored (Critic GO), every extract_paths / get_by_path /
+Until mill v2.5 is vendored (Critic GO), every extract_paths / get_by_path /
 check_denied / trainer / gate-tokenize / load_fingerprint_file call
 fail-closes. v1 stays pinned for near-dup tokens, HMAC, and the rest of
 the kick. Do not vendor later mill files until Critic GO.
@@ -19,16 +19,18 @@ import sys
 from typing import Any, Mapping, Sequence
 
 MILL_EXTRACT_PATHS_VERSION = "v2.2"
-# Pin target is mill v2.4 (format mill-ndfp-3). Placeholders until Mill posts
+# Pin target is mill v2.5 (format mill-ndfp-3). Placeholders until Mill posts
 # shas and Critic GO. Do not vendor later mill files until then.
-MILL_PIN_TARGET_VERSION = "v2.4"
+MILL_PIN_TARGET_VERSION = "v2.5"
 MILL_FP_FORMAT_PLACEHOLDER = "mill-ndfp-3"
-NEAR_DUP_TOKENIZER_V24_SHA256 = (
-    "NEAR_DUP_TOKENIZER_V24_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
+NEAR_DUP_TOKENIZER_V25_SHA256 = (
+    "NEAR_DUP_TOKENIZER_V25_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
 )
-NEAR_DUP_GOLDEN_V24_SHA256 = (
-    "NEAR_DUP_GOLDEN_V24_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
+NEAR_DUP_GOLDEN_V25_SHA256 = (
+    "NEAR_DUP_GOLDEN_V25_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
 )
+# Reverse-only global stoplist. Forward containment never uses it.
+# Fill in live shas only after Mill posts v2.5 and Critic GO.
 STOPLIST_SHA256 = "STOPLIST_SHA256_PLACEHOLDER_NOT_A_LIVE_DIGEST"
 STOPLIST_SOURCE_PACK_SHA256 = "STOPLIST_SOURCE_PACK_SHA256_PLACEHOLDER"
 STOPLIST_SOURCE_ROWS = 0
@@ -161,7 +163,7 @@ def _mill_file_mac_fn(mill: Any) -> Any:
 
 
 def mill_fp_file_ready() -> bool:
-    """True when mill v2.4 exports KCV, rec_mac index-binding, and load_fingerprint_file."""
+    """True when mill v2.5 exports KCV, rec_mac index-binding, and load_fingerprint_file."""
     mill = _pinned_mill()
     thresh = getattr(mill, "FORWARD_THRESHOLD", None)
     return (
@@ -392,7 +394,10 @@ def mill_verify_index_binding(record: object, key: bytes) -> None:
 
 
 def mill_verify_file_mac(path: object, key: bytes) -> None:
-    """Mill-owned file MAC over the fingerprint file. No-op when mill folds it into load."""
+    """Mill-owned file MAC over kcv, n_refs, stoplist_sha, and every rec_mac.
+
+    No-op when mill folds the check into load_fingerprint_file.
+    """
     mill = _require_v22()
     fn = _mill_file_mac_fn(mill)
     if not callable(fn):
@@ -511,19 +516,16 @@ def mill_header_stoplist_sha(obj: Mapping[str, Any]) -> str | None:
 
 
 def mill_stoplist_sha() -> str:
-    mill = _pinned_mill()
-    for name in ("STOPLIST_SHA256", "REVERSE_STOPLIST_SHA256", "STOPLIST_SHA"):
-        val = getattr(mill, name, None)
-        if type(val) is str and val:
-            return val
+    """Pinned reverse-only stoplist sha. Header must match this constant."""
     return STOPLIST_SHA256
 
 
 def mill_stoplist() -> frozenset[str]:
+    """Reverse-only global stoplist. Forward containment never subtracts this."""
     mill = _require_v22()
-    raw = getattr(mill, "STOPLIST", None)
+    raw = getattr(mill, "REVERSE_STOPLIST", None)
     if raw is None:
-        raw = getattr(mill, "REVERSE_STOPLIST", None)
+        raw = getattr(mill, "STOPLIST", None)
     if raw is None:
         return frozenset()
     out: set[str] = set()
@@ -562,6 +564,7 @@ def mill_forward_sample_min() -> int:
 
 
 def mill_reverse_floor() -> int:
+    """Shorter-side shingle floor after the reverse stoplist. Below-floor hits are report-only."""
     mill = _pinned_mill()
     val = getattr(mill, "REVERSE_FLOOR", None)
     if type(val) is int and val >= 1:
