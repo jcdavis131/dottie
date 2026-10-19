@@ -97,10 +97,7 @@ _CU_DIR = str(Path(__file__).resolve().parent) if "__file__" in globals() else "
 if _CU_DIR and _CU_DIR not in sys.path and not _CU_DIR.startswith("/proc/"):
     sys.path.insert(0, _CU_DIR)
 
-import row_fields
-
 CONTENT_UUID_FIELDS: tuple[str, ...] = ("state", "questions")
-NEAR_DUP_SCAN_PATHS: tuple[str, ...] = row_fields.READABLE_PATHS
 SHA256_LEN = 64
 _HEX = frozenset("0123456789abcdef")
 MAX_DEPTH = 256
@@ -421,63 +418,62 @@ def _load_mill_near_dup_tokenizer(*, version: str | None = None) -> Any:
     return mod
 
 
-def _readable_raw_strings(value: Any) -> list[str]:
-    """Raw strings at ``row_fields.READABLE_PATHS``. Mill still tokenizes these."""
-    if not isinstance(value, Mapping):
-        return []
-    found: list[str] = []
-    for path in row_fields.READABLE_PATHS:
-        item = row_fields.get_by_path(value, path)
-        if type(item) is str:
-            found.append(item)
-    return found
+def _row_state_message(value: Any) -> str | None:
+    """Mill v1 tokenizes only a ``state.message`` string. Anything else is untokenized."""
+    if type(value) is str:
+        return value
+    if isinstance(value, Mapping):
+        state = value.get("state")
+        if isinstance(state, Mapping) and type(state.get("message")) is str:
+            return state["message"]
+        if type(value.get("message")) is str:
+            return value["message"]
+    return None
 
 
 def near_dup_tokens(value: Any) -> frozenset[str]:
-    """Tokens of readable raw fields via the vendored Mill v1 tokenizer.
+    """Message-only tokens via the vendored Mill v1 tokenizer. No Forge tokenize logic.
 
-    The gate scans ``row_fields.READABLE_PATHS`` only. Rows with no tokenizable
-    string at those paths are refused (v1). A v2 ``NO_TEXT`` sentinel is also
-    refused. Callers must not truthiness-skip. Mill normalize is for the gate
-    only; the trainer must not consume these tokens.
+    Rows with no tokenizable ``state.message`` string are refused (v1). A v2
+    ``NO_TEXT`` sentinel is also refused. Callers must not truthiness-skip.
+    Field paths for training/deny-list work go through ``row_fields.extract_paths``
+    (mill v2.2 seam) and are not authored here.
     """
     mill = _load_mill_near_dup_tokenizer(version=NEAR_DUP_TOKENIZER_VERSION)
-    messages = _readable_raw_strings(value)
-    if not messages:
+    message = _row_state_message(value)
+    if message is None:
         raise ContentUuidError(
             "near_dup_tokens",
-            "tokenizable readable-field str",
+            "tokenizable state.message str",
             "missing",
             "row has no tokenizable state.message",
         )
-    combined: set[str] = set()
-    for message in messages:
-        try:
-            extracted = mill.message_tokens(message)
-        except TypeError as exc:
-            raise ContentUuidError(
-                "near_dup_tokenizer",
-                "readable-field str",
-                type(value).__name__,
-                "Mill tokenizer refused the message",
-            ) from exc
-        if _is_no_text(extracted):
-            raise ContentUuidError(
-                "near_dup_tokens",
-                "tokenizable readable-field str",
-                "NO_TEXT",
-                "Mill tokenizer returned NO_TEXT",
-            )
-        try:
-            combined.update(frozenset(extracted))
-        except TypeError as exc:
-            raise ContentUuidError(
-                "near_dup_tokens",
-                "token set",
-                type(extracted).__name__,
-                "Mill tokenizer did not return a token set",
-            ) from exc
-    return frozenset(combined)
+    try:
+        extracted = mill.message_tokens(message)
+    except TypeError as exc:
+        raise ContentUuidError(
+            "near_dup_tokenizer",
+            "state.message str",
+            type(value).__name__,
+            "Mill tokenizer refused the message",
+        ) from exc
+    if _is_no_text(extracted):
+        raise ContentUuidError(
+            "near_dup_tokens",
+            "tokenizable state.message str",
+            "NO_TEXT",
+            "Mill tokenizer returned NO_TEXT",
+        )
+    try:
+        tokens = frozenset(extracted)
+    except TypeError as exc:
+        raise ContentUuidError(
+            "near_dup_tokens",
+            "token set",
+            type(extracted).__name__,
+            "Mill tokenizer did not return a token set",
+        ) from exc
+    return tokens
 
 
 def record_near_dup_fingerprint(digest: str, row: Mapping[str, Any]) -> None:

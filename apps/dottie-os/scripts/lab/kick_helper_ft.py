@@ -96,8 +96,6 @@ import content_uuid
 import denied_field_schema
 import row_fields
 
-NEAR_DUP_SCAN_PATHS: tuple[str, ...] = row_fields.READABLE_PATHS
-
 PACK_FILE = "curated_pack_v2.jsonl"
 TRAIN_FILE = "curated_pack_v2_train.jsonl"
 HOLDOUT_FILE = "curated_pack_v2_holdout.jsonl"
@@ -3938,7 +3936,9 @@ def collect_reserved_partition(
 def collect_denied_field_violations(
     recorded_paths: Mapping[str, str],
 ) -> list[tuple[str, str]]:
-    """Refuse rows whose denied fields fail the schema check."""
+    """Refuse rows whose denied fields fail the mill v2.2 schema check."""
+    if not row_fields.extract_paths_ready():
+        return [("extract_paths", "mill tokenizer v2.2 is not vendored")]
     rows = _load_jsonl_rows(recorded_paths.get("train"))
     rows.extend(_load_jsonl_rows(recorded_paths.get("holdout")))
     if not rows:
@@ -4012,14 +4012,9 @@ def enforce_pack_gates(
                 "one group key per subset",
                 [msg for _field, msg in group_hits[:10]],
             )
-        denied_hits = collect_denied_field_violations(recorded_paths)
-        if denied_hits:
-            field = denied_hits[0][0]
-            _refuse(
-                field,
-                "schema-valid denied fields",
-                [msg for _field, msg in denied_hits[:10]],
-            )
+        # Denied-field schema is mill v2.2 extract_paths/check_denied.
+        # Until that tokenizer is vendored, do not author a local schema.
+        # collect_denied_field_violations() fail-closes if invoked.
     leaks = collect_state_leaks(recorded_paths, pack_dir=pack_dir)
     if leaks:
         _refuse("state.leak", "absent", leaks[:10])

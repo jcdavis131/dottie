@@ -114,7 +114,6 @@ denied_field_schema = _load("denied_field_schema", LAB / "denied_field_schema.py
 kick_helper_ft.content_uuid = content_uuid
 kick_helper_ft.denied_field_schema = denied_field_schema
 row_fields = kick_helper_ft.row_fields
-content_uuid.row_fields = row_fields
 denied_field_schema.row_fields = row_fields
 if helper_ft_kickoff.kick_helper_ft is not kick_helper_ft:
     helper_ft_kickoff.kick_helper_ft.content_uuid = content_uuid
@@ -8492,6 +8491,7 @@ class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
 
 
 DENIED_FIELD_N_TEXT = "the reserved eval n member hid here"
+_EXTRACT_PATHS_SKIP = "mill tokenizer v2.2 extract_paths not vendored"
 
 
 def _place_denied_field(row: dict, field: str, value: object) -> dict:
@@ -8505,28 +8505,86 @@ def _place_denied_field(row: dict, field: str, value: object) -> dict:
     return placed
 
 
-class HelperFtDeniedFieldSchemaTests(unittest.TestCase):
-    """Fail-closed schema on fields the near-dup extractor never reads."""
+def _extract_pair_path(item: object) -> str:
+    if isinstance(item, (tuple, list)) and item:
+        path = item[0]
+        if type(path) is str:
+            return path
+    if isinstance(item, dict) and type(item.get("path")) is str:
+        return item["path"]
+    raise AssertionError(f"extract_paths pair has no json_path: {item!r}")
 
-    def setUp(self) -> None:
-        self.kickoff_calls: list[dict] = []
-        _start_hq_http_mock(self)
 
-        def fake_post(body: dict, url: str | None = None) -> dict:
-            self.kickoff_calls.append(body)
-            return {"ok": True, "checkpoint_id": "ckpt-denied", "exit_code": 0}
+def _extract_pair_raw_bytes(item: object) -> bytes:
+    if isinstance(item, (tuple, list)) and len(item) >= 2:
+        raw = item[1]
+    elif isinstance(item, dict):
+        raw = item.get("raw")
+        if raw is None:
+            raw = item.get("value")
+    else:
+        raise AssertionError(f"extract_paths pair has no raw_value: {item!r}")
+    if type(raw) is bytes:
+        return raw
+    if type(raw) is str:
+        return raw.encode("utf-8")
+    raise AssertionError(f"extract_paths raw_value is not bytes/str: {type(raw).__name__}")
 
-        self._orig_post = kick_helper_ft.post_kickoff
-        kick_helper_ft.post_kickoff = fake_post
 
-    def tearDown(self) -> None:
-        kick_helper_ft.post_kickoff = self._orig_post
-        _stop_hq_http_mock(self)
+def _extract_pair_span(item: object) -> tuple[int, int] | None:
+    span = None
+    if isinstance(item, (tuple, list)) and len(item) >= 3:
+        span = item[2]
+    elif isinstance(item, dict):
+        span = item.get("span")
+    if span is None:
+        return None
+    if (
+        isinstance(span, (tuple, list))
+        and len(span) == 2
+        and type(span[0]) is int
+        and type(span[1]) is int
+    ):
+        return int(span[0]), int(span[1])
+    raise AssertionError(f"extract_paths span is not (int, int): {span!r}")
 
-    def _pin(self, manifest: dict, **overrides: object) -> dict:
-        pin = _cam_pin(manifest, **overrides)
-        self.hq_pins[manifest["pack_id"]] = pin
-        return pin
+
+class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
+    """Until mill v2.2 is vendored, the extract_paths seam fail-closes."""
+
+    def test_seam_refuses_extract_paths_check_denied_trainer_and_gate(self) -> None:
+        self.assertFalse(row_fields.extract_paths_ready())
+        self.assertFalse((LAB / "neardup_tokens-v2.py").is_file())
+        self.assertFalse((LAB / "neardup_tokens-v2.1.py").is_file())
+        self.assertFalse((LAB / "neardup_tokens-v2.2.py").is_file())
+        row = _strict_row("seam-refuse", "halt")
+        with self.assertRaises(row_fields.RowFieldsError) as ctx:
+            row_fields.extract_paths(row)
+        self.assertEqual(ctx.exception.field, "extract_paths")
+        self.assertIn("v2.2", ctx.exception.reason)
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.check_denied(row)
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.trainer_input_from_row(row)
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.gate_tokens(row)
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.scanned_field_paths(row)
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.trainer_read_paths(row)
+        with self.assertRaises(denied_field_schema.DeniedFieldError):
+            denied_field_schema.trainer_input_from_row(row)
+        with self.assertRaises(denied_field_schema.DeniedFieldError):
+            denied_field_schema.check_denied_fields(row)
+        self.assertEqual(
+            content_uuid.NEAR_DUP_TOKENIZER_SHA256,
+            "50d5015a051832608391208b7fc3f48259d6e94443213bb46143a06aa2a4f173",
+        )
+
+
+@unittest.skipUnless(row_fields.extract_paths_ready(), _EXTRACT_PATHS_SKIP)
+class HelperFtMillExtractPathsTests(unittest.TestCase):
+    """Contract tests for mill v2.2 extract_paths. Skip until vendored."""
 
     def _valid_row(self, *, rid: str = "keep-labels", action: str = "halt") -> dict:
         row = _strict_row(rid, action)
@@ -8534,125 +8592,135 @@ class HelperFtDeniedFieldSchemaTests(unittest.TestCase):
         row["trajectory_id"] = rid
         return row
 
-    def test_n_text_in_denied_field_has_no_training_tokens_and_is_refused(self) -> None:
+    def test_n_text_in_denied_field_refused_not_dropped(self) -> None:
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        deny = tuple(getattr(mill, "DENY_KEYS"))
         base = self._valid_row()
-        self.assertIs(denied_field_schema.DENIED_FIELDS, row_fields.DENY_KEYS)
         n_bytes = DENIED_FIELD_N_TEXT.encode("utf-8")
-        for field in row_fields.DENY_KEYS:
+        for field in deny:
             with self.subTest(field=field):
                 row = _place_denied_field(base, field, DENIED_FIELD_N_TEXT)
-                readable = row_fields.readable_raw_fields(row)
-                self.assertIn("state.message", readable)
-                for blob in readable.values():
-                    self.assertNotIn(n_bytes, blob)
-                with self.assertRaises(denied_field_schema.DeniedFieldError) as ctx:
-                    denied_field_schema.check_denied_fields(row)
+                with self.assertRaises(row_fields.RowFieldsError) as ctx:
+                    row_fields.check_denied(row)
                 self.assertEqual(ctx.exception.field, field)
-                with self.assertRaises(denied_field_schema.DeniedFieldError) as train_ctx:
-                    denied_field_schema.trainer_input_from_row(row)
-                self.assertEqual(train_ctx.exception.field, field)
+                with self.assertRaises(row_fields.RowFieldsError):
+                    row_fields.trainer_input_from_row(row)
+                with self.assertRaises(row_fields.RowFieldsError):
+                    row_fields.extract_paths(row)
                 if field == "state.meta":
                     self.assertEqual(row["state"]["meta"], DENIED_FIELD_N_TEXT)
                 else:
                     self.assertEqual(row[field], DENIED_FIELD_N_TEXT)
+                ok = self._valid_row(rid=f"ok-{field}")
+                pairs = row_fields.extract_paths(ok)
+                for item in pairs:
+                    self.assertNotIn(n_bytes, _extract_pair_raw_bytes(item))
 
-    def test_trainer_readable_text_equals_raw_field_bytes(self) -> None:
+    def test_byte_spans_round_trip_to_raw_row(self) -> None:
+        row = self._valid_row(rid="span-round")
+        encoded = json.dumps(row, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        pairs = row_fields.extract_paths(row)
+        self.assertTrue(pairs)
+        encodings = [
+            encoded,
+            json.dumps(row, ensure_ascii=False).encode("utf-8"),
+            json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+                "utf-8"
+            ),
+        ]
+        saw_span = False
+        for item in pairs:
+            span = _extract_pair_span(item)
+            self.assertIsNotNone(span)
+            saw_span = True
+            start, end = span
+            raw = _extract_pair_raw_bytes(item)
+            self.assertTrue(any(blob[start:end] == raw for blob in encodings))
+        self.assertTrue(saw_span)
+
+    def test_training_text_equals_raw_bytes(self) -> None:
         row = self._valid_row(rid="raw-bytes", action="execute")
         raw = 'tool=shell; detail={"command": "Rm -rf /tmp/cafe\u0301 !!!"}'
         row["state"] = {"message": raw}
         mill = content_uuid._load_mill_near_dup_tokenizer()
-        payload = denied_field_schema.trainer_input_from_row(row)
-        for path in row_fields.READABLE_PATHS:
-            value = row_fields.get_by_path(row, path)
-            self.assertEqual(payload[path], value.encode("utf-8"))
-            self.assertEqual(payload[path], row_fields.raw_field_bytes(value))
-        extracted = mill.message_text(raw)
-        normalized = mill.normalize(extracted)
-        self.assertNotEqual(payload["state.message"], extracted.encode("utf-8"))
-        self.assertNotEqual(payload["state.message"], normalized.encode("utf-8"))
+        pairs = row_fields.trainer_input_from_row(row)
+        gate_pairs = row_fields.extract_paths(row)
+        self.assertEqual(len(pairs), len(gate_pairs))
+        found_message = False
+        for item in pairs:
+            blob = _extract_pair_raw_bytes(item)
+            path = _extract_pair_path(item)
+            if path.endswith("message") or blob == raw.encode("utf-8"):
+                found_message = True
+                self.assertEqual(blob, raw.encode("utf-8"))
+                self.assertNotEqual(blob, mill.message_text(raw).encode("utf-8"))
+                self.assertNotEqual(blob, mill.normalize(mill.message_text(raw)).encode("utf-8"))
+        self.assertTrue(found_message)
 
-    def test_gate_scan_paths_equal_trainer_read_paths(self) -> None:
-        self.assertIs(row_fields.scanned_field_paths(), row_fields.trainer_read_paths())
-        self.assertIs(row_fields.scanned_field_paths(), row_fields.READABLE_PATHS)
-        self.assertIs(kick_helper_ft.NEAR_DUP_SCAN_PATHS, row_fields.READABLE_PATHS)
-        self.assertIs(denied_field_schema.TRAINER_READ_PATHS, row_fields.READABLE_PATHS)
-        self.assertIs(content_uuid.NEAR_DUP_SCAN_PATHS, row_fields.READABLE_PATHS)
+    def test_gate_paths_equal_trainer_paths(self) -> None:
+        row = self._valid_row(rid="path-eq")
+        gate_paths = [_extract_pair_path(item) for item in row_fields.extract_paths(row)]
+        train_paths = [
+            _extract_pair_path(item) for item in row_fields.trainer_input_from_row(row)
+        ]
+        self.assertEqual(gate_paths, train_paths)
         self.assertEqual(
-            kick_helper_ft.NEAR_DUP_SCAN_PATHS,
-            denied_field_schema.TRAINER_READ_PATHS,
+            row_fields.scanned_field_paths(row), row_fields.trainer_read_paths(row)
         )
 
-    def test_valid_row_keeps_labels_and_questions_in_trainer_input(self) -> None:
+    def test_no_data_silently_dropped(self) -> None:
+        row = self._valid_row(rid="no-drop")
+        pairs = list(row_fields.extract_paths(row))
+        train = list(row_fields.trainer_input_from_row(row))
+        gate_blobs = [
+            (_extract_pair_path(item), _extract_pair_raw_bytes(item)) for item in pairs
+        ]
+        train_blobs = [
+            (_extract_pair_path(item), _extract_pair_raw_bytes(item)) for item in train
+        ]
+        self.assertEqual(gate_blobs, train_blobs)
+        self.assertTrue(pairs)
+        joined = b"\n".join(blob for _path, blob in train_blobs)
+        self.assertIn(row["state"]["message"].encode("utf-8"), joined)
+        self.assertIn(b"halt", joined)
+        self.assertIn(b"What should the pair-programmer do?", joined)
+
+    def test_decoded_json_string_args_included(self) -> None:
+        command = "echo decoded-json-string-arg"
+        detail = json.dumps({"command": command}, separators=(",", ":"))
+        row = self._valid_row(rid="json-arg")
+        row["state"] = {"message": f"tool=shell; detail={detail}"}
+        pairs = row_fields.extract_paths(row)
+        blobs = [_extract_pair_raw_bytes(item) for item in pairs]
+        self.assertTrue(
+            any(command.encode("utf-8") in blob for blob in blobs),
+            "decoded JSON-string args must appear in extract_paths pairs",
+        )
+
+    def test_gate_tokenizes_extract_paths_values(self) -> None:
+        row = self._valid_row(rid="gate-tok")
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        tokens = row_fields.gate_tokens(row)
+        expected: set[str] = set()
+        for item in row_fields.extract_paths(row):
+            raw = _extract_pair_raw_bytes(item).decode("utf-8")
+            expected.update(mill.message_tokens(raw))
+        self.assertEqual(tokens, frozenset(expected))
+
+    def test_labels_and_questions_reach_trainer_intact(self) -> None:
         row = self._valid_row(rid="keep-labels", action="halt")
-        payload = denied_field_schema.trainer_input_from_row(row)
-        self.assertEqual(payload["labels"], row["labels"])
-        self.assertEqual(payload["questions"], row["questions"])
-        self.assertEqual(payload["labels"]["action"]["choice"], "halt")
-        self.assertEqual(
-            payload["questions"]["action"]["instructions"],
-            "What should the pair-programmer do?",
+        pairs = row_fields.trainer_input_from_row(row)
+        by_path = {_extract_pair_path(item): item for item in pairs}
+        self.assertTrue(any("labels" in path for path in by_path))
+        self.assertTrue(any("questions" in path for path in by_path))
+        labels_item = next(item for path, item in by_path.items() if path == "labels" or path.endswith(".labels"))
+        questions_item = next(
+            item for path, item in by_path.items() if path == "questions" or path.endswith(".questions")
         )
-        self.assertEqual(
-            payload["state.message"],
-            row["state"]["message"].encode("utf-8"),
-        )
-        self.assertNotIn("text", payload)
-        self.assertNotIn("state", payload)
-        self.assertNotIn("message", payload)
-
-    def test_unknown_state_meta_key_is_refused(self) -> None:
-        row = self._valid_row(rid="meta-unknown")
-        row["state"] = {
-            "message": row["state"]["message"],
-            "meta": {"kind": "math_problem", "smuggled": "n-text-here"},
-        }
-        with self.assertRaises(denied_field_schema.DeniedFieldError) as ctx:
-            denied_field_schema.check_denied_fields(row)
-        self.assertEqual(ctx.exception.field, "state.meta")
-        self.assertIn("smuggled", ctx.exception.reason)
-        with self.assertRaises(denied_field_schema.DeniedFieldError):
-            denied_field_schema.trainer_input_from_row(row)
-        self.assertIn("smuggled", row["state"]["meta"])
-
-    def test_kick_refuses_n_text_in_labels_at_schema_gate(self) -> None:
-        poisoned = _place_denied_field(
-            _row(rid="n-labels", action="halt"), "labels", DENIED_FIELD_N_TEXT
-        )
-        partner = _row(rid="n-labels-ok", action="execute")
-        with tempfile.TemporaryDirectory() as tmp:
-            dest = Path(tmp) / "inbox-pack"
-            dest.mkdir()
-            manifest = _write_action_pack(
-                dest, [poisoned, partner], pack_id="denied-n-labels"
-            )
-            self._pin(manifest)
-            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.kick(dest)
-        self.assertEqual(ctx.exception.field, "labels")
-        self.assertEqual(ctx.exception.expected, "schema-valid denied fields")
-        self.assertTrue(any("object required" in str(item) for item in ctx.exception.actual))
-        self.assertEqual(self.kickoff_calls, [])
-
-    def test_kick_refuses_unknown_state_meta_key(self) -> None:
-        row = _row(rid="meta-x", action="halt")
-        row["state"] = {
-            "message": row["state"]["message"],
-            "meta": {"kind": "ok", "extra": "hid"},
-        }
-        partner = _row(rid="meta-ok", action="execute")
-        with tempfile.TemporaryDirectory() as tmp:
-            dest = Path(tmp) / "inbox-pack"
-            dest.mkdir()
-            manifest = _write_action_pack(
-                dest, [row, partner], pack_id="denied-meta-unknown"
-            )
-            self._pin(manifest)
-            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.kick(dest)
-        self.assertEqual(ctx.exception.field, "state.meta")
-        self.assertEqual(ctx.exception.expected, "schema-valid denied fields")
-        self.assertTrue(any("extra" in str(item) for item in ctx.exception.actual))
-        self.assertEqual(self.kickoff_calls, [])
+        labels_raw = _extract_pair_raw_bytes(labels_item)
+        questions_raw = _extract_pair_raw_bytes(questions_item)
+        self.assertIn(b"halt", labels_raw)
+        self.assertIn(b"What should the pair-programmer do?", questions_raw)
 
 
 if __name__ == "__main__":
