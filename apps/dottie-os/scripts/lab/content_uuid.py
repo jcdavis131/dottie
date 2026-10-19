@@ -16,7 +16,11 @@ Encoding, exactly:
 1. Build a JSON object with the included fields that are present (a missing
    field is omitted, not null).
 2. Unicode NFC-normalize every string in that object (keys and values).
-3. ``json.dumps(..., sort_keys=True, separators=(",", ":"), ensure_ascii=False)``.
+3. ``json.dumps(..., sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+   allow_nan=False)``. Numbers stay distinct as ``json.dumps`` renders them:
+   ``1`` (int) ≠ ``1.0`` (float). Bools are JSON ``true``/``false`` and never
+   collapse with ``0``/``1``. ``NaN`` and ``±Infinity`` anywhere in
+   ``state``/``questions`` are refused.
 4. UTF-8 encode those JSON bytes.
 5. ``sha256`` hex digest of those bytes is the content uuid.
 
@@ -39,6 +43,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import sys
 import unicodedata
 from collections import defaultdict
@@ -47,6 +52,43 @@ from typing import Any, Iterable, Mapping
 CONTENT_UUID_FIELDS: tuple[str, ...] = ("state", "questions")
 SHA256_LEN = 64
 _HEX = frozenset("0123456789abcdef")
+
+
+class ContentUuidError(Exception):
+    def __init__(self, field: str, expected: object, actual: object, message: str) -> None:
+        self.field = field
+        self.expected = expected
+        self.actual = actual
+        super().__init__(message)
+
+
+def _non_finite_label(value: float) -> str:
+    if math.isnan(value):
+        return "NaN"
+    if value > 0:
+        return "+Infinity"
+    return "-Infinity"
+
+
+def _refuse_non_finite(value: Any, path: str = "") -> None:
+    """Refuse NaN/±Infinity. ``type is float`` so bools are not inspected."""
+    if type(value) is float and (math.isnan(value) or math.isinf(value)):
+        label = _non_finite_label(value)
+        loc = path or "value"
+        raise ContentUuidError(
+            "content_uuid.non_finite",
+            "finite JSON number",
+            label,
+            f"non-finite number ({label}) in {loc}",
+        )
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            _refuse_non_finite(child, child_path)
+        return
+    if isinstance(value, (list, tuple)):
+        for idx, child in enumerate(value):
+            _refuse_non_finite(child, f"{path}[{idx}]")
 
 
 def _nfc_value(value: Any) -> Any:
@@ -62,11 +104,28 @@ def _nfc_value(value: Any) -> Any:
 
 
 def canonical_json_bytes(value: Any) -> bytes:
-    """UTF-8 JSON: NFC strings, sorted keys, compact ``,`` / ``:`` separators."""
+    """UTF-8 JSON: NFC strings, sorted keys, compact ``,`` / ``:`` separators.
+
+    Ints and floats stay distinct (``1`` ≠ ``1.0``). Bools stay ``true``/
+    ``false``. ``allow_nan=False`` so NaN/±Infinity refuse.
+    """
+    _refuse_non_finite(value)
     payload = _nfc_value(value)
-    text = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    )
+    try:
+        text = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    except ValueError as exc:
+        raise ContentUuidError(
+            "content_uuid.non_finite",
+            "finite JSON number",
+            "non-finite",
+            f"non-finite number: {exc}",
+        ) from exc
     return unicodedata.normalize("NFC", text).encode("utf-8")
 
 
@@ -85,7 +144,15 @@ def canonical_content_bytes(row: Mapping[str, Any]) -> bytes:
 
 def content_uuid(row: Mapping[str, Any]) -> str:
     """sha256 hex of ``canonical_content_bytes(row)``."""
-    return hashlib.sha256(canonical_content_bytes(row)).hexdigest()
+    try:
+        return hashlib.sha256(canonical_content_bytes(row)).hexdigest()
+    except ContentUuidError as exc:
+        raise ContentUuidError(
+            exc.field,
+            exc.expected,
+            exc.actual,
+            f"{exc} on {row_id(row)}",
+        ) from exc
 
 
 def canonical_labels_bytes(row: Mapping[str, Any]) -> bytes:
@@ -152,14 +219,6 @@ def verify_content_uuid(row: Mapping[str, Any]) -> str | None:
             f"forged content uuid on {row_id(row)}: claimed {claimed} computed {actual}",
         )
     return actual
-
-
-class ContentUuidError(Exception):
-    def __init__(self, field: str, expected: object, actual: object, message: str) -> None:
-        self.field = field
-        self.expected = expected
-        self.actual = actual
-        super().__init__(message)
 
 
 def find_content_uuid_collisions(

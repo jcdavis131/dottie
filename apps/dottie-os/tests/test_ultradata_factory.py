@@ -5350,6 +5350,59 @@ class HelperFtContentUuidTests(unittest.TestCase):
             content_uuid.content_uuid(labels_right),
         )
 
+    def test_int_and_float_are_distinct(self) -> None:
+        as_int = {"state": {"n": 1}, "questions": {"action": {"type": "choice"}}}
+        as_float = {"state": {"n": 1.0}, "questions": {"action": {"type": "choice"}}}
+        self.assertNotEqual(
+            content_uuid.content_uuid(as_int), content_uuid.content_uuid(as_float)
+        )
+        self.assertIn(b'"n":1}', content_uuid.canonical_content_bytes(as_int))
+        self.assertIn(b'"n":1.0}', content_uuid.canonical_content_bytes(as_float))
+
+    def test_bools_do_not_collapse_with_0_1(self) -> None:
+        as_true = {"state": {"flag": True}, "questions": {"action": {"type": "choice"}}}
+        as_one = {"state": {"flag": 1}, "questions": {"action": {"type": "choice"}}}
+        as_false = {"state": {"flag": False}, "questions": {"action": {"type": "choice"}}}
+        as_zero = {"state": {"flag": 0}, "questions": {"action": {"type": "choice"}}}
+        self.assertNotEqual(
+            content_uuid.content_uuid(as_true), content_uuid.content_uuid(as_one)
+        )
+        self.assertNotEqual(
+            content_uuid.content_uuid(as_false), content_uuid.content_uuid(as_zero)
+        )
+        self.assertIn(b"true", content_uuid.canonical_content_bytes(as_true))
+        self.assertIn(b"false", content_uuid.canonical_content_bytes(as_false))
+
+    def test_nan_and_infinity_refused(self) -> None:
+        for label, value in (
+            ("NaN", float("nan")),
+            ("+Infinity", float("inf")),
+            ("-Infinity", float("-inf")),
+        ):
+            row = {
+                "id": "nonfinite-a",
+                "state": {"n": value},
+                "questions": {"action": {"type": "choice"}},
+            }
+            with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+                content_uuid.content_uuid(row)
+            self.assertEqual(ctx.exception.field, "content_uuid.non_finite")
+            self.assertIn(label, str(ctx.exception))
+            self.assertIn("nonfinite-a", str(ctx.exception))
+
+    def test_nan_in_pack_refused(self) -> None:
+        a = _row(rid="nan-a", action="execute")
+        b = _row(rid="nan-b", action="halt")
+        a["state"]["score"] = float("nan")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, [a, b], pack_id="uuid-nan")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "content_uuid.non_finite")
+
     def test_cli_matches_importable_helper(self) -> None:
         row = _row(rid="cli-1", action="execute")
         expected = content_uuid.content_uuid(row)

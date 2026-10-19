@@ -1624,7 +1624,10 @@ def enforce_pack_gates(
     hits = collect_not_for_train(manifest, recorded_paths)
     if hits and not smoke:
         _refuse("not_for_train", False, hits[:10])
-    collisions = collect_content_uuid_collisions(recorded_paths)
+    try:
+        collisions = collect_content_uuid_collisions(recorded_paths)
+    except content_uuid.ContentUuidError as exc:
+        _refuse(exc.field, exc.expected, [str(exc)])
     if collisions:
         field = (
             "content_uuid.label_conflict"
