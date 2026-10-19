@@ -269,7 +269,13 @@ def handle_train_kickoff(
     if not isinstance(body, dict):
         return _bad("body", "object", type(body).__name__)
     try:
-        blobs = cam_pin_spec.require_committed_trust()
+        if cam_pin_spec.PINNED_COPY_ROOT is None:
+            blobs = cam_pin_spec.require_committed_trust()
+        else:
+            incoming = body.get("evidence") if isinstance(body.get("evidence"), dict) else {}
+            blobs = incoming.get("trust_blobs")
+            if not isinstance(blobs, dict) or not blobs:
+                return _bad("trust_blobs", "pinned-copy map", "missing")
     except cam_pin_spec.CamPinError as exc:
         return _bad(exc.field, exc.expected, exc.actual)
     try:

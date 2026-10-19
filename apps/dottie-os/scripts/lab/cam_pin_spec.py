@@ -74,8 +74,12 @@ _PLACEHOLDER_ORIGIN = frozenset({"", "unset", "placeholder", "todo", "https://un
 _PUB_NAME = "cam_pin_ed25519.pub"
 _KEY_ID_NAME = "cam_pin_key_id"
 # Frozen path: apps/dottie-os/trust/cam_pin_ed25519.pub relative to this file.
+# Pinned-copy mode rebinds these to <copy-root>/trust/ via bind_pinned_copy_trust.
 CAM_PIN_PUB_PATH = Path(__file__).resolve().parents[2] / "trust" / _PUB_NAME
 CAM_PIN_KEY_ID_PATH = Path(__file__).resolve().parents[2] / "trust" / _KEY_ID_NAME
+PINNED_COPY_ROOT: Path | None = None
+_DEFAULT_CAM_PIN_PUB_PATH = CAM_PIN_PUB_PATH
+_DEFAULT_CAM_PIN_KEY_ID_PATH = CAM_PIN_KEY_ID_PATH
 # Exact on-disk sentinel. Cam replaces both trust files in one PR.
 PLACEHOLDER_PUB_TEXT = (
     "CAM-PIN-ED25519-PLACEHOLDER\n"
@@ -323,6 +327,29 @@ def _parse_pub_file(text: str) -> tuple[str, bytes]:
     return key_id, raw
 
 
+def bind_pinned_copy_trust(copy_root: Path) -> None:
+    """Point the Cam trust files at a staged copy. No git. Paths stay under trust/."""
+    global CAM_PIN_PUB_PATH, CAM_PIN_KEY_ID_PATH, PINNED_COPY_ROOT
+    root = Path(copy_root).resolve()
+    pub = root / "trust" / _PUB_NAME
+    kid = root / "trust" / _KEY_ID_NAME
+    if pub.name != _PUB_NAME or pub.parent.name != "trust":
+        _refuse("cam_pin.pubkey", str(root / "trust" / _PUB_NAME), str(pub))
+    if kid.name != _KEY_ID_NAME or kid.parent.name != "trust":
+        _refuse("cam_pin.key_id", str(root / "trust" / _KEY_ID_NAME), str(kid))
+    PINNED_COPY_ROOT = root
+    CAM_PIN_PUB_PATH = pub
+    CAM_PIN_KEY_ID_PATH = kid
+
+
+def clear_pinned_copy_trust() -> None:
+    """Restore default trust paths. Tests only; production pinned-copy never unbinds."""
+    global CAM_PIN_PUB_PATH, CAM_PIN_KEY_ID_PATH, PINNED_COPY_ROOT
+    PINNED_COPY_ROOT = None
+    CAM_PIN_PUB_PATH = _DEFAULT_CAM_PIN_PUB_PATH
+    CAM_PIN_KEY_ID_PATH = _DEFAULT_CAM_PIN_KEY_ID_PATH
+
+
 def load_cam_key_id() -> str:
     """Committed cam_key_id. Never env, argv, or another path."""
     path = CAM_PIN_KEY_ID_PATH
@@ -391,7 +418,15 @@ def verify_cam_sig(record: dict[str, Any]) -> None:
 
 
 def repo_root() -> Path:
+    if PINNED_COPY_ROOT is not None:
+        _refuse("git", "skipped in pinned-copy", "pinned-copy")
     here = Path(__file__).resolve()
+    try:
+        staged = here.parents[4]
+    except IndexError:
+        staged = None
+    if staged is not None and (staged / "PINS.json").is_file():
+        _refuse("git", "skipped in pinned-copy", "pinned-copy")
     for parent in here.parents:
         if (parent / ".git").exists():
             return parent
@@ -400,6 +435,8 @@ def repo_root() -> Path:
 
 
 def _git(root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+    if PINNED_COPY_ROOT is not None:
+        _refuse("git", "skipped in pinned-copy", "pinned-copy")
     try:
         return subprocess.run(
             ["git", *args],
@@ -744,7 +781,8 @@ def fetch_signed_pin(pack_id: str) -> dict[str, Any]:
     """GET the pin from the pinned origin, verify Cam's Ed25519 signature."""
     if type(pack_id) is not str or not pack_id:
         _refuse("pack_id", "present", "missing")
-    require_committed_trust()
+    if PINNED_COPY_ROOT is None:
+        require_committed_trust()
     origin = pinned_origin()
     token = os.environ.get(SWARM_HQ_AGENT_TOKEN_ENV)
     if type(token) is not str or not token:

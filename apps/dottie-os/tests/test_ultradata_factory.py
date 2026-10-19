@@ -23,7 +23,7 @@ import tempfile
 import unittest
 import urllib.error
 import urllib.parse
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from datetime import datetime, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -1752,6 +1752,258 @@ def _fresh_kickoff_body(dest: Path, manifest: dict, *, run_id: str = "helper-ft-
             "run_private_dir": str(run_private.resolve()),
         },
     }
+
+
+PINNED_COPY_HEAD = "1" * 40
+
+
+def _chmod_pinned_copy_tree(root: Path) -> None:
+    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
+        for name in filenames:
+            os.chmod(Path(dirpath) / name, 0o400)
+        os.chmod(dirpath, 0o500)
+
+
+def _unlock_pinned_copy_tree(root: Path) -> None:
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+        os.chmod(dirpath, 0o700)
+        for name in filenames:
+            os.chmod(Path(dirpath) / name, 0o600)
+
+
+@contextmanager
+def _pinned_copy_root():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "copy"
+        root.mkdir()
+        try:
+            yield root.resolve()
+        finally:
+            if root.exists():
+                try:
+                    _unlock_pinned_copy_tree(root)
+                except OSError:
+                    pass
+
+
+def _stage_pinned_copy(root: Path, *, omit: str | None = None) -> dict:
+    """Runner r3 layout: lab *.py under apps/dottie-os/scripts/lab/, trust/ at copy root."""
+    root = Path(root).resolve()
+    lab_src = APP / "scripts" / "lab"
+    lab_dst = root / "apps" / "dottie-os" / "scripts" / "lab"
+    trust_dst = root / "trust"
+    lab_dst.mkdir(parents=True)
+    trust_dst.mkdir(parents=True)
+    for src in lab_src.glob("*.py"):
+        shutil.copy2(src, lab_dst / src.name)
+    shutil.copy2(APP / "trust" / "cam_pin_ed25519.pub", trust_dst / "cam_pin_ed25519.pub")
+    shutil.copy2(APP / "trust" / "cam_pin_key_id", trust_dst / "cam_pin_key_id")
+    files: dict[str, str] = {}
+    for py in sorted(lab_dst.glob("*.py")):
+        rel = f"apps/dottie-os/scripts/lab/{py.name}"
+        files[rel] = kick_helper_ft.sha256_file(py)
+    files[kick_helper_ft.PINNED_COPY_PUB_REL] = kick_helper_ft.sha256_file(
+        trust_dst / "cam_pin_ed25519.pub"
+    )
+    files[kick_helper_ft.PINNED_COPY_KEY_ID_REL] = kick_helper_ft.sha256_file(
+        trust_dst / "cam_pin_key_id"
+    )
+    if omit is not None:
+        files.pop(omit, None)
+    payload = {"head": PINNED_COPY_HEAD, "files": files}
+    pins_path = root / kick_helper_ft.PINS_JSON_NAME
+    pins_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    _chmod_pinned_copy_tree(root)
+    canonical = kick_helper_ft.canonical_pins_map_json(payload)
+    return {
+        "root": root,
+        "script": lab_dst / "kick_helper_ft.py",
+        "payload": payload,
+        "canonical": canonical,
+        "map_sha256": hashlib.sha256(canonical).hexdigest(),
+        "file_sha256": kick_helper_ft.sha256_file(pins_path),
+        "pins_path": pins_path,
+    }
+
+
+class HelperFtPinnedCopyTests(unittest.TestCase):
+    """PINS.json at copy root: skip git, exact-path re-hash, bind trust inside the copy."""
+
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+        self.git_cmds: list[list[str]] = []
+        _start_hq_http_mock(self)
+        self._trust_patcher.stop()
+        self._trust_patcher = patch.object(
+            cam_pin_spec,
+            "require_committed_trust",
+            side_effect=AssertionError("git trust lookup in pinned-copy"),
+        )
+        self._trust_patcher.start()
+        os.environ.pop(kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV, None)
+        os.environ.pop(kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV, None)
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            return {"ok": True, "checkpoint_id": "ckpt-pinned", "exit_code": 0}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+        self._orig_sub_run = subprocess.run
+
+        def guarded_run(*args: object, **kwargs: object) -> object:
+            cmd = args[0] if args else kwargs.get("args")
+            if isinstance(cmd, (list, tuple)) and cmd and str(cmd[0]) == "git":
+                self.git_cmds.append([str(part) for part in cmd])
+                raise AssertionError(f"git lookup in pinned-copy: {cmd}")
+            return self._orig_sub_run(*args, **kwargs)
+
+        self._sub_patch = patch("subprocess.run", side_effect=guarded_run)
+        self._sub_patch.start()
+
+    def tearDown(self) -> None:
+        self._sub_patch.stop()
+        cam_pin_spec.clear_pinned_copy_trust()
+        kick_helper_ft.post_kickoff = self._orig_post
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
+
+    def _kick_staged(self, staged: dict, dest: Path) -> dict:
+        with patch.object(kick_helper_ft, "_running_script", return_value=staged["script"]):
+            return kick_helper_ft.kick(dest)
+
+    def test_pinned_copy_skips_git_and_records_evidence(self) -> None:
+        with _pinned_copy_root() as root:
+            staged = _stage_pinned_copy(root)
+            dest = root.parent / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            evidence = self._kick_staged(staged, dest)
+            rec = json.loads(
+                Path(evidence["checkpoint_integrity_evidence_path"]).read_text(encoding="utf-8")
+            )
+        self.assertEqual(self.git_cmds, [])
+        self.assertIsNone(evidence["script_git_sha"])
+        self.assertEqual(evidence["script_git_sha_reason"], "pinned-copy")
+        self.assertEqual(evidence["head"], PINNED_COPY_HEAD)
+        self.assertEqual(evidence["pins_source_commit"], PINNED_COPY_HEAD)
+        self.assertEqual(evidence["entrypoint_pins"], staged["payload"]["files"])
+        self.assertEqual(evidence["pins_map_sha256"], staged["map_sha256"])
+        self.assertEqual(evidence["pins_file_sha256"], staged["file_sha256"])
+        self.assertNotEqual(evidence["pins_map_sha256"], evidence["pins_file_sha256"])
+        self.assertEqual(evidence["pinned_copy_root"], str(staged["root"]))
+        self.assertEqual(
+            evidence["script_sha256"],
+            staged["payload"]["files"][kick_helper_ft.PINNED_COPY_KICK_REL],
+        )
+        self.assertEqual(rec["script_git_sha"], None)
+        self.assertEqual(rec["script_git_sha_reason"], "pinned-copy")
+        self.assertEqual(rec["head"], PINNED_COPY_HEAD)
+        self.assertEqual(rec["pins_map_sha256"], staged["map_sha256"])
+        self.assertEqual(rec["pins_file_sha256"], staged["file_sha256"])
+        self.assertEqual(rec["pinned_copy_root"], str(staged["root"]))
+        self.assertEqual(cam_pin_spec.CAM_PIN_PUB_PATH, staged["root"] / "trust" / "cam_pin_ed25519.pub")
+        self.assertEqual(cam_pin_spec.CAM_PIN_KEY_ID_PATH, staged["root"] / "trust" / "cam_pin_key_id")
+        self.assertEqual(cam_pin_spec.PINNED_COPY_ROOT, staged["root"])
+        kick_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/kick")]
+        self.assertEqual(kick_posts[0]["body"]["script_git_sha_reason"], "pinned-copy")
+        self.assertEqual(kick_posts[0]["body"]["head"], PINNED_COPY_HEAD)
+
+    def test_pinned_copy_rehashes_required_files_exact_paths(self) -> None:
+        with _pinned_copy_root() as root:
+            staged = _stage_pinned_copy(root)
+            with patch.object(kick_helper_ft, "_running_script", return_value=staged["script"]):
+                loaded = kick_helper_ft.load_pinned_copy_mode()
+            files = staged["payload"]["files"]
+            for rel in kick_helper_ft.PINNED_COPY_REQUIRED_RELS:
+                self.assertIn(rel, files)
+                self.assertEqual(loaded["files"][rel], files[rel])
+            self.assertEqual(loaded["head"], PINNED_COPY_HEAD)
+            self.assertEqual(loaded["map_sha256"], staged["map_sha256"])
+            self.assertEqual(loaded["file_sha256"], staged["file_sha256"])
+            self.assertEqual(loaded["reason"], "pinned-copy")
+            self.assertEqual(loaded["root"], staged["root"])
+
+    def test_pinned_copy_basename_pin_is_missing_entry(self) -> None:
+        with _pinned_copy_root() as root:
+            staged = _stage_pinned_copy(root)
+            _unlock_pinned_copy_tree(root)
+            payload = {
+                "head": PINNED_COPY_HEAD,
+                "files": {
+                    "kick_helper_ft.py": staged["payload"]["files"][
+                        kick_helper_ft.PINNED_COPY_KICK_REL
+                    ],
+                    "cam_pin_spec.py": staged["payload"]["files"][
+                        kick_helper_ft.PINNED_COPY_SPEC_REL
+                    ],
+                    "cam_pin_ed25519.pub": staged["payload"]["files"][
+                        kick_helper_ft.PINNED_COPY_PUB_REL
+                    ],
+                    "cam_pin_key_id": staged["payload"]["files"][
+                        kick_helper_ft.PINNED_COPY_KEY_ID_REL
+                    ],
+                },
+            }
+            (root / "PINS.json").write_text(json.dumps(payload), encoding="utf-8")
+            _chmod_pinned_copy_tree(root)
+            dest = root.parent / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                self._kick_staged(staged, dest)
+        self.assertEqual(ctx.exception.field, "files")
+        self.assertEqual(ctx.exception.actual, "missing")
+        self.assertIn(kick_helper_ft.PINNED_COPY_KICK_REL, str(ctx.exception.expected))
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_pinned_copy_tampered_trust_file_refuses(self) -> None:
+        with _pinned_copy_root() as root:
+            staged = _stage_pinned_copy(root)
+            pub = root / "trust" / "cam_pin_ed25519.pub"
+            _unlock_pinned_copy_tree(root)
+            pub.write_bytes(pub.read_bytes() + b"\nTAMPER")
+            _chmod_pinned_copy_tree(root)
+            dest = root.parent / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                self._kick_staged(staged, dest)
+        self.assertTrue(str(ctx.exception.field).startswith("files."))
+        self.assertIn("trust/cam_pin_ed25519.pub", ctx.exception.field)
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.git_cmds, [])
+
+    def test_pinned_copy_missing_pins_entry_refuses(self) -> None:
+        with _pinned_copy_root() as root:
+            staged = _stage_pinned_copy(root, omit=kick_helper_ft.PINNED_COPY_PUB_REL)
+            dest = root.parent / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                self._kick_staged(staged, dest)
+        self.assertEqual(ctx.exception.field, "files")
+        self.assertEqual(ctx.exception.actual, "missing")
+        self.assertIn(kick_helper_ft.PINNED_COPY_PUB_REL, str(ctx.exception.expected))
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_repo_root_refuses_git_in_pinned_copy(self) -> None:
+        with _pinned_copy_root() as root:
+            _stage_pinned_copy(root)
+            cam_pin_spec.bind_pinned_copy_trust(root)
+            with self.assertRaises(cam_pin_spec.CamPinError) as ctx:
+                cam_pin_spec.repo_root()
+        self.assertEqual(ctx.exception.field, "git")
+        self.assertEqual(ctx.exception.actual, "pinned-copy")
+        self.assertEqual(self.git_cmds, [])
 
 
 class HelperFtKickoffHttpTests(unittest.TestCase):

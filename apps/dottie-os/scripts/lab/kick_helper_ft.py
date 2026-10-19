@@ -72,6 +72,20 @@ _HEX = frozenset("0123456789abcdef")
 FORGE_ENTRYPOINT_PINS_ENV = "FORGE_ENTRYPOINT_PINS"
 FORGE_PINS_SOURCE_COMMIT_ENV = "FORGE_PINS_SOURCE_COMMIT"
 ENTRYPOINT_PIN_BASENAMES = ("kick_helper_ft.py", "cam_pin_spec.py")
+PINS_JSON_NAME = "PINS.json"
+PINNED_COPY_DEPTH = 4
+PINNED_COPY_REASON = "pinned-copy"
+PINNED_COPY_KICK_REL = "apps/dottie-os/scripts/lab/kick_helper_ft.py"
+PINNED_COPY_SPEC_REL = "apps/dottie-os/scripts/lab/cam_pin_spec.py"
+PINNED_COPY_PUB_REL = "trust/cam_pin_ed25519.pub"
+PINNED_COPY_KEY_ID_REL = "trust/cam_pin_key_id"
+PINNED_COPY_REQUIRED_RELS = (
+    PINNED_COPY_KICK_REL,
+    PINNED_COPY_SPEC_REL,
+    PINNED_COPY_PUB_REL,
+    PINNED_COPY_KEY_ID_REL,
+)
+PINS_JSON_MAX_BYTES = 64 * 1024
 _GATE_OK = object()
 TRAINER_PATH_FILES: dict[str, str] = {
     "pack": PACK_FILE,
@@ -186,7 +200,161 @@ def _new_run_id() -> str:
     return f"helper-ft-{stamp}-{uuid.uuid4().hex[:8]}"
 
 
+def _running_script() -> Path:
+    return Path(__file__).resolve()
+
+
+def discover_pinned_copy_root(script: Path | None = None) -> Path | None:
+    """PINS.json lives four directories above kick_helper_ft.py. No git."""
+    path = Path(script) if script is not None else _running_script()
+    try:
+        root = path.resolve().parents[PINNED_COPY_DEPTH]
+    except IndexError:
+        return None
+    pins = root / PINS_JSON_NAME
+    if pins.is_file():
+        return root
+    return None
+
+
+def canonical_pins_map_json(payload: Mapping[str, Any]) -> bytes:
+    """sha256 of this blob is the map digest. Sorted keys, compact separators."""
+    return json.dumps(
+        payload, separators=(",", ":"), sort_keys=True, ensure_ascii=True
+    ).encode("utf-8")
+
+
+def _no_duplicate_pins_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    seen: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in seen:
+            _refuse(PINS_JSON_NAME, "unique keys", f"duplicate {key}")
+        seen[key] = value
+    return seen
+
+
+def _read_capped_file(path: Path, *, field: str, max_bytes: int) -> bytes:
+    try:
+        fd = os.open(path, _open_flags_read())
+    except OSError as exc:
+        _refuse(field, "readable regular file", f"OSError:{exc.errno}")
+    try:
+        raw = b""
+        while True:
+            block = os.read(fd, CHUNK)
+            if not block:
+                break
+            raw += block
+            if len(raw) > max_bytes:
+                _refuse(field, f"at most {max_bytes} bytes", len(raw))
+    except OSError as exc:
+        _refuse(field, "readable regular file", f"OSError:{exc.errno}")
+    finally:
+        os.close(fd)
+    return raw
+
+
+def load_pinned_copy_mode(script: Path | None = None) -> dict[str, Any] | None:
+    """If PINS.json is present, verify the staged copy and skip every git lookup.
+
+    Layout (copy root = four parents of kick_helper_ft.py)::
+
+        PINS.json
+        apps/dottie-os/scripts/lab/*.py
+        trust/cam_pin_ed25519.pub
+        trust/cam_pin_key_id
+
+    ``PINS.json`` is ``{"head": <40-hex>, "files": {<repo-rel-path>: <sha256>}}``.
+    Required files are hashed at those exact relative paths. A basename-only
+    pin is a missing entry.
+    """
+    path = Path(script) if script is not None else _running_script()
+    root = discover_pinned_copy_root(path)
+    if root is None:
+        return None
+    pins_path = root / PINS_JSON_NAME
+    raw = _read_capped_file(pins_path, field=PINS_JSON_NAME, max_bytes=PINS_JSON_MAX_BYTES)
+    file_sha = hashlib.sha256(raw).hexdigest()
+    try:
+        parsed = json.loads(raw.decode("utf-8"), object_pairs_hook=_no_duplicate_pins_keys)
+    except UnicodeDecodeError:
+        _refuse(PINS_JSON_NAME, "utf-8 JSON", "invalid encoding")
+    except ValueError:
+        _refuse(PINS_JSON_NAME, "JSON object", "invalid JSON")
+    if not isinstance(parsed, dict):
+        _refuse(PINS_JSON_NAME, '{"head","files"}', type(parsed).__name__)
+    extra = set(parsed) - {"head", "files"}
+    if extra or "head" not in parsed or "files" not in parsed:
+        _refuse(PINS_JSON_NAME, '{"head","files"}', sorted(parsed))
+    head = _require_git_commit_hex("head", parsed["head"])
+    files_raw = parsed["files"]
+    if not isinstance(files_raw, dict) or not files_raw:
+        _refuse(
+            "files",
+            "JSON object",
+            type(files_raw).__name__ if not isinstance(files_raw, dict) else "empty",
+        )
+    files: dict[str, str] = {}
+    for key, value in files_raw.items():
+        rel = _require_relative_pin_path("files", key)
+        files[rel] = _require_sha256_hex(f"files.{rel}", value)
+    kick_live = path.resolve()
+    spec_live = (kick_live.parent / "cam_pin_spec.py").resolve()
+    expected_kick = (root / PINNED_COPY_KICK_REL).resolve()
+    expected_spec = (root / PINNED_COPY_SPEC_REL).resolve()
+    if kick_live != expected_kick:
+        _refuse(PINNED_COPY_KICK_REL, str(expected_kick), str(kick_live))
+    if spec_live != expected_spec:
+        _refuse(PINNED_COPY_SPEC_REL, str(expected_spec), str(spec_live))
+    live_by_rel = {
+        PINNED_COPY_KICK_REL: kick_live,
+        PINNED_COPY_SPEC_REL: spec_live,
+        PINNED_COPY_PUB_REL: (root / PINNED_COPY_PUB_REL).resolve(),
+        PINNED_COPY_KEY_ID_REL: (root / PINNED_COPY_KEY_ID_REL).resolve(),
+    }
+    for rel in PINNED_COPY_REQUIRED_RELS:
+        if rel not in files:
+            _refuse("files", f"pin covering {rel}", "missing")
+        target = live_by_rel[rel]
+        if not target.is_file():
+            _refuse(rel, "readable regular file", "missing")
+        actual = sha256_file(target)
+        if files[rel] != actual:
+            _refuse(f"files.{rel}", actual, files[rel])
+    for rel, expected in files.items():
+        target = (root / rel).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            _refuse(f"files.{rel}", f"under {root}", str(target))
+        if not target.is_file():
+            _refuse(rel, "readable regular file", "missing")
+        actual = sha256_file(target)
+        if expected != actual:
+            _refuse(f"files.{rel}", actual, expected)
+    payload = {"files": files, "head": head}
+    map_sha = hashlib.sha256(canonical_pins_map_json(payload)).hexdigest()
+    trust_blobs = {
+        PINNED_COPY_PUB_REL: files[PINNED_COPY_PUB_REL],
+        PINNED_COPY_KEY_ID_REL: files[PINNED_COPY_KEY_ID_REL],
+        PINNED_COPY_SPEC_REL: files[PINNED_COPY_SPEC_REL],
+        "HEAD": head,
+    }
+    return {
+        "root": root,
+        "pins_path": pins_path,
+        "head": head,
+        "files": files,
+        "map_sha256": map_sha,
+        "file_sha256": file_sha,
+        "trust_blobs": trust_blobs,
+        "reason": PINNED_COPY_REASON,
+    }
+
+
 def _script_git_sha() -> str | None:
+    if discover_pinned_copy_root() is not None:
+        return None
     try:
         proc = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -292,7 +460,24 @@ def _entrypoint_event_fields(evidence: Mapping[str, Any]) -> dict[str, Any]:
         _refuse("entrypoint_pins", "recorded pin map", "missing")
     if type(commit) is not str:
         _refuse("pins_source_commit", "40-char lowercase hex", commit)
-    return {"entrypoint_pins": dict(pins), "pins_source_commit": commit}
+    fields: dict[str, Any] = {
+        "entrypoint_pins": dict(pins),
+        "pins_source_commit": commit,
+    }
+    if evidence.get("script_git_sha_reason") == PINNED_COPY_REASON:
+        for key in (
+            "head",
+            "pins_map_sha256",
+            "pins_file_sha256",
+            "pinned_copy_root",
+            "script_git_sha_reason",
+        ):
+            value = evidence.get(key)
+            if value is None:
+                _refuse(key, "pinned-copy evidence", "missing")
+            fields[key] = value
+        fields["script_git_sha"] = None
+    return fields
 
 
 def _open_flags_read() -> int:
@@ -2008,18 +2193,28 @@ def kick(
     except OSError:
         if os.name != "nt":
             raise
-    git_sha = _script_git_sha()
-    entrypoint_pins, pins_source_commit = load_entrypoint_pins(git_sha=git_sha)
-    try:
-        trust_blobs = cam_pin_spec.require_committed_trust()
-    except cam_pin_spec.CamPinError as exc:
-        _refuse(exc.field, exc.expected, exc.actual)
+    pinned = load_pinned_copy_mode()
+    if pinned is not None:
+        git_sha = None
+        entrypoint_pins = dict(pinned["files"])
+        pins_source_commit = pinned["head"]
+        cam_pin_spec.bind_pinned_copy_trust(pinned["root"])
+        trust_blobs = dict(pinned["trust_blobs"])
+    else:
+        git_sha = _script_git_sha()
+        entrypoint_pins, pins_source_commit = load_entrypoint_pins(git_sha=git_sha)
+        try:
+            trust_blobs = cam_pin_spec.require_committed_trust()
+        except cam_pin_spec.CamPinError as exc:
+            _refuse(exc.field, exc.expected, exc.actual)
     evidence: dict[str, Any] = {
         "ok": False,
         "run_id": run_id,
         "checkpoint_id": None,
         "script_git_sha": git_sha,
-        "script_sha256": _script_sha256(),
+        "script_sha256": (
+            pinned["files"][PINNED_COPY_KICK_REL] if pinned is not None else _script_sha256()
+        ),
         "entrypoint_pins": entrypoint_pins,
         "pins_source_commit": pins_source_commit,
         "kickoff_url": kickoff_url,
@@ -2030,6 +2225,12 @@ def kick(
         "trust_blobs": trust_blobs,
         "head_sha": trust_blobs.get("HEAD"),
     }
+    if pinned is not None:
+        evidence["head"] = pinned["head"]
+        evidence["pins_map_sha256"] = pinned["map_sha256"]
+        evidence["pins_file_sha256"] = pinned["file_sha256"]
+        evidence["pinned_copy_root"] = str(pinned["root"])
+        evidence["script_git_sha_reason"] = PINNED_COPY_REASON
 
     def persist() -> None:
         write_evidence(evidence, evidence_path)
@@ -2047,6 +2248,15 @@ def kick(
         evidence["evidence_path"] = str(evidence_path.resolve())
         evidence["trust_blobs"] = trust_blobs
         evidence["head_sha"] = trust_blobs.get("HEAD")
+        if pinned is not None:
+            evidence["head"] = pinned["head"]
+            evidence["entrypoint_pins"] = dict(pinned["files"])
+            evidence["pins_map_sha256"] = pinned["map_sha256"]
+            evidence["pins_file_sha256"] = pinned["file_sha256"]
+            evidence["pinned_copy_root"] = str(pinned["root"])
+            evidence["script_git_sha"] = None
+            evidence["script_git_sha_reason"] = PINNED_COPY_REASON
+            evidence["script_sha256"] = pinned["files"][PINNED_COPY_KICK_REL]
         if smoke:
             evidence["smoke"] = True
         persist()
