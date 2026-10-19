@@ -120,11 +120,51 @@ ULTRADATA_MATH_CONFIG = "UltraData-Math-L1"
 
 
 def _math_uuidless(
-    *, rid: str, action: str, config: str = ULTRADATA_MATH_CONFIG
+    *,
+    rid: str,
+    action: str = "execute",
+    config: str = ULTRADATA_MATH_CONFIG,
+    message: str | None = None,
 ) -> dict:
-    row = _row(rid=rid, action=action, source=ULTRADATA_MATH_HF)
+    del action
+    text = message or (
+        f"Let n be a positive integer labeled {rid}. "
+        "Show that n times n plus one is even."
+    )
+    return make_row(
+        rid=rid,
+        tier="L2",
+        source={
+            "hf": ULTRADATA_MATH_HF,
+            "config": config,
+            "split": "train",
+            "row": 0,
+            "record_id": rid,
+        },
+        state={"message": text, "meta": {"kind": "math_problem"}},
+        questions={
+            "difficulty": {
+                "type": "score",
+                "instructions": "Problem difficulty 0-1 (length/symbol heuristic)",
+                "criteria": ["easy", "hard"],
+            },
+            "solvable": {
+                "type": "noul",
+                "instructions": "P(looks like a solvable question)",
+            },
+        },
+        labels={
+            "difficulty": {"type": "score", "score": 0.45},
+            "solvable": {"type": "noul", "noul": 0.55},
+        },
+    )
+
+
+def _nagent_claiming_math(*, rid: str, action: str = "execute") -> dict:
+    row = _row(rid=rid, action=action)
     row["source"].pop("uuid", None)
-    row["source"]["config"] = config
+    row["source"]["hf"] = ULTRADATA_MATH_HF
+    row["source"]["config"] = ULTRADATA_MATH_CONFIG
     return row
 
 
@@ -5956,6 +5996,7 @@ class HelperFtContentUuidTests(unittest.TestCase):
         self.assertIn("xleak-hold", listed)
 
     def test_float_beyond_2_53_refused(self) -> None:
+        """Final rule: abs(float) > 2**53 is content_uuid.float_precision, not Decimal."""
         questions = {"action": {"type": "choice"}}
         for value in (float(2**53) + 2.0, 1e300, -1e300):
             with self.subTest(value=value):
@@ -5963,6 +6004,10 @@ class HelperFtContentUuidTests(unittest.TestCase):
                     {"state": {"n": value}, "questions": questions},
                     "content_uuid.float_precision",
                 )
+        self._assert_reason(
+            {"state": {"n": decimal.Decimal("1e300")}, "questions": questions},
+            "content_uuid.unsupported_type",
+        )
         nested = {
             "state": {"n": 1.5},
             "questions": questions,
@@ -6213,8 +6258,14 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
 
     def test_uuidless_allowlist_is_hf_config_pair(self) -> None:
         self.assertEqual(
-            kick_helper_ft.UUIDLESS_SOURCE_ALLOWLIST,
-            frozenset({(ULTRADATA_MATH_HF, ULTRADATA_MATH_CONFIG)}),
+            set(kick_helper_ft.UUIDLESS_SOURCE_ALLOWLIST),
+            {(ULTRADATA_MATH_HF, ULTRADATA_MATH_CONFIG)},
+        )
+        self.assertIs(
+            kick_helper_ft.UUIDLESS_SOURCE_ALLOWLIST[
+                (ULTRADATA_MATH_HF, ULTRADATA_MATH_CONFIG)
+            ],
+            kick_helper_ft.ULTRADATA_MATH_L1_SHAPE,
         )
         hf_only = {"source": {"hf": ULTRADATA_MATH_HF}}
         self.assertFalse(kick_helper_ft._uuidless_source_allowed(hf_only))
@@ -6224,7 +6275,11 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
             "source": {"hf": ULTRADATA_MATH_HF, "config": "UltraData-Math-L2"}
         }
         self.assertFalse(kick_helper_ft._uuidless_source_allowed(l2))
-        pinned = frozenset({(ULTRADATA_MATH_HF, ULTRADATA_MATH_CONFIG, "rev-abc")})
+        pinned = {
+            (ULTRADATA_MATH_HF, ULTRADATA_MATH_CONFIG, "rev-abc"): (
+                kick_helper_ft.ULTRADATA_MATH_L1_SHAPE
+            )
+        }
         self.assertFalse(kick_helper_ft._uuidless_source_allowed(l1, allowlist=pinned))
         l1_rev = {
             "source": {
@@ -6247,18 +6302,86 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
             kick_helper_ft._uuidless_source_allowed(l1_other_rev, allowlist=pinned)
         )
 
-    def test_uuidless_ultradata_math_with_content_uuid_passes_modulo(self) -> None:
-        a = _math_uuidless(rid="math-a", action="execute")
-        b = _math_uuidless(rid="math-b", action="halt")
+    def test_uuidless_math_shaped_row_passes(self) -> None:
+        a = _math_uuidless(rid="math-a")
+        b = _math_uuidless(rid="math-b")
         a["source"]["content_uuid"] = content_uuid.content_uuid(a)
         b["source"]["content_uuid"] = content_uuid.content_uuid(b)
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
-            manifest = self._write(dest, [a, b], pack_id="part-math-uuidless")
+            manifest = self._write(dest, [a, b], pack_id="part-math-shaped")
             self._pin(manifest)
             evidence = kick_helper_ft.kick(dest)
         self.assertEqual(evidence["result"], "MATCH")
+
+    def test_nagent_claiming_math_trajectory_id_shape_mismatch(self) -> None:
+        a = _nagent_claiming_math(rid="mask-traj")
+        a["trajectory_id"] = "openbmb/UltraData-SFT-Agent-2609:Code_Agent_000"
+        a["source"]["content_uuid"] = content_uuid.content_uuid(a)
+        b = _row(rid="has-uuid", action="halt")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(dest, [a, b], pack_id="part-mask-traj")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(
+            ctx.exception.field, "reserved_eval_partition.uuid_missing.shape_mismatch"
+        )
+        self.assertTrue(any("mask-traj" in str(item) for item in ctx.exception.actual))
+
+    def test_nagent_claiming_math_command_string_shape_mismatch(self) -> None:
+        a = _nagent_claiming_math(rid="mask-cmd")
+        a["state"]["message"] = 'bash -c "rm -rf /tmp/x"'
+        a["source"]["content_uuid"] = content_uuid.content_uuid(a)
+        b = _row(rid="has-uuid", action="halt")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(dest, [a, b], pack_id="part-mask-cmd")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(
+            ctx.exception.field, "reserved_eval_partition.uuid_missing.shape_mismatch"
+        )
+        self.assertTrue(any("mask-cmd" in str(item) for item in ctx.exception.actual))
+
+    def test_nagent_claiming_math_extra_state_key_shape_mismatch(self) -> None:
+        a = _nagent_claiming_math(rid="mask-extra")
+        a["state"]["hint"] = "smuggle"
+        a["source"]["content_uuid"] = content_uuid.content_uuid(a)
+        b = _row(rid="has-uuid", action="halt")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(dest, [a, b], pack_id="part-mask-extra")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(
+            ctx.exception.field, "reserved_eval_partition.uuid_missing.shape_mismatch"
+        )
+        self.assertTrue(any("mask-extra" in str(item) for item in ctx.exception.actual))
+
+    def test_nagent_claiming_math_tool_call_key_shape_mismatch(self) -> None:
+        a = _nagent_claiming_math(rid="mask-tool")
+        a["state"]["tool_calls"] = [{"name": "shell"}]
+        a["source"]["content_uuid"] = content_uuid.content_uuid(a)
+        b = _row(rid="has-uuid", action="halt")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(dest, [a, b], pack_id="part-mask-tool")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(
+            ctx.exception.field, "reserved_eval_partition.uuid_missing.shape_mismatch"
+        )
+        self.assertTrue(any("mask-tool" in str(item) for item in ctx.exception.actual))
 
     def test_uuidless_same_hf_different_config_refused_uuid_missing(self) -> None:
         a = _math_uuidless(
