@@ -8,6 +8,7 @@ No Hugging Face download, no FT, no LIVE/champion. Run with:
 from __future__ import annotations
 
 import base64
+import decimal
 import hashlib
 import importlib.util
 import json
@@ -25,6 +26,11 @@ import time
 import unittest
 import urllib.error
 import urllib.parse
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 from contextlib import contextmanager, redirect_stdout
 from datetime import datetime, timezone
 from io import BytesIO, StringIO
@@ -5725,6 +5731,317 @@ class HelperFtContentUuidTests(unittest.TestCase):
             self._pin(manifest)
             evidence = kick_helper_ft.kick(dest)
         self.assertEqual(evidence["result"], "MATCH")
+
+    def _assert_reason(self, row: dict, field: str) -> content_uuid.ContentUuidError:
+        with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+            content_uuid.content_uuid(row)
+        self.assertEqual(ctx.exception.field, field)
+        self.assertNotIsInstance(ctx.exception.__cause__, (TypeError, RecursionError, UnicodeEncodeError))
+        return ctx.exception
+
+    def test_nfc_key_collision_refused_both_orders(self) -> None:
+        nfc_e = "\u00e9"
+        nfd_e = "e\u0301"
+        questions = {"action": {"type": "choice"}}
+        forward = {"state": {nfc_e: "A", nfd_e: "B"}, "questions": questions}
+        reverse = {"state": {nfd_e: "B", nfc_e: "A"}, "questions": questions}
+        self._assert_reason(forward, "content_uuid.key_collision")
+        self._assert_reason(reverse, "content_uuid.key_collision")
+
+    def test_non_str_keys_refused_both_orders(self) -> None:
+        questions = {"action": {"type": "choice"}}
+        only_int = {"state": {1: "a"}, "questions": questions}
+        mixed_int_first = {"state": {1: "a", "1": "b"}, "questions": questions}
+        mixed_str_first = {"state": {"1": "b", 1: "a"}, "questions": questions}
+        self._assert_reason(only_int, "content_uuid.unsupported_type")
+        self._assert_reason(mixed_int_first, "content_uuid.unsupported_type")
+        self._assert_reason(mixed_str_first, "content_uuid.unsupported_type")
+
+    def test_unsupported_types_raise_content_uuid_error(self) -> None:
+        questions = {"action": {"type": "choice"}}
+        cases = (
+            decimal.Decimal("1.0"),
+            decimal.Decimal("NaN"),
+            {1, 2},
+            frozenset(),
+            b"rm -rf /",
+            bytearray(b"x"),
+            object(),
+        )
+        for value in cases:
+            with self.subTest(type=type(value).__name__):
+                self._assert_reason(
+                    {"state": {"v": value}, "questions": questions},
+                    "content_uuid.unsupported_type",
+                )
+
+    def test_lone_surrogate_is_invalid_unicode(self) -> None:
+        row = json.loads('{"state":{"m":"\\ud800"},"questions":{"action":{"type":"choice"}}}')
+        self._assert_reason(row, "content_uuid.invalid_unicode")
+
+    def test_too_deep_refused_before_recursion_limit(self) -> None:
+        deep: object = "leaf"
+        for _ in range(5000):
+            deep = {"k": deep}
+        row = {"state": deep, "questions": {"action": {"type": "choice"}}}
+        exc = self._assert_reason(row, "content_uuid.too_deep")
+        self.assertNotIsInstance(exc, RecursionError)
+
+    def test_int_too_large_checked_without_str(self) -> None:
+        row = {
+            "state": {"n": 10 ** 5000},
+            "questions": {"action": {"type": "choice"}},
+        }
+        self._assert_reason(row, "content_uuid.int_too_large")
+
+    def test_empty_content_refused(self) -> None:
+        with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+            content_uuid.content_uuid({"id": "a", "prompt": "whatever"})
+        self.assertEqual(ctx.exception.field, "content_uuid.empty")
+
+    def test_duplicate_json_key_refused_by_loader_and_cli(self) -> None:
+        with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+            content_uuid.strict_json_loads('{"state":{"cmd":"rm","cmd":"ls"}}')
+        self.assertEqual(ctx.exception.field, "content_uuid.duplicate_json_key")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "dup.jsonl"
+            path.write_text(
+                '{"id":"d","state":{"cmd":"rm -rf /","cmd":"ls"},"questions":{}}\n',
+                encoding="utf-8",
+            )
+            proc = subprocess.run(
+                [sys.executable, str(LAB / "content_uuid.py"), "--jsonl", str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("line 1", proc.stdout + proc.stderr)
+
+    def test_cli_holdout_reports_cross_split(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(LAB / "content_uuid.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("--holdout", proc.stdout)
+        questions = {"action": {"type": "choice"}}
+        train = {
+            "id": "tr",
+            "state": {"m": "s"},
+            "questions": questions,
+            "labels": {"c": "halt"},
+        }
+        hold = {
+            "id": "ho",
+            "state": {"m": "s"},
+            "questions": questions,
+            "labels": {"c": "execute"},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            train_path = Path(tmp) / "train.jsonl"
+            hold_path = Path(tmp) / "holdout.jsonl"
+            train_path.write_text(json.dumps(train) + "\n", encoding="utf-8")
+            hold_path.write_text(json.dumps(hold) + "\n", encoding="utf-8")
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(LAB / "content_uuid.py"),
+                    "--check",
+                    str(train_path),
+                    "--holdout",
+                    str(hold_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(proc.returncode, 1)
+        combined = proc.stdout + proc.stderr
+        self.assertIn("label conflict", combined)
+        self.assertIn("cross-split leak", combined)
+
+    def test_cli_jsonl_refuses_non_object_with_line_number(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rows.jsonl"
+            path.write_text(
+                '{"id":"row-A","state":{"m":1}}\n[1]\n{"id":"row-B","state":{"m":2}}\n',
+                encoding="utf-8",
+            )
+            proc = subprocess.run(
+                [sys.executable, str(LAB / "content_uuid.py"), "--jsonl", str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            check = subprocess.run(
+                [sys.executable, str(LAB / "content_uuid.py"), "--check", str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(proc.returncode, 2)
+        lines = proc.stdout.splitlines()
+        self.assertEqual(len(lines), 3)
+        self.assertIn("line 2", lines[1])
+        self.assertEqual(check.returncode, 2)
+        self.assertIn("line 2", check.stderr)
+
+    def test_malformed_claimed_content_uuid_is_forged(self) -> None:
+        row = {
+            "state": {"m": 1},
+            "questions": {"action": {"type": "choice"}},
+            "source": {"content_uuid": content_uuid.content_uuid({"state": {"m": 1}, "questions": {"action": {"type": "choice"}}}).upper()},
+        }
+        with self.assertRaises(content_uuid.ContentUuidError) as ctx:
+            content_uuid.verify_content_uuid(row)
+        self.assertEqual(ctx.exception.field, "content_uuid")
+        self.assertIn("forged", str(ctx.exception))
+
+    def test_cross_split_label_conflict_is_also_leak(self) -> None:
+        questions = {"action": {"type": "choice"}}
+        train = {
+            "id": "tr",
+            "state": {"m": "s"},
+            "questions": questions,
+            "labels": {"c": "halt"},
+        }
+        hold = {
+            "id": "ho",
+            "state": {"m": "s"},
+            "questions": questions,
+            "labels": {"c": "execute"},
+        }
+        conflicts, duplicates, cross = content_uuid.find_content_uuid_collisions(
+            [train], [hold]
+        )
+        self.assertEqual(duplicates, [])
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(len(cross), 1)
+        self.assertTrue(conflicts[0].startswith("label conflict:"))
+        self.assertTrue(cross[0].startswith("cross-split leak:"))
+        a = _row(rid="xleak-train", action="execute")
+        b = _row(rid="xleak-hold", action="halt")
+        filler = _row(rid="xleak-filler", action="escalate")
+        shared = {"message": "cross split conflict body"}
+        a["state"] = dict(shared)
+        b["state"] = dict(shared)
+        b["questions"] = json.loads(json.dumps(a["questions"]))
+        filler["state"] = {"message": "other"}
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_split_pack(
+                dest, [a, filler], [b], pack_id="uuid-cross-split-leak"
+            )
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        listed = " ".join(str(item) for item in ctx.exception.actual)
+        self.assertIn("label conflict", listed)
+        self.assertIn("cross-split leak", listed)
+        self.assertIn("xleak-train", listed)
+        self.assertIn("xleak-hold", listed)
+
+    def test_float_beyond_2_53_refused(self) -> None:
+        questions = {"action": {"type": "choice"}}
+        for value in (float(2**53) + 2.0, 1e300, -1e300):
+            with self.subTest(value=value):
+                self._assert_reason(
+                    {"state": {"n": value}, "questions": questions},
+                    "content_uuid.float_precision",
+                )
+        nested = {
+            "state": {"n": 1.5},
+            "questions": questions,
+        }
+        self.assertIn(b'"n":1.5', content_uuid.canonical_content_bytes(nested))
+
+    def test_numpy_scalars_fold_when_imported(self) -> None:
+        helper_src = (LAB / "content_uuid.py").read_text(encoding="utf-8")
+        self.assertNotIn("import numpy", helper_src)
+        self.assertNotIn("from numpy", helper_src)
+        if np is None:
+            self.skipTest("numpy not installed")
+        questions = {"action": {"type": "choice"}}
+        as_int = {"state": {"n": 1, "flag": True}, "questions": questions}
+        as_np = {
+            "state": {"n": np.float64(1.0), "flag": np.bool_(True)},
+            "questions": questions,
+        }
+        as_np_int = {"state": {"n": np.int64(1), "flag": True}, "questions": questions}
+        self.assertEqual(content_uuid.content_uuid(as_int), content_uuid.content_uuid(as_np))
+        self.assertEqual(
+            content_uuid.content_uuid(as_int), content_uuid.content_uuid(as_np_int)
+        )
+
+    def test_key_order_swap_same_uuid(self) -> None:
+        left = {"state": {"z": 1, "a": 2}, "questions": {"q": [1, "x"]}}
+        right = {"state": {"a": 2, "z": 1}, "questions": {"q": [1, "x"]}}
+        self.assertEqual(content_uuid.content_uuid(left), content_uuid.content_uuid(right))
+        self.assertEqual(
+            content_uuid.canonical_content_bytes(left),
+            content_uuid.canonical_content_bytes(right),
+        )
+
+    def test_missing_vs_null_are_distinct(self) -> None:
+        questions = {"q": [1, "x"]}
+        missing = {"questions": questions}
+        null_state = {"state": None, "questions": questions}
+        self.assertNotEqual(
+            content_uuid.content_uuid(missing), content_uuid.content_uuid(null_state)
+        )
+
+    def test_ensure_ascii_false_in_canonical_bytes(self) -> None:
+        row = {
+            "state": {"m": "café"},
+            "questions": {"q": [1, "x"]},
+        }
+        blob = content_uuid.canonical_content_bytes(row)
+        self.assertIn("café".encode("utf-8"), blob)
+        self.assertNotIn(b"\\u00e9", blob)
+
+    def test_unfolded_report_only_forms_stay_distinct(self) -> None:
+        questions = {"action": {"type": "choice"}}
+        pairs = (
+            ({"n": 1}, {"n": "1"}),
+            ({"cmd": "rm -rf /"}, {"cmd": "rm -rf / "}),
+            ({"cmd": "rm -rf /"}, {"cmd": "RM -RF /"}),
+            ({"cmd": "rm -rf /"}, {"cmd": "rm -rf /\u200b"}),
+        )
+        for left, right in pairs:
+            with self.subTest(left=left, right=right):
+                self.assertNotEqual(
+                    content_uuid.content_uuid({"state": left, "questions": questions}),
+                    content_uuid.content_uuid({"state": right, "questions": questions}),
+                )
+
+    def test_gate_duplicate_json_key_refused(self) -> None:
+        a = _row(rid="dupkey-a", action="execute")
+        b = _row(rid="dupkey-b", action="halt")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, [a, b], pack_id="uuid-dup-json-key")
+            train_path = dest / "curated_pack_v2_train.jsonl"
+            raw = json.loads(train_path.read_text(encoding="utf-8").splitlines()[0])
+            raw["state"]["message"] = "ok"
+            line = json.dumps(raw, ensure_ascii=False)
+            injected = line.replace('"message": "ok"', '"message": "rm", "message": "ls"', 1)
+            train_path.write_text(injected + "\n", encoding="utf-8")
+            pack_path = dest / "curated_pack_v2.jsonl"
+            pack_path.write_text(
+                train_path.read_text(encoding="utf-8")
+                + (dest / "curated_pack_v2_holdout.jsonl").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            manifest = _refresh_hashes(dest, pack_id="uuid-dup-json-key")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "content_uuid.duplicate_json_key")
 
 
 class HelperFtReservedPartitionTests(unittest.TestCase):
