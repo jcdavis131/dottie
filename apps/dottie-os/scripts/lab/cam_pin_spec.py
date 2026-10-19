@@ -8,10 +8,17 @@ Signed bytes (UTF-8), byte-for-byte::
       {pack_id, sha256_pack, sha256_train, sha256_holdout,
        rows_total, rows_train, rows_holdout, recordedAt}
 
+Kicks use ``swarm-hq-pin-v2`` (Ed25519, ``key_id``, binding
+``{pack_id, run_id, lease_owner}``, ``issued_at``/``not_before``/``not_after``
+with a 24 h cap and 120 s start-side skew, ``nonce``, and sha256
+pack/train/holdout). v1 remains verify-only for history and is refused for
+kicks. Timestamps are ASCII-only strict RFC 3339.
+
 The pin JSON also carries ``cam_sig`` (base64 Ed25519 signature of those
-bytes) and ``cam_key_id``. Verify only against the public key committed at
+bytes) and ``cam_key_id`` / ``key_id``. Verify only against the public key committed at
 ``apps/dottie-os/trust/cam_pin_ed25519.pub``. Never read a key from env,
-argv, or any other path.
+argv, or any other path. The child never fetches a pin; it verifies the
+staged v2 file the server already verified.
 
 ``stampVerified`` and ``pack_matches`` are advisory only: they are never
 sufficient and never required for a pass. Trust is the Cam signature plus
@@ -34,6 +41,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +58,10 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 CANONICAL_PREFIX = b"swarm-hq-pin-v1\n"
+PIN_FORMAT_V1 = "swarm-hq-pin-v1"
+PIN_FORMAT_V2 = "swarm-hq-pin-v2"
+CANONICAL_PREFIX_V1 = CANONICAL_PREFIX
+CANONICAL_PREFIX_V2 = b"swarm-hq-pin-v2\n"
 SIGNED_KEYS = (
     "pack_id",
     "sha256_pack",
@@ -60,6 +72,28 @@ SIGNED_KEYS = (
     "rows_holdout",
     "recordedAt",
 )
+SIGNED_KEYS_V2 = (
+    "binding",
+    "format",
+    "issued_at",
+    "key_id",
+    "nonce",
+    "not_after",
+    "not_before",
+    "sha256_holdout",
+    "sha256_pack",
+    "sha256_train",
+)
+BINDING_KEYS_V2 = ("lease_owner", "pack_id", "run_id")
+PIN_V2_MAX_LIFETIME = timedelta(hours=24)
+PIN_V2_NOT_BEFORE_SKEW = timedelta(seconds=120)
+NONCE_HEX_LEN = 64
+RFC3339_RE = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?"
+    r"(Z|[+-][0-9]{2}:[0-9]{2})$"
+)
+RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+LEASE_OWNER_RE = RUN_ID_RE
 # Cam sets this by PR to the production HTTPS origin, e.g. "https://hq.example".
 SWARM_HQ_ORIGIN = ""
 SWARM_HQ_AGENT_TOKEN_ENV = "SWARM_HQ_AGENT_TOKEN"
@@ -74,7 +108,7 @@ _PLACEHOLDER_ORIGIN = frozenset({"", "unset", "placeholder", "todo", "https://un
 _PUB_NAME = "cam_pin_ed25519.pub"
 _KEY_ID_NAME = "cam_pin_key_id"
 # Frozen path: apps/dottie-os/trust/cam_pin_ed25519.pub relative to this file.
-# Pinned-copy mode rebinds these to <copy-root>/trust/ via bind_pinned_copy_trust.
+# Pinned-copy mode rebinds these to <copy-root>/apps/dottie-os/trust/.
 CAM_PIN_PUB_PATH = Path(__file__).resolve().parents[2] / "trust" / _PUB_NAME
 CAM_PIN_KEY_ID_PATH = Path(__file__).resolve().parents[2] / "trust" / _KEY_ID_NAME
 PINNED_COPY_ROOT: Path | None = None
@@ -97,11 +131,15 @@ RECORDED_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 B64_RE = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")
 INT32_MAX = 2**31
 # Repo-relative paths whose HEAD blobs must match the working tree.
+# Server layout: apps/dottie-os/trust/ (not <copy-root>/trust/).
+TRUST_DIR_REL = "apps/dottie-os/trust"
 TRUST_RELPATHS = (
     "apps/dottie-os/trust/cam_pin_ed25519.pub",
     "apps/dottie-os/trust/cam_pin_key_id",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py",
+    "apps/dottie-os/scripts/lab/content_uuid.py",
 )
+REQUIRED_PINS = TRUST_RELPATHS
 ORIGIN_MAIN_REF = "origin/main"
 # Twisted Edwards Ed25519 (RFC 8032). Cofactor and canonical checks run in
 # this module before cryptography's verify. Not a hardcoded encoding list.
@@ -131,6 +169,32 @@ HQ_PIN_ALLOWED_KEYS = frozenset(
         "stampVerified",
         "verified",
         "pack_matches",
+    )
+)
+V2_PIN_REQUIRED_KEYS = (
+    *SIGNED_KEYS_V2,
+    "cam_sig",
+    "rows_total",
+    "rows_train",
+    "rows_holdout",
+)
+V2_PIN_ALLOWED_KEYS = frozenset(
+    (
+        *V2_PIN_REQUIRED_KEYS,
+        "rows_total",
+        "rows_train",
+        "rows_holdout",
+        "recordedBy",
+        "stampVerified",
+        "verified",
+        "pack_matches",
+        "kid",
+        "cam_key_id",
+        "recordedAt",
+        "pack_id",
+        "run_id",
+        "lease_owner",
+        "source",
     )
 )
 
@@ -202,13 +266,230 @@ def require_b64(field: str, value: object, decoded_len: int) -> bytes:
 
 
 def canonical_pin_bytes(fields: dict[str, Any]) -> bytes:
-    """Exact signed payload. Swarm HQ must match this byte for byte."""
+    """v1 signed payload (history / verify-only). Swarm HQ v1 must match byte for byte."""
     missing = [key for key in SIGNED_KEYS if key not in fields]
     if missing:
         _refuse(f"cam-pin.{missing[0]}", "present", "missing")
     body = {key: fields[key] for key in SIGNED_KEYS}
     packed = json.dumps(body, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
     return CANONICAL_PREFIX + packed.encode("utf-8")
+
+
+def canonical_pin_bytes_v2(fields: dict[str, Any]) -> bytes:
+    """v2 signed payload. r6 / kicks must match this byte for byte."""
+    missing = [key for key in SIGNED_KEYS_V2 if key not in fields]
+    if missing:
+        _refuse(f"cam-pin.{missing[0]}", "present", "missing")
+    body = {key: fields[key] for key in SIGNED_KEYS_V2}
+    packed = json.dumps(body, separators=(",", ":"), sort_keys=True, ensure_ascii=True)
+    return CANONICAL_PREFIX_V2 + packed.encode("ascii")
+
+
+def require_rfc3339(field: str, value: object) -> datetime:
+    """ASCII-only strict RFC 3339 with timezone. No space-separated form."""
+    if type(value) is not str or not value:
+        _refuse(field, "present", "missing")
+    if not value.isascii():
+        _refuse(field, "ASCII-only RFC 3339", "non-ascii")
+    if RFC3339_RE.fullmatch(value) is None:
+        _refuse(field, "strict RFC 3339", value)
+    text = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        _refuse(field, "strict RFC 3339", value)
+        raise AssertionError("unreachable")
+    if parsed.tzinfo is None:
+        _refuse(field, "RFC 3339 with timezone", value)
+    return parsed.astimezone(timezone.utc)
+
+
+def require_run_id(field: str, value: object) -> str:
+    if type(value) is not str or not value:
+        _refuse(field, "present", "missing")
+    if RUN_ID_RE.fullmatch(value) is None:
+        _refuse(field, "ASCII [A-Za-z0-9._:-]{1,128}", value)
+    return value
+
+
+def require_lease_owner(field: str, value: object) -> str:
+    if type(value) is not str or not value:
+        _refuse(field, "present", "missing")
+    if LEASE_OWNER_RE.fullmatch(value) is None:
+        _refuse(field, "ASCII [A-Za-z0-9._:-]{1,128}", value)
+    return value
+
+
+def require_nonce(field: str, value: object) -> str:
+    return require_sha256_hex(field, value)
+
+
+def _require_v2_binding(value: object) -> dict[str, str]:
+    if not isinstance(value, dict) or not value:
+        _refuse("cam-pin.binding", "object", type(value).__name__)
+    extra = [key for key in value if key not in BINDING_KEYS_V2]
+    if extra:
+        _refuse("cam-pin.binding", "pack_id,run_id,lease_owner", f"unknown {extra[0]}")
+    binding = {
+        "pack_id": require_pack_id("cam-pin.binding.pack_id", value.get("pack_id")),
+        "run_id": require_run_id("cam-pin.binding.run_id", value.get("run_id")),
+        "lease_owner": require_lease_owner(
+            "cam-pin.binding.lease_owner", value.get("lease_owner")
+        ),
+    }
+    return binding
+
+
+def pin_format_of(record: dict[str, Any]) -> str:
+    fmt = record.get("format")
+    if type(fmt) is str and fmt:
+        return fmt
+    if "binding" in record and "issued_at" in record:
+        return PIN_FORMAT_V2
+    return PIN_FORMAT_V1
+
+
+def verify_v2_lifetime(
+    issued_at: datetime,
+    not_before: datetime,
+    not_after: datetime,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Cap 24 h. 120 s skew on the start side only. No grace past not_after."""
+    if not_after < not_before:
+        _refuse("cam-pin.not_after", ">= not_before", not_after.isoformat())
+    if not_after - not_before > PIN_V2_MAX_LIFETIME:
+        _refuse("cam-pin.lifetime", "<= 24h", str((not_after - not_before).total_seconds()))
+    if issued_at > not_after:
+        _refuse("cam-pin.issued_at", "<= not_after", issued_at.isoformat())
+    if not_after - issued_at > PIN_V2_MAX_LIFETIME:
+        _refuse("cam-pin.lifetime", "<= 24h from issued_at", str((not_after - issued_at).total_seconds()))
+    instant = now if now is not None else datetime.now(timezone.utc)
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    instant = instant.astimezone(timezone.utc)
+    if instant < not_before - PIN_V2_NOT_BEFORE_SKEW:
+        _refuse("cam-pin.not_before", "now within 120s skew", instant.isoformat())
+    if instant > not_after:
+        _refuse("cam-pin.not_after", "not expired", instant.isoformat())
+
+
+def sign_pin_v2(fields: dict[str, Any], raw_private: bytes) -> str:
+    message = canonical_pin_bytes_v2(fields)
+    return sign_pin_bytes(message, raw_private)
+
+
+def verify_cam_sig_v1(record: dict[str, Any]) -> None:
+    """History: verify a swarm-hq-pin-v1 signature. Not valid for kicks."""
+    verify_cam_sig(record)
+
+
+def verify_cam_sig_v2(record: dict[str, Any]) -> None:
+    key_id, public = load_cam_public_key()
+    pin_kid = record.get("key_id")
+    if type(pin_kid) is not str or not pin_kid:
+        _refuse("cam-pin.key_id", "present", "missing")
+    if pin_kid != key_id:
+        _refuse("cam-pin.key_id", key_id, pin_kid)
+    alias = record.get("cam_key_id")
+    if alias is not None and alias != pin_kid:
+        _refuse("cam-pin.cam_key_id", pin_kid, alias)
+    signature = require_b64("cam-pin.cam_sig", record.get("cam_sig"), 64)
+    message = canonical_pin_bytes_v2(record)
+    public_raw = public.public_bytes(Encoding.Raw, PublicFormat.Raw)
+    verify_ed25519(message, signature, public_raw)
+
+
+def parse_v2_pin_payload(
+    payload: object,
+    *,
+    now: datetime | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Parse and verify a staged swarm-hq-pin-v2. Refuses v1. Never fetches."""
+    if not isinstance(payload, dict) or not payload:
+        _refuse("cam-pin", "present", "missing")
+    fmt = pin_format_of(payload)
+    if fmt != PIN_FORMAT_V2:
+        _refuse("cam-pin.format", PIN_FORMAT_V2, fmt)
+    unknown = [key for key in payload if key not in V2_PIN_ALLOWED_KEYS]
+    if unknown:
+        _refuse("cam-pin", "v2 pin keys", f"unknown {unknown[0]}")
+    for key in V2_PIN_REQUIRED_KEYS:
+        if key not in payload:
+            _refuse(f"cam-pin.{key}", "present", "missing")
+    if payload.get("format") != PIN_FORMAT_V2:
+        _refuse("cam-pin.format", PIN_FORMAT_V2, payload.get("format"))
+    binding = _require_v2_binding(payload.get("binding"))
+    issued_at = require_rfc3339("cam-pin.issued_at", payload.get("issued_at"))
+    not_before = require_rfc3339("cam-pin.not_before", payload.get("not_before"))
+    not_after = require_rfc3339("cam-pin.not_after", payload.get("not_after"))
+    verify_v2_lifetime(issued_at, not_before, not_after, now=now)
+    nonce = require_nonce("cam-pin.nonce", payload.get("nonce"))
+    record: dict[str, Any] = {
+        "format": PIN_FORMAT_V2,
+        "key_id": payload["key_id"],
+        "binding": binding,
+        "issued_at": payload["issued_at"],
+        "not_before": payload["not_before"],
+        "not_after": payload["not_after"],
+        "nonce": nonce,
+        "sha256_pack": require_sha256_hex("cam-pin.sha256_pack", payload.get("sha256_pack")),
+        "sha256_train": require_sha256_hex("cam-pin.sha256_train", payload.get("sha256_train")),
+        "sha256_holdout": require_sha256_hex(
+            "cam-pin.sha256_holdout", payload.get("sha256_holdout")
+        ),
+        "pack_id": binding["pack_id"],
+        "run_id": binding["run_id"],
+        "lease_owner": binding["lease_owner"],
+        "cam_sig": payload["cam_sig"],
+        "cam_key_id": payload.get("cam_key_id", payload["key_id"]),
+        "kid": payload.get("kid", payload["key_id"]),
+    }
+    if type(record["key_id"]) is not str or not record["key_id"]:
+        _refuse("cam-pin.key_id", "present", "missing")
+    require_b64("cam-pin.cam_sig", record["cam_sig"], 64)
+    if "pack_id" in payload:
+        top_pack = require_pack_id("cam-pin.pack_id", payload.get("pack_id"))
+        if top_pack != binding["pack_id"]:
+            _refuse("cam-pin.pack_id", binding["pack_id"], top_pack)
+    for rows_field in ("rows_total", "rows_train", "rows_holdout"):
+        if rows_field not in payload:
+            _refuse(f"cam-pin.{rows_field}", "present", "missing")
+        record[rows_field] = require_int(f"cam-pin.{rows_field}", payload.get(rows_field))
+    if "recordedBy" in payload:
+        record["recordedBy"] = payload["recordedBy"]
+    if "stampVerified" in payload:
+        record["stampVerified"] = payload["stampVerified"]
+    elif "verified" in payload:
+        record["stampVerified"] = payload["verified"]
+    if "pack_matches" in payload:
+        record["pack_matches"] = payload["pack_matches"]
+    if "recordedAt" in payload:
+        record["recordedAt"] = payload["recordedAt"]
+    verify_cam_sig_v2(record)
+    if run_id is not None:
+        if type(run_id) is not str or not run_id:
+            _refuse("run-id", "present", "missing")
+        if binding["run_id"] != run_id:
+            _refuse("cam-pin.binding.run_id", binding["run_id"], run_id)
+    return record
+
+
+def parse_kick_pin_payload(
+    payload: object,
+    *,
+    now: datetime | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Kick path: v2 only. v1 is verify-only history and is refused here."""
+    if not isinstance(payload, dict) or not payload:
+        _refuse("cam-pin", "present", "missing")
+    fmt = pin_format_of(payload)
+    if fmt != PIN_FORMAT_V2:
+        _refuse("cam-pin.format", PIN_FORMAT_V2, fmt)
+    return parse_v2_pin_payload(payload, now=now, run_id=run_id)
 
 
 def _ed25519_decode_point(raw: bytes, *, field: str) -> tuple[int, int]:
@@ -328,15 +609,21 @@ def _parse_pub_file(text: str) -> tuple[str, bytes]:
 
 
 def bind_pinned_copy_trust(copy_root: Path) -> None:
-    """Point the Cam trust files at a staged copy. No git. Paths stay under trust/."""
+    """Point Cam trust files at the server layout: <copy-root>/apps/dottie-os/trust/."""
     global CAM_PIN_PUB_PATH, CAM_PIN_KEY_ID_PATH, PINNED_COPY_ROOT
     root = Path(copy_root).resolve()
-    pub = root / "trust" / _PUB_NAME
-    kid = root / "trust" / _KEY_ID_NAME
+    trust_dir = root / "apps" / "dottie-os" / "trust"
+    pub = trust_dir / _PUB_NAME
+    kid = trust_dir / _KEY_ID_NAME
     if pub.name != _PUB_NAME or pub.parent.name != "trust":
-        _refuse("cam_pin.pubkey", str(root / "trust" / _PUB_NAME), str(pub))
+        _refuse("cam_pin.pubkey", str(trust_dir / _PUB_NAME), str(pub))
     if kid.name != _KEY_ID_NAME or kid.parent.name != "trust":
-        _refuse("cam_pin.key_id", str(root / "trust" / _KEY_ID_NAME), str(kid))
+        _refuse("cam_pin.key_id", str(trust_dir / _KEY_ID_NAME), str(kid))
+    try:
+        pub.resolve().relative_to(root)
+        kid.resolve().relative_to(root)
+    except ValueError:
+        _refuse("cam_pin.pubkey", f"under {root / TRUST_DIR_REL}", str(pub))
     PINNED_COPY_ROOT = root
     CAM_PIN_PUB_PATH = pub
     CAM_PIN_KEY_ID_PATH = kid
@@ -846,7 +1133,30 @@ def fetch_signed_pin(pack_id: str) -> dict[str, Any]:
 
 
 def pin_identity(pin: dict[str, Any]) -> dict[str, Any]:
-    """Fields :8765 must match against the CLI's fetched pin."""
+    """Fields :8765 must match against the staged (or historically fetched) pin."""
+    if pin_format_of(pin) == PIN_FORMAT_V2:
+        binding = pin.get("binding") if isinstance(pin.get("binding"), dict) else {}
+        ident: dict[str, Any] = {
+            "format": PIN_FORMAT_V2,
+            "key_id": pin.get("key_id"),
+            "binding": {
+                "pack_id": binding.get("pack_id", pin.get("pack_id")),
+                "run_id": binding.get("run_id", pin.get("run_id")),
+                "lease_owner": binding.get("lease_owner", pin.get("lease_owner")),
+            },
+            "issued_at": pin.get("issued_at"),
+            "not_before": pin.get("not_before"),
+            "not_after": pin.get("not_after"),
+            "nonce": pin.get("nonce"),
+            "sha256_pack": pin.get("sha256_pack"),
+            "sha256_train": pin.get("sha256_train"),
+            "sha256_holdout": pin.get("sha256_holdout"),
+            "cam_sig": pin.get("cam_sig"),
+        }
+        for rows_field in ("rows_total", "rows_train", "rows_holdout"):
+            if rows_field in pin:
+                ident[rows_field] = pin.get(rows_field)
+        return ident
     return {
         "pack_id": pin.get("pack_id"),
         "sha256_pack": pin.get("sha256_pack"),

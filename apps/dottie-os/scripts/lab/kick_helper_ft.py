@@ -10,10 +10,13 @@ redirects, no proxies). There is no ``SWARM_HQ_URL`` env, CLI, or config
 override. Redis is never read.
 
 This process hashes and counts the run-private copies itself and compares
-those to the signed pin and MANIFEST. ``--cam-pin``, a pin env var, and a
-local pin file are refused before hashing or kickoff. After the gate
+those to the signed v2 pin and MANIFEST. The launcher passes a required
+``--run-id`` that must match the pin binding. The child verifies the staged
+v2 pin file (fd or path under the private root) the server already verified
+and never fetches from HQ. ``--cam-pin``, a pin env var, and a local pin
+file in the inbox pack are refused before hashing or kickoff. After the gate
 passes, this script POSTs ``/train/kickoff``; ``inbox: latest`` is never
-sent. Copies are 0400 in a 0700 directory under a container-private tmpfs
+sent. v1 pins are verify-only history and are refused for kicks. Copies are 0400 in a 0700 directory under a container-private tmpfs
 (``FORGE_RUN_PRIVATE_ROOT``, default ``/run/forge-runner/private``). The
 **forge-runner server** creates that default root (mode 0700, euid-owned,
 on the compose tmpfs) before launching this child; this process fails
@@ -128,24 +131,21 @@ PINNED_COPY_REASON = "pinned-copy"
 PINNED_COPY_KICK_REL = "apps/dottie-os/scripts/lab/kick_helper_ft.py"
 PINNED_COPY_SPEC_REL = "apps/dottie-os/scripts/lab/cam_pin_spec.py"
 PINNED_COPY_UUID_REL = "apps/dottie-os/scripts/lab/content_uuid.py"
-PINNED_COPY_PUB_REL = "trust/cam_pin_ed25519.pub"
-PINNED_COPY_KEY_ID_REL = "trust/cam_pin_key_id"
-PINNED_COPY_REQUIRED_RELS = (
+REPO_TRUST_PUB_REL = "apps/dottie-os/trust/cam_pin_ed25519.pub"
+REPO_TRUST_KEY_ID_REL = "apps/dottie-os/trust/cam_pin_key_id"
+# Server layout. Child and launcher both pin these exact repo-relative paths.
+PINNED_COPY_PUB_REL = REPO_TRUST_PUB_REL
+PINNED_COPY_KEY_ID_REL = REPO_TRUST_KEY_ID_REL
+REQUIRED_PINS = (
     PINNED_COPY_KICK_REL,
     PINNED_COPY_SPEC_REL,
     PINNED_COPY_UUID_REL,
     PINNED_COPY_PUB_REL,
     PINNED_COPY_KEY_ID_REL,
 )
-REPO_TRUST_PUB_REL = "apps/dottie-os/trust/cam_pin_ed25519.pub"
-REPO_TRUST_KEY_ID_REL = "apps/dottie-os/trust/cam_pin_key_id"
-ENTRYPOINT_PIN_RELS = (
-    PINNED_COPY_KICK_REL,
-    PINNED_COPY_SPEC_REL,
-    PINNED_COPY_UUID_REL,
-    REPO_TRUST_PUB_REL,
-    REPO_TRUST_KEY_ID_REL,
-)
+PINNED_COPY_REQUIRED_RELS = REQUIRED_PINS
+ENTRYPOINT_PIN_RELS = REQUIRED_PINS
+STAGED_PIN_NAME = "cam-pin-v2.json"
 PINS_JSON_MAX_BYTES = 64 * 1024
 _GATE_OK = object()
 _UNSET = object()
@@ -800,8 +800,8 @@ def load_pinned_copy_mode(script: Path | None = None) -> dict[str, Any] | None:
 
         PINS.json
         apps/dottie-os/scripts/lab/*.py
-        trust/cam_pin_ed25519.pub
-        trust/cam_pin_key_id
+        apps/dottie-os/trust/cam_pin_ed25519.pub
+        apps/dottie-os/trust/cam_pin_key_id
 
     ``PINS.json`` is ``{"head": <40-hex>, "files": {<repo-rel-path>: <sha256>}}``.
     Required files are hashed at those exact relative paths. A basename-only
@@ -882,6 +882,7 @@ def load_pinned_copy_mode(script: Path | None = None) -> dict[str, Any] | None:
         PINNED_COPY_PUB_REL: files[PINNED_COPY_PUB_REL],
         PINNED_COPY_KEY_ID_REL: files[PINNED_COPY_KEY_ID_REL],
         PINNED_COPY_SPEC_REL: files[PINNED_COPY_SPEC_REL],
+        PINNED_COPY_UUID_REL: files[PINNED_COPY_UUID_REL],
         "HEAD": head,
     }
     return {
@@ -1246,6 +1247,18 @@ def _read_fd_bytes(fd: int) -> bytes:
     return b"".join(chunks)
 
 
+def _read_fd_bytes_capped(fd: int, field: str, max_bytes: int) -> bytes:
+    raw = b""
+    while True:
+        block = os.read(fd, CHUNK)
+        if not block:
+            break
+        raw += block
+        if len(raw) > max_bytes:
+            _refuse(field, f"<={max_bytes} bytes", len(raw))
+    return raw
+
+
 def _fstat_trainer_file(fd: int, field: str, root_dev: int) -> os.stat_result:
     info = os.fstat(fd)
     if not stat.S_ISREG(info.st_mode):
@@ -1608,32 +1621,47 @@ def _read_manifest(pack_dir: Path) -> dict[str, Any]:
     return payload
 
 
-def _require_cam_pin(record: object, pack_id: str) -> dict[str, Any]:
-    """Bind the verified Cam-signed pin to this pack_id. Exact match, no strip."""
+def _require_cam_pin(record: object, pack_id: str, *, run_id: str | None = None) -> dict[str, Any]:
+    """Bind the verified Cam-signed v2 pin to this pack_id and run_id."""
     if not isinstance(record, dict) or not record:
         _refuse("cam-pin", "present", "missing")
-    pin_pack = record.get("pack_id")
+    try:
+        parsed = cam_pin_spec.parse_kick_pin_payload(record, run_id=run_id)
+    except cam_pin_spec.CamPinError as exc:
+        _refuse(exc.field, exc.expected, exc.actual)
+    pin_pack = parsed.get("pack_id")
     if type(pin_pack) is not str or not pin_pack:
         _refuse("cam-pin.pack_id", "present", "missing")
     if pin_pack != pack_id:
         _refuse("cam-pin.pack_id", pack_id, pin_pack)
+    if run_id is not None and parsed.get("run_id") != run_id:
+        _refuse("cam-pin.binding.run_id", parsed.get("run_id"), run_id)
     pin: dict[str, Any] = {
+        "format": cam_pin_spec.PIN_FORMAT_V2,
         "pack_id": pack_id,
+        "run_id": parsed["run_id"],
+        "lease_owner": parsed["lease_owner"],
         "source": PIN_SOURCE,
-        "recordedAt": record.get("recordedAt"),
-        "kid": record.get("kid"),
-        "cam_key_id": record.get("cam_key_id"),
-        "cam_sig": record.get("cam_sig"),
+        "key_id": parsed.get("key_id"),
+        "binding": dict(parsed["binding"]),
+        "issued_at": parsed.get("issued_at"),
+        "not_before": parsed.get("not_before"),
+        "not_after": parsed.get("not_after"),
+        "nonce": parsed.get("nonce"),
+        "recordedAt": parsed.get("recordedAt"),
+        "kid": parsed.get("kid"),
+        "cam_key_id": parsed.get("cam_key_id"),
+        "cam_sig": parsed.get("cam_sig"),
     }
-    if "recordedBy" in record:
-        pin["recordedBy"] = record["recordedBy"]
-    if "stampVerified" in record:
-        pin["stampVerified"] = record["stampVerified"]
-    if "pack_matches" in record:
-        pin["pack_matches"] = record["pack_matches"]
+    if "recordedBy" in parsed:
+        pin["recordedBy"] = parsed["recordedBy"]
+    if "stampVerified" in parsed:
+        pin["stampVerified"] = parsed["stampVerified"]
+    if "pack_matches" in parsed:
+        pin["pack_matches"] = parsed["pack_matches"]
     for sha_field, _filename, _manifest_rows, pin_rows in ARTIFACTS:
-        pin[sha_field] = _require_sha256_hex(f"cam-pin.{sha_field}", record.get(sha_field))
-        pin[pin_rows] = _require_int(f"cam-pin.{pin_rows}", record.get(pin_rows))
+        pin[sha_field] = _require_sha256_hex(f"cam-pin.{sha_field}", parsed.get(sha_field))
+        pin[pin_rows] = _require_int(f"cam-pin.{pin_rows}", parsed.get(pin_rows))
     return pin
 
 
@@ -1645,11 +1673,68 @@ def _parse_hq_pin_payload(payload: object) -> dict[str, Any]:
 
 
 def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
-    """GET the pinned-origin pin and verify Cam's Ed25519 signature. Never Redis."""
+    """Historical HQ GET. Kicks must not call this; they verify a staged v2 pin."""
     if type(pack_id) is not str or not pack_id:
         _refuse("pack_id", "present", "missing")
     try:
         return cam_pin_spec.fetch_signed_pin(pack_id)
+    except cam_pin_spec.CamPinError as exc:
+        _refuse(exc.field, exc.expected, exc.actual)
+
+
+def _pin_ref_is_held_fd(pin_ref: object) -> bool:
+    if type(pin_ref) is int:
+        return True
+    return type(pin_ref) is str and is_proc_self_fd_path(pin_ref)
+
+
+def load_staged_v2_pin(pin_ref: object, *, run_id: str | None = None) -> dict[str, Any]:
+    """Verify the staged v2 pin (held fd or path under the private root). Never fetch."""
+    if pin_ref is None or pin_ref == "":
+        _refuse("cam-pin", "staged v2 pin fd or path under run_private_root", "missing")
+    raw: bytes
+    if _pin_ref_is_held_fd(pin_ref):
+        named = str(pin_ref) if type(pin_ref) is not int else f"{PROC_SELF_FD_PREFIX}{pin_ref}"
+        fd = int(pin_ref) if type(pin_ref) is int else _dup_proc_self_fd(named)
+        close_fd = type(pin_ref) is not int
+        try:
+            raw = _read_fd_bytes_capped(fd, "cam-pin", cam_pin_spec.MAX_PIN_BYTES)
+        except OSError as exc:
+            _refuse("cam-pin", "readable staged pin fd", f"OSError:{exc.errno}")
+        finally:
+            if close_fd:
+                _close_quietly(fd)
+    else:
+        path = Path(str(pin_ref))
+        root = _require_run_private_root()
+        try:
+            resolved = Path(os.path.realpath(path))
+            resolved.relative_to(Path(os.path.realpath(root)))
+        except (OSError, ValueError):
+            _refuse("cam-pin.path", f"under {root}", str(pin_ref))
+        fd = _open_trainer_input_fd(str(resolved), "cam-pin")
+        try:
+            root_dev = int(os.lstat(root).st_dev)
+            _fstat_trainer_file(fd, "cam-pin", root_dev)
+            raw = _read_fd_bytes_capped(fd, "cam-pin", cam_pin_spec.MAX_PIN_BYTES)
+        except KickRefused:
+            raise
+        except OSError as exc:
+            _refuse("cam-pin", "readable staged pin", f"OSError:{exc.errno}")
+        finally:
+            os.close(fd)
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        _refuse("cam-pin", "utf-8 JSON", "invalid encoding")
+    try:
+        payload = json.loads(text, object_pairs_hook=_no_duplicate_hq_keys)
+    except KickRefused:
+        raise
+    except ValueError:
+        _refuse("cam-pin", "JSON object", "invalid JSON")
+    try:
+        return cam_pin_spec.parse_kick_pin_payload(payload, run_id=run_id)
     except cam_pin_spec.CamPinError as exc:
         _refuse(exc.field, exc.expected, exc.actual)
 
@@ -3289,14 +3374,16 @@ def verify_and_stage(
     pack_dir: Path,
     *,
     run_private: Path,
+    pin_record: Mapping[str, Any],
+    run_id: str,
     smoke: bool = False,
     reserved_content_uuids: object = _UNSET,
     reserved_content_uuids_sha256: object = _UNSET,
 ) -> dict[str, Any]:
-    """Copy-hash pack/train/holdout and check them against the Cam HQ pin.
+    """Copy-hash pack/train/holdout and check them against the staged v2 pin.
 
     Returns evidence fields on success. Raises KickRefused on any failure. Does not
-    start training or POST kickoff. No MANIFEST-only or ticket fallback.
+    start training or POST kickoff. No MANIFEST-only or ticket fallback. Never fetches.
     """
     _refuse_skip_env()
     _refuse_pin_env()
@@ -3348,7 +3435,7 @@ def verify_and_stage(
             _refuse("pack_id", "present", "missing")
         if manifest.get("champion_touched") is not False:
             _refuse("champion_touched", False, manifest.get("champion_touched"))
-        pin = _require_cam_pin(fetch_cam_pin(pack_id), pack_id)
+        pin = _require_cam_pin(pin_record, pack_id, run_id=run_id)
 
         computed_shas: dict[str, str] = {}
         manifest_shas: dict[str, str] = {}
@@ -3926,6 +4013,8 @@ def _recheck_copies(
 def kick(
     pack_dir: Path,
     *,
+    run_id: str | None = None,
+    pin_path: str | Path | int | None = None,
     log_path: Path | None = None,
     start_training: StartTraining | None = None,
     kickoff: KickoffFn | None = None,
@@ -3934,12 +4023,14 @@ def kick(
     reserved_content_uuids: object = _UNSET,
     reserved_content_uuids_sha256: object = _UNSET,
 ) -> dict[str, Any]:
-    """Fetch the Cam HQ pin, stage private copies, POST kickoff, re-check shas.
+    """Verify the staged v2 pin, stage private copies, POST kickoff, re-check shas.
 
-    ``start_training`` / ``kickoff`` are test injection hooks and still run only
-    after the gate. CLI and env cannot supply them. There is no skip/override.
-    ``smoke=True`` never posts HQ events, marks evidence unscorable, and
-    deletes checkpoint/run-dir copies/inbox before returning.
+    ``run_id`` is required and must match the pin binding. ``pin_path`` is a
+    held fd or a path under ``FORGE_RUN_PRIVATE_ROOT``. This process never
+    fetches a pin. ``start_training`` / ``kickoff`` are test injection hooks
+    and still run only after the gate. CLI and env cannot supply them. There
+    is no skip/override. ``smoke=True`` never posts HQ events, marks evidence
+    unscorable, and deletes checkpoint/run-dir copies/inbox before returning.
     """
     _refuse_skip_env()
     _refuse_pin_env()
@@ -3947,16 +4038,16 @@ def kick(
     pack_dir = Path(pack_dir)
     smoke = bool(smoke)
     _refuse_local_pin_files(_resolve_pack_dir(pack_dir))
-    run_id = _new_run_id()
-    assigned_ckpt = assigned_checkpoint_id(run_id)
+    path_run_id = run_id if type(run_id) is str and run_id else "refused"
+    assigned_ckpt = assigned_checkpoint_id(path_run_id)
     if log_path is not None:
         log_path = Path(log_path)
         run_dir = log_path.parent
     else:
-        run_dir = Path(tempfile.mkdtemp(prefix=f"{run_id}-"))
+        run_dir = Path(tempfile.mkdtemp(prefix=f"{path_run_id}-"))
         log_path = run_dir / DEFAULT_LOG_NAME
     run_dir.mkdir(parents=True, exist_ok=True)
-    evidence_path = run_dir / f"pack_integrity_evidence_{run_id}.json"
+    evidence_path = run_dir / f"pack_integrity_evidence_{path_run_id}.json"
     run_private: Path | None = None
     sealed_fds: dict[str, int] | None = None
     pinned = load_pinned_copy_mode()
@@ -4002,11 +4093,17 @@ def kick(
         write_evidence(evidence, evidence_path)
 
     try:
+        persist()
+        if type(run_id) is not str or not run_id:
+            _refuse("run-id", "present", "missing")
+        pin_record = load_staged_v2_pin(pin_path, run_id=run_id)
         run_private = _make_run_private_dir()
         _register_run_private_cleanup(run_private)
         staged = verify_and_stage(
             pack_dir,
             run_private=run_private,
+            pin_record=pin_record,
+            run_id=run_id,
             smoke=smoke,
             reserved_content_uuids=reserved_content_uuids,
             reserved_content_uuids_sha256=reserved_content_uuids_sha256,
@@ -4076,6 +4173,7 @@ def kick(
             "evidence_path": evidence["evidence_path"],
             "run_id": run_id,
             "checked_at": evidence["checked_at"],
+            "pin_path": str(pin_path) if pin_path is not None else None,
         }
         if smoke:
             body["smoke"] = True
@@ -4246,6 +4344,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="inbox pack directory (MANIFEST.json + curated_pack_v2*.jsonl)",
     )
     parser.add_argument(
+        "--run-id",
+        default=None,
+        help="launcher-assigned run id; must match the staged v2 pin binding",
+    )
+    parser.add_argument(
+        "--pin",
+        default=None,
+        help="staged v2 pin: path under FORGE_RUN_PRIVATE_ROOT or /proc/self/fd/N",
+    )
+    parser.add_argument(
         "--log",
         type=Path,
         default=None,
@@ -4283,6 +4391,8 @@ def main(argv: list[str] | None = None) -> int:
             _refuse("argv", "known arguments only", unknown[0])
         evidence = kick(
             args.pack,
+            run_id=args.run_id,
+            pin_path=args.pin,
             log_path=args.log,
             kickoff_url=args.kickoff_url,
             smoke=bool(args.smoke),

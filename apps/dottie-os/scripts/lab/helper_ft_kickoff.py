@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Forge-runner HELPER FT ``POST /train/kickoff`` handler (:8765).
 
-Re-fetches the Cam-signed pack-pin from the pinned Swarm HQ origin, verifies
-Cam's Ed25519 signature against the committed public key, then hashes and
-counts only the run-private copies (never request paths, never the inbox).
-``stampVerified`` and ``pack_matches`` are advisory and never sufficient.
-A pin carried only in the request body is not provenance.
+Verifies the staged ``swarm-hq-pin-v2`` file the server already verified
+(fd or path under ``FORGE_RUN_PRIVATE_ROOT``) and hashes the exact fds it
+passes to the trainer. Never re-fetches a pin from HQ. A pin carried only
+in the request body is not provenance. ``build_command`` always passes
+``--run-id`` and ``--pin`` to the child. v1 pins are refused for kicks.
 
 ``inbox: latest`` and every other HELPER FT start route are refused.
 ``default_launch_trainer`` refuses unless a real launcher is wired.
@@ -227,7 +227,7 @@ def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
 
 
 def require_hq_cam_pin(pack_id: str) -> dict[str, Any]:
-    """Re-fetch the Cam-signed pin. A request-body pin is not provenance."""
+    """Historical HQ GET. Kickoff must not call this; it verifies a staged v2 pin."""
     fetched = fetch_cam_pin(pack_id)
     if fetched.get("ok") is not True:
         return fetched
@@ -259,16 +259,93 @@ def require_hq_cam_pin(pack_id: str) -> dict[str, Any]:
     return {"ok": True, "pin": pin}
 
 
+def build_command(
+    *,
+    pack: Path | str,
+    run_id: str,
+    pin_path: Path | str,
+    log_path: Path | str | None = None,
+    kickoff_url: str | None = None,
+    smoke: bool = False,
+    reserved_content_uuids: Path | str | None = None,
+    reserved_content_uuids_sha256: str | None = None,
+    python: str | None = None,
+) -> list[str]:
+    """Launcher argv for the HELPER FT child. Always includes ``--run-id`` and ``--pin``."""
+    if type(run_id) is not str or not run_id:
+        raise kick_helper_ft.KickRefused("run-id", "present", "missing")
+    if pin_path is None or pin_path == "":
+        raise kick_helper_ft.KickRefused("cam-pin", "staged v2 pin path or fd", "missing")
+    cmd = [
+        python or sys.executable,
+        str(Path(__file__).resolve().parent / "kick_helper_ft.py"),
+        "--pack",
+        str(pack),
+        "--run-id",
+        run_id,
+        "--pin",
+        str(pin_path),
+    ]
+    if log_path is not None:
+        cmd.extend(["--log", str(log_path)])
+    if kickoff_url:
+        cmd.extend(["--kickoff-url", str(kickoff_url)])
+    if smoke:
+        cmd.append("--smoke")
+    if reserved_content_uuids is not None:
+        cmd.extend(["--reserved-content-uuids", str(reserved_content_uuids)])
+    if reserved_content_uuids_sha256:
+        cmd.extend(["--reserved-content-uuids-sha256", str(reserved_content_uuids_sha256)])
+    return cmd
+
+
+def require_staged_v2_pin(
+    pin_ref: object,
+    pack_id: str,
+    run_id: str,
+) -> dict[str, Any]:
+    """Verify the staged v2 pin the server handed over. Never fetches."""
+    try:
+        record = kick_helper_ft.load_staged_v2_pin(pin_ref, run_id=run_id)
+    except kick_helper_ft.KickRefused as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
+    pin_pack = record.get("pack_id")
+    if type(pin_pack) is not str or not pin_pack:
+        return _bad("cam-pin.pack_id", "present", "missing")
+    if pin_pack != pack_id:
+        return _bad("cam-pin.pack_id", pack_id, pin_pack)
+    if record.get("run_id") != run_id:
+        return _bad("cam-pin.binding.run_id", record.get("run_id"), run_id)
+    pin: dict[str, Any] = dict(record)
+    pin["source"] = PIN_SOURCE
+    for sha_field, _filename, _manifest_rows, pin_rows_field in ARTIFACTS:
+        required = _require_sha(f"cam-pin.{sha_field}", record.get(sha_field))
+        if isinstance(required, dict):
+            return required
+        pin[sha_field] = required
+        if pin_rows_field in record:
+            rows = _require_int(f"cam-pin.{pin_rows_field}", record.get(pin_rows_field))
+            if isinstance(rows, dict):
+                return rows
+            pin[pin_rows_field] = rows
+        elif pin_rows_field not in pin:
+            missing = _require_int(f"cam-pin.{pin_rows_field}", record.get(pin_rows_field))
+            if isinstance(missing, dict):
+                return missing
+    return {"ok": True, "pin": pin}
+
+
 def handle_train_kickoff(
     body: dict[str, Any] | None,
     *,
     launch_trainer: LaunchTrainer | None = None,
 ) -> dict[str, Any]:
-    """Refuse HELPER FT kickoff unless HQ pin matches re-hashed files.
+    """Refuse HELPER FT kickoff unless the staged v2 pin matches re-hashed files.
 
-    Re-fetches the Cam pin from Swarm HQ. A body-only pin is refused.
-    ``stampVerified`` and ``pack_matches`` are advisory and never sufficient.
-    ``inbox: latest`` is never accepted. Evidence ``ok: true`` is not trust.
+    Verifies the staged pin file (fd or path under the private root). Never
+    fetches. A body-only pin is refused. ``stampVerified`` and ``pack_matches``
+    are advisory and never sufficient. ``inbox: latest`` is never accepted.
+    Evidence ``ok: true`` is not trust. v1 pins are refused.
     """
     if not isinstance(body, dict):
         return _bad("body", "object", type(body).__name__)
@@ -334,18 +411,6 @@ def handle_train_kickoff(
         return _bad("pin", "present", "missing")
     if pin.get("pack_id") != pack_id:
         return _bad("pin.pack_id", pack_id, pin.get("pack_id"))
-    hq = require_hq_cam_pin(pack_id)
-    if hq.get("ok") is not True:
-        return hq
-    hq_pin = hq["pin"]
-    hq_id = cam_pin_spec.pin_identity(hq_pin)
-    body_id = cam_pin_spec.pin_identity(pin)
-    ev_pin = evidence.get("pin") if isinstance(evidence.get("pin"), dict) else {}
-    ev_id = cam_pin_spec.pin_identity(ev_pin) if ev_pin else None
-    if body_id != hq_id:
-        return _bad("pin", hq_id, body_id)
-    if ev_id is not None and ev_id != hq_id:
-        return _bad("evidence.pin", hq_id, ev_id)
     run_private = body.get("run_private_dir")
     if type(run_private) is not str or not run_private:
         return _bad("run_private_dir", "present", "missing")
@@ -358,7 +423,25 @@ def handle_train_kickoff(
         return manifest
     if manifest.get("pack_id") != pack_id:
         return _bad("pack_id", pack_id, manifest.get("pack_id"))
-    fetched_pin = {"ok": True, "pin": hq_pin, "source": PIN_SOURCE}
+    pin_ref = body.get("pin_path")
+    if pin_ref is None or pin_ref == "":
+        candidate = root / kick_helper_ft.STAGED_PIN_NAME
+        pin_ref = str(candidate) if candidate.is_file() else None
+    if pin_ref is None or pin_ref == "":
+        return _bad("cam-pin", "staged v2 pin fd or path under run_private_root", "missing")
+    staged = require_staged_v2_pin(pin_ref, pack_id, run_id)
+    if staged.get("ok") is not True:
+        return staged
+    hq_pin = staged["pin"]
+    hq_id = cam_pin_spec.pin_identity(hq_pin)
+    body_id = cam_pin_spec.pin_identity(pin)
+    ev_pin = evidence.get("pin") if isinstance(evidence.get("pin"), dict) else {}
+    ev_id = cam_pin_spec.pin_identity(ev_pin) if ev_pin else None
+    if body_id != hq_id:
+        return _bad("pin", hq_id, body_id)
+    if ev_id is not None and ev_id != hq_id:
+        return _bad("evidence.pin", hq_id, ev_id)
+    fetched_pin = {"ok": True, "pin": hq_pin, "source": PIN_SOURCE, "staged": True}
     evidence["kickoff_pin_fetch"] = fetched_pin
     staged_paths = kick_helper_ft.trainer_input_paths(root)
     claimed_paths = body.get("paths")

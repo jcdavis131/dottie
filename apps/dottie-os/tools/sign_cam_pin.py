@@ -51,7 +51,11 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(payload, dict):
         print("pin must be a JSON object", file=sys.stderr)
         return 1
-    message = cam_pin_spec.canonical_pin_bytes(payload)
+    fmt = cam_pin_spec.pin_format_of(payload)
+    if fmt == cam_pin_spec.PIN_FORMAT_V2:
+        message = cam_pin_spec.canonical_pin_bytes_v2(payload)
+    else:
+        message = cam_pin_spec.canonical_pin_bytes(payload)
     cam_pin_spec.require_ed25519_point(
         cam_pin_spec.raw_public_from_private(private), field="cam_pin.pubkey"
     )

@@ -32,7 +32,7 @@ try:
 except ImportError:
     np = None
 from contextlib import contextmanager, redirect_stdout
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -471,7 +471,13 @@ _TEST_TRUST_BLOBS = {
     "apps/dottie-os/trust/cam_pin_ed25519.pub": "test-pub-blob",
     "apps/dottie-os/trust/cam_pin_key_id": "test-key-id-blob",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py": "test-spec-blob",
+    "apps/dottie-os/scripts/lab/content_uuid.py": "test-uuid-blob",
     "HEAD": "test-head-sha",
+}
+_STAGED_PIN_STATE: dict[str, object] = {
+    "path": None,
+    "run_id": "helper-ft-test-run",
+    "pin": None,
 }
 DENIED_VECTOR_PUB_B64 = "hgbGCZRFE4CiwVB4rLZ015a8QkWEPPAjZT5UIQKDazk="
 
@@ -506,11 +512,61 @@ def _blob_patches(
 
 
 def _sign_pin(pin: dict) -> dict:
+    """v1 signer (history / HQ contract fixture)."""
     signed = dict(pin)
     signed.setdefault("cam_key_id", TEST_CAM_KEY_ID)
     message = cam_pin_spec.canonical_pin_bytes(signed)
     signed["cam_sig"] = cam_pin_spec.sign_pin_bytes(message, TEST_CAM_PRIVATE)
     return signed
+
+
+def _rfc3339_z(value: datetime) -> str:
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _v2_window() -> tuple[datetime, datetime, datetime]:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    return now, now - timedelta(seconds=60), now + timedelta(hours=12)
+
+
+def _sign_pin_v2(pin: dict) -> dict:
+    signed = dict(pin)
+    signed["format"] = cam_pin_spec.PIN_FORMAT_V2
+    signed.setdefault("key_id", TEST_CAM_KEY_ID)
+    signed.setdefault("cam_key_id", signed["key_id"])
+    signed["cam_sig"] = cam_pin_spec.sign_pin_v2(signed, TEST_CAM_PRIVATE)
+    return signed
+
+
+def _write_staged_pin(pin: dict, *, directory: Path | None = None) -> Path:
+    root = (
+        Path(directory)
+        if directory is not None
+        else Path(os.environ[kick_helper_ft.FORGE_RUN_PRIVATE_ROOT_ENV])
+    )
+    d = Path(tempfile.mkdtemp(prefix="cam-pin-", dir=str(root)))
+    os.chmod(d, 0o700)
+    path = d / kick_helper_ft.STAGED_PIN_NAME
+    path.write_text(
+        json.dumps(pin, separators=(",", ":"), sort_keys=True), encoding="utf-8"
+    )
+    os.chmod(path, 0o400)
+    _STAGED_PIN_STATE["path"] = path
+    _STAGED_PIN_STATE["pin"] = pin
+    _STAGED_PIN_STATE["run_id"] = (
+        (pin.get("binding") or {}).get("run_id")
+        if isinstance(pin.get("binding"), dict)
+        else pin.get("run_id")
+    ) or "helper-ft-test-run"
+    return path
+
+
+def _sync_staged_pin() -> Path | None:
+    pin = _STAGED_PIN_STATE.get("pin")
+    if isinstance(pin, dict):
+        return _write_staged_pin(pin)
+    path = _STAGED_PIN_STATE.get("path")
+    return Path(str(path)) if path else None
 
 
 SWARM_HQ_PIN_FIXTURE = _sign_pin(
@@ -533,8 +589,28 @@ SWARM_HQ_PIN_FIXTURE = _sign_pin(
 
 
 def _cam_pin(manifest: dict, **overrides: object) -> dict:
-    pin = {
+    issued, not_before, not_after = _v2_window()
+    binding_override = overrides.pop("binding", None) if "binding" in overrides else None
+    run_id_override = overrides.pop("run_id", None) if "run_id" in overrides else None
+    lease_override = overrides.pop("lease_owner", None) if "lease_owner" in overrides else None
+    binding = {
         "pack_id": manifest["pack_id"],
+        "run_id": run_id_override or "helper-ft-test-run",
+        "lease_owner": lease_override or "human:cam",
+    }
+    if isinstance(binding_override, dict):
+        binding.update(binding_override)
+    pin = {
+        "format": cam_pin_spec.PIN_FORMAT_V2,
+        "key_id": TEST_CAM_KEY_ID,
+        "binding": binding,
+        "issued_at": _rfc3339_z(issued),
+        "not_before": _rfc3339_z(not_before),
+        "not_after": _rfc3339_z(not_after),
+        "nonce": "ab" * 32,
+        "pack_id": binding["pack_id"],
+        "run_id": binding["run_id"],
+        "lease_owner": binding["lease_owner"],
         "sha256_pack": manifest["sha256_pack"],
         "sha256_train": manifest["sha256_train"],
         "sha256_holdout": manifest["sha256_holdout"],
@@ -549,8 +625,17 @@ def _cam_pin(manifest: dict, **overrides: object) -> dict:
         "cam_key_id": TEST_CAM_KEY_ID,
     }
     pin.update(overrides)
+    binding = pin.get("binding")
+    if isinstance(binding, dict):
+        if type(pin.get("pack_id")) is str:
+            binding["pack_id"] = pin["pack_id"]
+        if type(pin.get("run_id")) is str:
+            binding["run_id"] = pin["run_id"]
+        if type(pin.get("lease_owner")) is str:
+            binding["lease_owner"] = pin["lease_owner"]
     if "cam_sig" not in overrides:
-        pin = _sign_pin(pin)
+        pin = _sign_pin_v2(pin)
+    _write_staged_pin(pin)
     return pin
 
 
@@ -633,6 +718,11 @@ def _flip_one_ascii_byte(path: Path) -> None:
 
 def _cli_args(dest: Path, log_path: Path | None = None) -> list[str]:
     argv = ["--pack", str(dest)]
+    pin_path = _sync_staged_pin()
+    run_id = str(_STAGED_PIN_STATE.get("run_id") or "helper-ft-test-run")
+    argv.extend(["--run-id", run_id])
+    if pin_path is not None:
+        argv.extend(["--pin", str(pin_path)])
     if log_path is not None:
         argv.extend(["--log", str(log_path)])
     return argv
@@ -780,9 +870,27 @@ def _start_hq_http_mock(owner: unittest.TestCase) -> None:
         return_value=dict(_TEST_TRUST_BLOBS),
     )
     owner._trust_patcher.start()
+    _STAGED_PIN_STATE["path"] = None
+    _STAGED_PIN_STATE["pin"] = None
+    _STAGED_PIN_STATE["run_id"] = "helper-ft-test-run"
+    owner._orig_kick = kick_helper_ft.kick
+
+    def _kick_inject(pack_dir: object, *args: object, **kwargs: object) -> object:
+        kwargs.setdefault(
+            "run_id",
+            str(_STAGED_PIN_STATE.get("run_id") or "helper-ft-test-run"),
+        )
+        pin = _STAGED_PIN_STATE.get("pin")
+        if isinstance(pin, dict):
+            path = _write_staged_pin(pin)
+            kwargs.setdefault("pin_path", path)
+        return owner._orig_kick(pack_dir, *args, **kwargs)
+
+    kick_helper_ft.kick = _kick_inject  # type: ignore[method-assign]
 
 
 def _stop_hq_http_mock(owner: unittest.TestCase) -> None:
+    kick_helper_ft.kick = owner._orig_kick  # type: ignore[method-assign]
     owner._urlopen_patcher.stop()
     owner._key_patcher.stop()
     owner._trust_patcher.stop()
@@ -902,12 +1010,8 @@ class HelperFtIntegrityTests(unittest.TestCase):
             rc = kick_helper_ft.main(_cli_args(dest, log_path))
         self.assertEqual(len(started), 1)
         self.assertGreaterEqual(len(self.kickoff_calls), 1)
-        self.assertEqual(len(self.hq_requests), 2)
-        self.assertTrue(
-            self.hq_requests[0].startswith("https://swarm-hq.test/api/packs/"),
-            self.hq_requests[0],
-        )
-        self.assertTrue(self.hq_requests[0].endswith("/pin"), self.hq_requests[0])
+        self.assertEqual(self.hq_requests, [])
+        self.assertFalse(any(str(url).endswith("/pin") for url in self.hq_requests))
         kickoff_body = self.kickoff_calls[0]
         self.assertNotIn("inbox", kickoff_body)
         self.assertEqual(kickoff_body["pack_id"], "curated_pack_v2-test")
@@ -1122,11 +1226,13 @@ class HelperFtIntegrityTests(unittest.TestCase):
             rc = kick_helper_ft.main(_cli_args(dest))
         self.assertEqual(started, [])
         self.assertEqual(self.kickoff_calls, [])
-        self.assertGreaterEqual(len(self.hq_requests), 1)
+        self.assertEqual(self.hq_requests, [])
         self.assertEqual(rc, 1)
         self.assertEqual(ctx.exception.field, "cam-pin")
-        self.assertEqual(ctx.exception.expected, "present")
-        self.assertEqual(ctx.exception.actual, "HTTP 404")
+        self.assertEqual(
+            ctx.exception.expected, "staged v2 pin fd or path under run_private_root"
+        )
+        self.assertEqual(ctx.exception.actual, "missing")
 
     def test_pin_mismatching_manifest_refuses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1153,7 +1259,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
-        self.assertEqual(len(self.hq_requests), 1)
+        self.assertEqual(self.hq_requests, [])
         self.assertEqual(ctx.exception.field, "cam-pin.pack_id")
         self.assertEqual(ctx.exception.expected, manifest["pack_id"])
         self.assertEqual(ctx.exception.actual, "other-pack")
@@ -1188,7 +1294,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 kick_helper_ft.kick(dest)
         self.assertEqual(self.kickoff_calls, [])
-        self.assertEqual(len(self.hq_requests), 1)
+        self.assertEqual(self.hq_requests, [])
         self.assertEqual(ctx.exception.field, "sha256_train")
         self.assertEqual(ctx.exception.expected, "0" * 64)
 
@@ -1293,7 +1399,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             _write_helper_pack(dest)
             self.hq_error = "timed out"
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.kick(dest)
+                kick_helper_ft.fetch_cam_pin("curated_pack_v2-test")
         self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(len(self.hq_requests), 1)
         self.assertTrue(self.hq_requests[0].startswith("https://swarm-hq.test/api/packs/"))
@@ -1845,8 +1951,17 @@ def _fresh_kickoff_body(dest: Path, manifest: dict, *, run_id: str = "helper-ft-
         "sha256_train": manifest["sha256_train"],
         "sha256_holdout": manifest["sha256_holdout"],
     }
-    pin = _cam_pin(manifest)
+    existing = _STAGED_PIN_STATE.get("pin")
+    pin = existing if isinstance(existing, dict) else _cam_pin(manifest)
     run_private = _stage_run_private(dest)
+    pin_path = run_private / kick_helper_ft.STAGED_PIN_NAME
+    pin_path.write_text(
+        json.dumps(pin, separators=(",", ":"), sort_keys=True), encoding="utf-8"
+    )
+    os.chmod(pin_path, 0o400)
+    _STAGED_PIN_STATE["path"] = pin_path
+    _STAGED_PIN_STATE["pin"] = pin
+    _STAGED_PIN_STATE["run_id"] = pin["binding"]["run_id"]
     trainer_paths = {
         "pack": str((run_private / "curated_pack_v2.jsonl").resolve()),
         "train": str((run_private / "curated_pack_v2_train.jsonl").resolve()),
@@ -1863,6 +1978,7 @@ def _fresh_kickoff_body(dest: Path, manifest: dict, *, run_id: str = "helper-ft-
         "sha256_holdout": shas["sha256_holdout"],
         "expected_shas": dict(shas),
         "pin": pin,
+        "pin_path": str(pin_path),
         "run_private_dir": str(run_private.resolve()),
         "paths": dict(trainer_paths),
         "evidence": {
@@ -1913,11 +2029,11 @@ def _pinned_copy_root():
 
 
 def _stage_pinned_copy(root: Path, *, omit: str | None = None) -> dict:
-    """Runner r3 layout: lab *.py under apps/dottie-os/scripts/lab/, trust/ at copy root."""
+    """Server layout: lab *.py under apps/dottie-os/scripts/lab/, trust under apps/dottie-os/trust/."""
     root = Path(root).resolve()
     lab_src = APP / "scripts" / "lab"
     lab_dst = root / "apps" / "dottie-os" / "scripts" / "lab"
-    trust_dst = root / "trust"
+    trust_dst = root / "apps" / "dottie-os" / "trust"
     lab_dst.mkdir(parents=True)
     trust_dst.mkdir(parents=True)
     for src in lab_src.glob("*.py"):
@@ -2034,8 +2150,14 @@ class HelperFtPinnedCopyTests(unittest.TestCase):
         self.assertEqual(rec["pins_map_sha256"], staged["map_sha256"])
         self.assertEqual(rec["pins_file_sha256"], staged["file_sha256"])
         self.assertEqual(rec["pinned_copy_root"], str(staged["root"]))
-        self.assertEqual(cam_pin_spec.CAM_PIN_PUB_PATH, staged["root"] / "trust" / "cam_pin_ed25519.pub")
-        self.assertEqual(cam_pin_spec.CAM_PIN_KEY_ID_PATH, staged["root"] / "trust" / "cam_pin_key_id")
+        self.assertEqual(
+            cam_pin_spec.CAM_PIN_PUB_PATH,
+            staged["root"] / "apps" / "dottie-os" / "trust" / "cam_pin_ed25519.pub",
+        )
+        self.assertEqual(
+            cam_pin_spec.CAM_PIN_KEY_ID_PATH,
+            staged["root"] / "apps" / "dottie-os" / "trust" / "cam_pin_key_id",
+        )
         self.assertEqual(cam_pin_spec.PINNED_COPY_ROOT, staged["root"])
         kick_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/kick")]
         self.assertEqual(kick_posts[0]["body"]["script_git_sha_reason"], "pinned-copy")
@@ -2093,7 +2215,7 @@ class HelperFtPinnedCopyTests(unittest.TestCase):
     def test_pinned_copy_tampered_trust_file_refuses(self) -> None:
         with _pinned_copy_root() as root:
             staged = _stage_pinned_copy(root)
-            pub = root / "trust" / "cam_pin_ed25519.pub"
+            pub = root / "apps" / "dottie-os" / "trust" / "cam_pin_ed25519.pub"
             _unlock_pinned_copy_tree(root)
             pub.write_bytes(pub.read_bytes() + b"\nTAMPER")
             _chmod_pinned_copy_tree(root)
@@ -2104,7 +2226,7 @@ class HelperFtPinnedCopyTests(unittest.TestCase):
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                 self._kick_staged(staged, dest)
         self.assertTrue(str(ctx.exception.field).startswith("files."))
-        self.assertIn("trust/cam_pin_ed25519.pub", ctx.exception.field)
+        self.assertIn("apps/dottie-os/trust/cam_pin_ed25519.pub", ctx.exception.field)
         self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(self.git_cmds, [])
 
@@ -2290,8 +2412,8 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
         self.assertEqual(payload["post_train_host"], launch["trainer_config"]["host"])
         self.assertEqual(payload["trust_blobs"], _TEST_TRUST_BLOBS)
         self.assertEqual(payload["head_sha"], _TEST_TRUST_BLOBS["HEAD"])
-        self.assertTrue(self.hq_requests)
-        self.assertTrue(self.hq_requests[0].endswith("/pin"))
+        self.assertEqual(self.hq_requests, [])
+        self.assertFalse(any(str(url).endswith("/pin") for url in self.hq_requests))
 
     def test_http_source_pack_paths_refused_no_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2380,6 +2502,11 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
                 body = _fresh_kickoff_body(dest, manifest)
                 self.assertEqual(body["pin"]["recordedBy"], "cam")
                 self.assertTrue(body["pin"]["stampVerified"])
+                staged = Path(body["run_private_dir"]) / kick_helper_ft.STAGED_PIN_NAME
+                if staged.is_file():
+                    os.chmod(staged, 0o600)
+                    staged.unlink()
+                body.pop("pin_path", None)
                 response = self.client.post("/train/kickoff", json=body)
         finally:
             _restore_hash_fns(originals)
@@ -2387,11 +2514,9 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["field"], "cam-pin")
-        self.assertEqual(payload["expected"], "present")
-        self.assertEqual(payload["actual"], "HTTP 404")
         self.assertEqual(self.launches, [])
         self.assertEqual(hash_calls, [])
-        self.assertTrue(self.hq_requests)
+        self.assertEqual(self.hq_requests, [])
 
     def test_http_pack_matches_false_is_advisory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2599,7 +2724,7 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             manifest = _write_helper_pack(dest)
             self._pin(manifest)
             with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                kick_helper_ft.kick(dest)
+                kick_helper_ft.fetch_cam_pin(manifest["pack_id"])
         self.assertEqual(ctx.exception.field, "cam-pin")
         self.assertEqual(ctx.exception.expected, "no redirect")
         self.assertEqual(self.kickoff_calls, [])
@@ -2610,22 +2735,19 @@ class HelperFtCritic3dacTests(unittest.TestCase):
 
     def test_https_to_other_host_redirect_refuses_and_never_sends_token(self) -> None:
         self.hq_redirect = (302, "https://evil.example/api/packs/x/pin")
-        body_pin_pack = None
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
             self._pin(manifest)
-            body = _fresh_kickoff_body(dest, manifest)
-            body_pin_pack = manifest["pack_id"]
-            response = self.client.post("/train/kickoff", json=body)
-        payload = response.json()
-        self.assertEqual(payload["field"], "cam-pin")
-        self.assertEqual(payload["expected"], "no redirect")
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.fetch_cam_pin(manifest["pack_id"])
+        self.assertEqual(ctx.exception.field, "cam-pin")
+        self.assertEqual(ctx.exception.expected, "no redirect")
         self.assertEqual(self.launches, [])
         self.assertTrue(all(u.startswith(PINNED_HQ_ORIGIN) for u in self.hq_requests))
         self.assertFalse(any("evil.example" in url for url, _tok in self.hq_tokens_by_url))
-        self.assertEqual(body_pin_pack, "curated_pack_v2-test")
+        self.assertEqual(manifest["pack_id"], "curated_pack_v2-test")
 
     def test_pin_response_over_64kib_refuses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2654,11 +2776,16 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             body["pin"] = dict(pin)
             body["evidence"]["pin"] = dict(pin)
             response = self.client.post("/train/kickoff", json=body)
-        self.assertEqual(ctx.exception.field, "cam-pin.pack_id")
+        self.assertIn(
+            ctx.exception.field, {"cam-pin.pack_id", "cam-pin.binding.pack_id"}
+        )
         self.assertEqual(ctx.exception.expected, "ASCII [A-Za-z0-9._-]{1,128}")
         self.assertEqual(ctx.exception.actual, padded)
         self.assertEqual(self.kickoff_calls, [])
-        self.assertIn(response.json()["field"], {"cam-pin.pack_id", "pin.pack_id"})
+        self.assertIn(
+            response.json()["field"],
+            {"cam-pin.pack_id", "cam-pin.binding.pack_id", "pin.pack_id"},
+        )
         self.assertEqual(self.launches, [])
 
     def test_hq_duplicate_keys_refused(self) -> None:
@@ -2669,17 +2796,21 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             pin = self._pin(manifest)
             raw = json.dumps(pin)
             raw = raw.replace('"kid":', '"kid": "dup", "kid":', 1)
-
-            def fake_dup(request: object, timeout: object = None) -> _FakeHqHttpResponse:
-                self.hq_requests.append(getattr(request, "full_url", ""))
-                return _FakeHqHttpResponse(raw.encode("utf-8"))
-
-            with patch.object(cam_pin_spec, "open_hq", side_effect=fake_dup):
-                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
-                    kick_helper_ft.kick(dest)
+            path = Path(_STAGED_PIN_STATE["path"])
+            os.chmod(path, 0o600)
+            path.write_text(raw, encoding="utf-8")
+            os.chmod(path, 0o400)
+            _STAGED_PIN_STATE["pin"] = None
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                self._orig_kick(
+                    dest,
+                    run_id=str(_STAGED_PIN_STATE["run_id"]),
+                    pin_path=path,
+                )
         self.assertEqual(ctx.exception.field, "cam-pin")
         self.assertEqual(ctx.exception.expected, "unique keys")
         self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_requests, [])
 
     def test_kickoff_pin_fetch_differs_from_cli_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2688,8 +2819,13 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             manifest = _write_helper_pack(dest)
             pin = self._pin(manifest)
             body = _fresh_kickoff_body(dest, manifest)
-            other = _sign_pin({**pin, "recordedAt": "1999-01-01T00:00:00.000Z"})
-            self.hq_pins[manifest["pack_id"]] = other
+            other = _sign_pin_v2({**pin, "nonce": "ef" * 32})
+            staged = Path(body["pin_path"])
+            os.chmod(staged, 0o600)
+            staged.write_text(
+                json.dumps(other, separators=(",", ":"), sort_keys=True), encoding="utf-8"
+            )
+            os.chmod(staged, 0o400)
             response = self.client.post("/train/kickoff", json=body)
         payload = response.json()
         self.assertFalse(payload["ok"])
@@ -6681,7 +6817,226 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
         self.assertEqual(evidence["result"], "MATCH")
 
 
+class HelperFtK1PinV2Tests(unittest.TestCase):
+    """K1: v2 pin, required --run-id, server trust layout, no child fetch."""
+
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+        _start_hq_http_mock(self)
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            return {"ok": True, "checkpoint_id": "ckpt-k1", "exit_code": 0}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+
+    def tearDown(self) -> None:
+        kick_helper_ft.post_kickoff = self._orig_post
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
+
+    def test_v2_round_trip_and_v1_kick_refused(self) -> None:
+        fields = {
+            "format": cam_pin_spec.PIN_FORMAT_V2,
+            "key_id": TEST_CAM_KEY_ID,
+            "binding": {
+                "lease_owner": "human:cam",
+                "pack_id": "p",
+                "run_id": "helper-ft-test-run",
+            },
+            "issued_at": "2026-10-19T06:00:00Z",
+            "not_before": "2026-10-19T05:59:00Z",
+            "not_after": "2026-10-19T18:00:00Z",
+            "nonce": "cd" * 32,
+            "sha256_pack": "11" * 32,
+            "sha256_train": "22" * 32,
+            "sha256_holdout": "33" * 32,
+            "rows_total": 0,
+            "rows_train": 0,
+            "rows_holdout": 0,
+        }
+        packed = json.dumps(
+            {key: fields[key] for key in cam_pin_spec.SIGNED_KEYS_V2},
+            separators=(",", ":"),
+            sort_keys=True,
+            ensure_ascii=True,
+        )
+        self.assertEqual(cam_pin_spec.CANONICAL_PREFIX_V2, b"swarm-hq-pin-v2\n")
+        self.assertEqual(
+            cam_pin_spec.canonical_pin_bytes_v2(fields),
+            b"swarm-hq-pin-v2\n" + packed.encode("ascii"),
+        )
+        sig = cam_pin_spec.sign_pin_v2(fields, TEST_CAM_PRIVATE)
+        record = dict(fields)
+        record["cam_sig"] = sig
+        record["cam_key_id"] = TEST_CAM_KEY_ID
+        parsed = cam_pin_spec.parse_v2_pin_payload(
+            record, now=datetime(2026, 10, 19, 6, 30, tzinfo=timezone.utc)
+        )
+        self.assertEqual(parsed["run_id"], "helper-ft-test-run")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            v1 = _sign_pin(
+                {
+                    "pack_id": manifest["pack_id"],
+                    "sha256_pack": manifest["sha256_pack"],
+                    "sha256_train": manifest["sha256_train"],
+                    "sha256_holdout": manifest["sha256_holdout"],
+                    "rows_total": manifest["rows"],
+                    "rows_train": manifest["train_rows"],
+                    "rows_holdout": manifest["holdout_rows"],
+                    "recordedAt": "2026-10-19T00:00:00.000Z",
+                    "kid": "cam-stamp-kid-1",
+                    "cam_key_id": TEST_CAM_KEY_ID,
+                }
+            )
+            path = _write_staged_pin(v1)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                self._orig_kick(
+                    dest, run_id="helper-ft-test-run", pin_path=path
+                )
+            rc = kick_helper_ft.main(
+                ["--pack", str(dest), "--run-id", "helper-ft-test-run", "--pin", str(path)]
+            )
+        self.assertEqual(ctx.exception.field, "cam-pin.format")
+        self.assertEqual(ctx.exception.expected, cam_pin_spec.PIN_FORMAT_V2)
+        self.assertEqual(ctx.exception.actual, cam_pin_spec.PIN_FORMAT_V1)
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_requests, [])
+
+    def test_run_id_missing_and_mismatch_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            pin = self._pin(manifest, run_id="run-alpha")
+            path = _sync_staged_pin()
+            with self.assertRaises(kick_helper_ft.KickRefused) as missing:
+                self._orig_kick(dest, pin_path=path)
+            with self.assertRaises(kick_helper_ft.KickRefused) as mismatch:
+                self._orig_kick(dest, run_id="run-beta", pin_path=path)
+            rc = kick_helper_ft.main(["--pack", str(dest), "--pin", str(path)])
+        self.assertEqual(missing.exception.field, "run-id")
+        self.assertEqual(mismatch.exception.field, "cam-pin.binding.run_id")
+        self.assertEqual(mismatch.exception.expected, "run-alpha")
+        self.assertEqual(mismatch.exception.actual, "run-beta")
+        self.assertEqual(rc, 1)
+        self.assertEqual(pin["binding"]["run_id"], "run-alpha")
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_build_command_passes_run_id_and_pin(self) -> None:
+        cmd = helper_ft_kickoff.build_command(
+            pack="/inbox/pack",
+            run_id="run-from-launcher",
+            pin_path="/run/forge-runner/private/cam-pin-v2.json",
+        )
+        self.assertIn("--run-id", cmd)
+        self.assertEqual(cmd[cmd.index("--run-id") + 1], "run-from-launcher")
+        self.assertIn("--pin", cmd)
+        self.assertEqual(
+            cmd[cmd.index("--pin") + 1],
+            "/run/forge-runner/private/cam-pin-v2.json",
+        )
+        with self.assertRaises(helper_ft_kickoff.kick_helper_ft.KickRefused) as ctx:
+            helper_ft_kickoff.build_command(
+                pack="/inbox/pack", run_id="", pin_path="/tmp/pin.json"
+            )
+        self.assertEqual(ctx.exception.field, "run-id")
+
+    def test_child_and_server_trust_layout_agree(self) -> None:
+        self.assertEqual(
+            kick_helper_ft.PINNED_COPY_PUB_REL,
+            "apps/dottie-os/trust/cam_pin_ed25519.pub",
+        )
+        self.assertEqual(
+            kick_helper_ft.PINNED_COPY_KEY_ID_REL,
+            "apps/dottie-os/trust/cam_pin_key_id",
+        )
+        self.assertEqual(kick_helper_ft.PINNED_COPY_PUB_REL, cam_pin_spec.TRUST_RELPATHS[0])
+        self.assertEqual(kick_helper_ft.PINNED_COPY_KEY_ID_REL, cam_pin_spec.TRUST_RELPATHS[1])
+        self.assertIn(kick_helper_ft.PINNED_COPY_UUID_REL, kick_helper_ft.REQUIRED_PINS)
+        self.assertIn(
+            "apps/dottie-os/scripts/lab/content_uuid.py", cam_pin_spec.TRUST_RELPATHS
+        )
+        self.assertEqual(kick_helper_ft.REQUIRED_PINS, kick_helper_ft.ENTRYPOINT_PIN_RELS)
+        self.assertEqual(kick_helper_ft.REQUIRED_PINS, kick_helper_ft.PINNED_COPY_REQUIRED_RELS)
+        self.assertTrue(
+            cam_pin_spec.CAM_PIN_PUB_PATH.as_posix().endswith(
+                "apps/dottie-os/trust/cam_pin_ed25519.pub"
+            )
+        )
+        with _pinned_copy_root() as root:
+            staged = _stage_pinned_copy(root)
+            cam_pin_spec.bind_pinned_copy_trust(staged["root"])
+            self.assertEqual(
+                cam_pin_spec.CAM_PIN_PUB_PATH,
+                staged["root"] / "apps" / "dottie-os" / "trust" / "cam_pin_ed25519.pub",
+            )
+            self.assertEqual(
+                cam_pin_spec.CAM_PIN_KEY_ID_PATH,
+                staged["root"] / "apps" / "dottie-os" / "trust" / "cam_pin_key_id",
+            )
+            cam_pin_spec.clear_pinned_copy_trust()
+
+    def test_tampered_content_uuid_refused(self) -> None:
+        with _pinned_copy_root() as root:
+            staged = _stage_pinned_copy(root)
+            uuid_path = root / kick_helper_ft.PINNED_COPY_UUID_REL
+            _unlock_pinned_copy_tree(root)
+            uuid_path.write_bytes(uuid_path.read_bytes() + b"\n# tamper")
+            _chmod_pinned_copy_tree(root)
+            dest = root.parent / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with patch.object(kick_helper_ft, "_running_script", return_value=staged["script"]):
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.kick(
+                        dest,
+                        run_id=str(_STAGED_PIN_STATE["run_id"]),
+                        pin_path=_STAGED_PIN_STATE["path"],
+                    )
+        self.assertTrue(str(ctx.exception.field).startswith("files."))
+        self.assertIn("content_uuid.py", ctx.exception.field)
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_requests, [])
+
+    def test_kick_never_fetches_pin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with patch.object(
+                cam_pin_spec,
+                "fetch_signed_pin",
+                side_effect=AssertionError("child must not fetch"),
+            ):
+                evidence = kick_helper_ft.kick(dest)
+        self.assertTrue(evidence["ok"])
+        self.assertEqual(self.hq_requests, [])
+        self.assertFalse(any("/pin" in str(url) for url in self.hq_requests))
+        pin_gets = [
+            url
+            for url in self.hq_requests
+            if str(url).endswith("/pin")
+        ]
+        self.assertEqual(pin_gets, [])
+        src = Path(kick_helper_ft.__file__).read_text(encoding="utf-8")
+        self.assertIn("load_staged_v2_pin", src)
+        self.assertNotIn("fetch_cam_pin(pack_id)", src.split("def kick", 1)[1].split("def build_parser", 1)[0])
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
