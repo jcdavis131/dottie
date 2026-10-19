@@ -13,8 +13,10 @@ import importlib.util
 import json
 import os
 import shutil
+import signal
 import socket
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -556,6 +558,7 @@ def _start_hq_http_mock(owner: unittest.TestCase) -> None:
     owner.hq_http_status = None
     owner.hq_redirect = None
     owner.hq_requests = []
+    owner.hq_posts: list[dict] = []
     owner.hq_tokens_by_url: list[tuple[str, str]] = []
     owner.hq_saw_agent_token = False
     owner._origin_saved = cam_pin_spec.SWARM_HQ_ORIGIN
@@ -567,10 +570,36 @@ def _start_hq_http_mock(owner: unittest.TestCase) -> None:
         url = getattr(request, "full_url", None) or str(request)
         method = request.get_method() if hasattr(request, "get_method") else "GET"
         token = _request_header(request, "x-agent-token")
-        owner.hq_requests.append(url)
         owner.hq_tokens_by_url.append((str(url), token))
-        owner.assertEqual(method, "GET")
         owner.assertTrue(str(url).startswith(PINNED_HQ_ORIGIN), url)
+        if method == "POST":
+            raw = getattr(request, "data", None) or b""
+            if isinstance(raw, str):
+                raw = raw.encode("utf-8")
+            body = json.loads(raw.decode("utf-8")) if raw else {}
+            owner.hq_posts.append(
+                {"url": str(url), "method": method, "body": body, "token": token}
+            )
+            owner.assertIn("/api/helper-ft/events/", str(url))
+            owner.assertTrue(
+                str(url).endswith("/kick") or str(url).endswith("/completion"),
+                url,
+            )
+            if not token:
+                raise _hq_http_error(str(url), 401)
+            owner.hq_saw_agent_token = True
+            if owner.hq_redirect is not None:
+                code, location = owner.hq_redirect
+                raise _hq_http_error(location, code)
+            if owner.hq_http_status in (301, 302, 303, 307, 308):
+                raise _hq_http_error(str(url), owner.hq_http_status)
+            if owner.hq_http_status in (401, 404):
+                raise _hq_http_error(str(url), owner.hq_http_status)
+            if owner.hq_error is not None:
+                raise urllib.error.URLError(owner.hq_error)
+            return _FakeHqHttpResponse(b'{"ok":true}')
+        owner.hq_requests.append(url)
+        owner.assertEqual(method, "GET")
         owner.assertIn("/api/packs/", str(url))
         owner.assertTrue(str(url).endswith("/pin"), url)
         if not token:
@@ -2103,6 +2132,34 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(ctx.exception.field, "SWARM_HQ_ORIGIN")
         self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(self.hq_requests, [])
+        self.assertEqual(self.hq_posts, [])
+
+    def test_placeholder_origin_refuses_hq_events_same_as_kick(self) -> None:
+        cam_pin_spec.SWARM_HQ_ORIGIN = ""
+        os.environ["SWARM_HQ_URL"] = "https://evil-hq.example"
+        payload = {
+            "run_id": "helper-ft-placeholder",
+            "sha256_pack": "11" * 32,
+            "sha256_train": "22" * 32,
+            "sha256_holdout": "33" * 32,
+        }
+        with self.assertRaises(cam_pin_spec.CamPinError) as kick_ctx:
+            cam_pin_spec.post_hq_event("kick", payload)
+        completion = {
+            **payload,
+            "sha256_evidence": "44" * 32,
+            "result": "MATCH",
+            "exit_code": 0,
+        }
+        with self.assertRaises(cam_pin_spec.CamPinError) as done_ctx:
+            cam_pin_spec.post_hq_event("completion", completion)
+        self.assertEqual(kick_ctx.exception.field, "SWARM_HQ_ORIGIN")
+        self.assertEqual(kick_ctx.exception.expected, "https origin")
+        self.assertEqual(kick_ctx.exception.actual, "placeholder")
+        self.assertEqual(done_ctx.exception.field, "SWARM_HQ_ORIGIN")
+        self.assertEqual(done_ctx.exception.actual, "placeholder")
+        self.assertEqual(self.hq_posts, [])
+        self.assertEqual(self.hq_requests, [])
 
     def test_invalid_cam_sig_refuses_cli_and_handler(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2585,12 +2642,14 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             with redirect_stdout(buf):
                 evidence = kick_helper_ft.kick(dest, log_path=log_path)
             ckpt = Path(evidence["checkpoint_integrity_evidence_path"])
+            prefix = kick_helper_ft.INTEGRITY_EVIDENCE_LINE_PREFIX + " "
             stdout_lines = [
-                line for line in buf.getvalue().splitlines() if line.startswith("INTEGRITY_EVIDENCE ")
+                line for line in buf.getvalue().splitlines() if line.startswith(prefix)
             ]
             log_text = log_path.read_text(encoding="utf-8")
             file_sha = kick_helper_ft.sha256_file(ckpt)
             parsed = kick_helper_ft.parse_integrity_evidence_line(stdout_lines[0])
+            rec = json.loads(ckpt.read_text(encoding="utf-8"))
             if os.name == "posix":
                 self.assertEqual(stat.S_IMODE(ckpt.stat().st_mode), 0o400)
         self.assertEqual(len(stdout_lines), 1)
@@ -2602,6 +2661,9 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(parsed["sha256_train"], evidence["computed_shas"]["sha256_train"])
         self.assertEqual(parsed["sha256_holdout"], evidence["computed_shas"]["sha256_holdout"])
         self.assertEqual(parsed["result"], "MATCH")
+        self.assertEqual(evidence["result"], "MATCH")
+        self.assertEqual(evidence["integrity_evidence"]["status"], "MATCH")
+        self.assertEqual(rec["exit_code"], 0)
         self.assertEqual(parsed["host"], evidence["host"])
 
     def test_post_hoc_edit_of_integrity_evidence_no_longer_matches_logged_sha(self) -> None:
@@ -2615,8 +2677,9 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             with redirect_stdout(buf):
                 evidence = kick_helper_ft.kick(dest, log_path=log_path)
             ckpt = Path(evidence["checkpoint_integrity_evidence_path"])
+            prefix = kick_helper_ft.INTEGRITY_EVIDENCE_LINE_PREFIX + " "
             line = [
-                row for row in buf.getvalue().splitlines() if row.startswith("INTEGRITY_EVIDENCE ")
+                row for row in buf.getvalue().splitlines() if row.startswith(prefix)
             ][0]
             parsed = kick_helper_ft.parse_integrity_evidence_line(line)
             self.assertEqual(parsed["sha256_evidence"], kick_helper_ft.sha256_file(ckpt))
@@ -2628,6 +2691,205 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             edited = kick_helper_ft.sha256_file(ckpt)
         self.assertNotEqual(edited, parsed["sha256_evidence"])
         self.assertEqual(parsed["result"], "MATCH")
+
+    def test_fake_stdout_match_line_does_not_change_kick_result_or_sha(self) -> None:
+        fake_sha = "ab" * 32
+        fake_line = (
+            "INTEGRITY_EVIDENCE "
+            f"sha256_evidence={fake_sha} sha256_pack={fake_sha} "
+            f"sha256_train={fake_sha} sha256_holdout={fake_sha} "
+            "result=MATCH host=forged"
+        )
+        also_fake = (
+            f"{kick_helper_ft.INTEGRITY_EVIDENCE_LINE_PREFIX} "
+            f"sha256_evidence={'cd' * 32} sha256_pack={'cd' * 32} "
+            f"sha256_train={'cd' * 32} sha256_holdout={'cd' * 32} "
+            "result=MATCH host=forged"
+        )
+
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del pack_dir, evidence, log_path
+            print(fake_line, flush=True)
+            print(also_fake, flush=True)
+            return {"ok": True, "exit_code": 0}
+
+        buf = StringIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with redirect_stdout(buf):
+                evidence = kick_helper_ft.kick(
+                    dest, log_path=log_path, start_training=start
+                )
+            ckpt = Path(evidence["checkpoint_integrity_evidence_path"])
+            file_sha = kick_helper_ft.sha256_file(ckpt)
+            rec = json.loads(ckpt.read_text(encoding="utf-8"))
+        stdout = buf.getvalue()
+        self.assertIn(fake_line, stdout)
+        self.assertEqual(evidence["result"], "MATCH")
+        self.assertEqual(evidence["sha256_evidence"], file_sha)
+        self.assertNotEqual(evidence["sha256_evidence"], fake_sha)
+        self.assertNotEqual(evidence["sha256_evidence"], "cd" * 32)
+        self.assertEqual(rec["status"], "MATCH")
+        self.assertEqual(rec["exit_code"], 0)
+        self.assertEqual(evidence["integrity_evidence"]["status"], "MATCH")
+        posts = [p for p in self.hq_posts if str(p["url"]).endswith("/completion")]
+        self.assertTrue(posts)
+        self.assertEqual(posts[-1]["body"]["sha256_evidence"], file_sha)
+        self.assertEqual(posts[-1]["body"]["result"], "MATCH")
+
+    def test_trainer_exit_1_refuses_even_when_hashes_match(self) -> None:
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del pack_dir, evidence, log_path
+            proc = subprocess.Popen([sys.executable, "-c", "raise SystemExit(1)"])
+            return {"ok": True, "process": proc}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, log_path=log_path, start_training=start)
+            rec = json.loads(
+                (log_path.parent / "ckpt-test" / "integrity_evidence.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        self.assertEqual(ctx.exception.field, "trainer.exit")
+        self.assertEqual(rec["status"], "REFUSED")
+        self.assertEqual(rec["exit_code"], 1)
+        self.assertFalse(rec["match"])
+        self.assertEqual(rec["computed_shas"]["sha256_pack"], manifest["sha256_pack"])
+        posts = [p for p in self.hq_posts if str(p["url"]).endswith("/completion")]
+        self.assertTrue(posts)
+        self.assertEqual(posts[-1]["body"]["result"], "REFUSED")
+        self.assertEqual(posts[-1]["body"]["exit_code"], 1)
+
+    def test_trainer_sigkill_refuses_even_when_hashes_match(self) -> None:
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del pack_dir, evidence, log_path
+            proc = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(30)"]
+            )
+            os.kill(proc.pid, signal.SIGKILL)
+            return {"ok": True, "process": proc}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, log_path=log_path, start_training=start)
+            rec = json.loads(
+                (log_path.parent / "ckpt-test" / "integrity_evidence.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        self.assertEqual(ctx.exception.field, "trainer.exit")
+        self.assertEqual(rec["status"], "REFUSED")
+        self.assertEqual(rec["exit_code"], -signal.SIGKILL)
+        self.assertEqual(rec["signal"], signal.SIGKILL)
+        self.assertFalse(rec["match"])
+        self.assertEqual(rec["computed_shas"]["sha256_pack"], manifest["sha256_pack"])
+        posts = [p for p in self.hq_posts if str(p["url"]).endswith("/completion")]
+        self.assertTrue(posts)
+        self.assertEqual(posts[-1]["body"]["result"], "REFUSED")
+        self.assertEqual(posts[-1]["body"]["exit_code"], -signal.SIGKILL)
+
+    def test_trainer_exit_0_with_matching_hashes_is_match(self) -> None:
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del pack_dir, evidence, log_path
+            proc = subprocess.Popen([sys.executable, "-c", "raise SystemExit(0)"])
+            return {"ok": True, "process": proc}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest, start_training=start)
+            ckpt = Path(evidence["checkpoint_integrity_evidence_path"])
+            rec = json.loads(ckpt.read_text(encoding="utf-8"))
+            file_sha = kick_helper_ft.sha256_file(ckpt)
+        self.assertEqual(evidence["result"], "MATCH")
+        self.assertEqual(evidence["sha256_evidence"], file_sha)
+        self.assertEqual(rec["status"], "MATCH")
+        self.assertEqual(rec["exit_code"], 0)
+        self.assertTrue(rec["match"])
+        self.assertEqual(rec["computed_shas"], evidence["computed_shas"])
+
+    def test_trainer_timeout_refuses_even_when_hashes_match(self) -> None:
+        def start(pack_dir: Path, evidence: dict, log_path: Path) -> dict:
+            del pack_dir, evidence, log_path
+            proc = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(30)"]
+            )
+            return {"ok": True, "process": proc, "wait_timeout": 0.05}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, log_path=log_path, start_training=start)
+            rec = json.loads(
+                (log_path.parent / "ckpt-test" / "integrity_evidence.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        self.assertEqual(ctx.exception.field, "trainer.exit")
+        self.assertEqual(ctx.exception.actual, "timeout")
+        self.assertEqual(rec["status"], "REFUSED")
+        self.assertTrue(rec["timeout"])
+        self.assertFalse(rec["match"])
+        self.assertEqual(rec["computed_shas"]["sha256_pack"], manifest["sha256_pack"])
+
+    def test_kick_posts_hq_kick_and_completion_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+            ckpt = Path(evidence["checkpoint_integrity_evidence_path"])
+            file_sha = kick_helper_ft.sha256_file(ckpt)
+        self.assertEqual(len(self.hq_posts), 2)
+        kick_post, completion_post = self.hq_posts
+        self.assertEqual(kick_post["url"], PINNED_HQ_ORIGIN + "/api/helper-ft/events/kick")
+        self.assertEqual(completion_post["url"], PINNED_HQ_ORIGIN + "/api/helper-ft/events/completion")
+        self.assertEqual(kick_post["token"], SWARM_HQ_AGENT_TOKEN_FIXTURE)
+        self.assertEqual(completion_post["token"], SWARM_HQ_AGENT_TOKEN_FIXTURE)
+        self.assertEqual(kick_post["body"]["run_id"], evidence["run_id"])
+        self.assertEqual(kick_post["body"]["sha256_pack"], evidence["computed_shas"]["sha256_pack"])
+        self.assertEqual(kick_post["body"]["sha256_train"], evidence["computed_shas"]["sha256_train"])
+        self.assertEqual(kick_post["body"]["sha256_holdout"], evidence["computed_shas"]["sha256_holdout"])
+        self.assertNotIn("sha256_evidence", kick_post["body"])
+        self.assertEqual(completion_post["body"]["run_id"], evidence["run_id"])
+        self.assertEqual(completion_post["body"]["sha256_evidence"], file_sha)
+        self.assertEqual(completion_post["body"]["sha256_evidence"], evidence["sha256_evidence"])
+        self.assertEqual(
+            completion_post["body"]["sha256_pack"], evidence["post_train_shas"]["sha256_pack"]
+        )
+        self.assertEqual(
+            completion_post["body"]["sha256_train"], evidence["post_train_shas"]["sha256_train"]
+        )
+        self.assertEqual(
+            completion_post["body"]["sha256_holdout"], evidence["post_train_shas"]["sha256_holdout"]
+        )
+        self.assertEqual(completion_post["body"]["result"], "MATCH")
+        self.assertEqual(completion_post["body"]["exit_code"], 0)
+        self.assertFalse(any("evil-hq.example" in u for u, _tok in self.hq_tokens_by_url))
+        dumped = json.dumps(kick_post["body"]) + json.dumps(completion_post["body"])
+        self.assertNotIn(SWARM_HQ_AGENT_TOKEN_FIXTURE, dumped)
 
     def test_write_evidence_uses_mkstemp(self) -> None:
         src = Path(kick_helper_ft.__file__).read_text(encoding="utf-8")

@@ -432,13 +432,14 @@ def handle_train_kickoff(
     launched = launcher(launch_body)
     if not isinstance(launched, dict) or launched.get("ok") is not True:
         return _bad("trainer", "ok", launched)
-    kick_helper_ft.wait_for_training_exit(launched)
+    exit_info = kick_helper_ft.wait_for_training_exit(launched)
     record = kick_helper_ft.rehash_recorded_trainer_paths(
         recorded_paths,
         pin=hq_pin,
         manifest_shas=manifest_shas,
         host=host,
     )
+    kick_helper_ft.apply_trainer_exit(record, exit_info)
     ckpt_id = launched.get("checkpoint_id")
     run_dir = Path(evidence_path).parent if isinstance(evidence_path, str) and evidence_path else root.parent
     if ckpt_id:
@@ -454,15 +455,19 @@ def handle_train_kickoff(
                 mode=0o400,
             )
             log_path = run_dir / kick_helper_ft.DEFAULT_LOG_NAME
-            line = kick_helper_ft.emit_integrity_evidence_line(
-                ckpt_path, record, log_path=log_path
-            )
-            evidence["integrity_evidence_line"] = line
-            evidence["sha256_evidence"] = kick_helper_ft.parse_integrity_evidence_line(line)[
-                "sha256_evidence"
-            ]
+            try:
+                sealed = kick_helper_ft.seal_integrity_evidence(
+                    ckpt_path, record, log_path=log_path
+                )
+            except kick_helper_ft.KickRefused as exc:
+                return _bad(exc.field, exc.expected, exc.actual)
+            evidence["integrity_evidence_line"] = sealed["integrity_evidence_line"]
+            evidence["sha256_evidence"] = sealed["sha256_evidence"]
+            evidence["integrity_evidence"] = sealed["integrity_evidence"]
+            evidence["result"] = sealed["result"]
             evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
             evidence["checkpoint_integrity_status"] = record["status"]
+            evidence["exit_code"] = record.get("exit_code", 0)
     evidence["post_train_shas"] = record["computed_shas"]
     evidence["post_train_host"] = record["host"]
     evidence["post_train_paths"] = record["paths"]
@@ -485,12 +490,15 @@ def handle_train_kickoff(
         "kickoff_pin_fetch": fetched_pin,
         "trust_blobs": blobs,
         "head_sha": blobs.get("HEAD"),
+        "exit_code": record.get("exit_code", 0),
     }
     if ckpt_id:
         result["checkpoint_id"] = ckpt_id
     if evidence.get("integrity_evidence_line"):
         result["integrity_evidence_line"] = evidence["integrity_evidence_line"]
         result["sha256_evidence"] = evidence.get("sha256_evidence")
+        result["integrity_evidence"] = evidence.get("integrity_evidence")
+        result["result"] = evidence.get("result")
     return result
 
 

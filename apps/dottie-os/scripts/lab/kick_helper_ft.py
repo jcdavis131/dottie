@@ -16,7 +16,10 @@ passes, this script POSTs ``/train/kickoff``; ``inbox: latest`` is never
 sent. Copies are 0400 in a 0700 directory. The trainer is passed only those
 run-dir copy paths (no source-pack fallback). The same process on the
 training host waits for the trainer to exit, then re-hashes those recorded
-paths.
+paths. Completion ``result`` and ``sha256_evidence`` come from the 0400
+evidence file this process wrote, never from scraped stdout. Nonzero trainer
+exit, a signal, or a timeout is ``REFUSED`` even when hashes match. This
+process POSTs a kick event and a completion event to the pinned HQ origin.
 
 There is no skip flag or skip env var. Does not promote, does not touch serve,
 :8770, champion files, or the LIVE gate.
@@ -73,7 +76,7 @@ PATH_KEY_BY_SHA = {
     "sha256_holdout": "holdout",
 }
 INTEGRITY_EVIDENCE_NAME = "integrity_evidence.json"
-INTEGRITY_EVIDENCE_LINE_PREFIX = "INTEGRITY_EVIDENCE"
+INTEGRITY_EVIDENCE_LINE_PREFIX = "HELPER_FT_INTEGRITY_EVIDENCE"
 CHECKPOINT_MATCH = "MATCH"
 CHECKPOINT_REFUSED = "REFUSED"
 CHECKPOINT_UNSCORED = "unscored"
@@ -480,27 +483,187 @@ def build_trainer_argv(paths: Mapping[str, str]) -> list[str]:
     ]
 
 
-def wait_for_training_exit(launched: Mapping[str, Any] | None) -> None:
+def _empty_trainer_exit(*, waited: bool = False) -> dict[str, Any]:
+    return {"exit_code": 0, "signal": None, "timeout": False, "waited": waited}
+
+
+def _trainer_exit_is_bad(info: Mapping[str, Any]) -> bool:
+    if info.get("timeout"):
+        return True
+    if info.get("signal") is not None:
+        return True
+    return info.get("exit_code", 0) not in (0,)
+
+
+def combine_trainer_exits(parts: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """Prefer the last waited trainer; any nonzero/signal/timeout wins as REFUSED."""
+    recorded = _empty_trainer_exit()
+    bad: dict[str, Any] | None = None
+    for part in parts:
+        if not isinstance(part, Mapping):
+            continue
+        slim = {
+            "exit_code": part.get("exit_code", 0 if not part.get("timeout") else None),
+            "signal": part.get("signal"),
+            "timeout": bool(part.get("timeout")),
+        }
+        if part.get("waited"):
+            recorded = slim
+        if _trainer_exit_is_bad(slim):
+            bad = slim
+    return bad if bad is not None else recorded
+
+
+def _wait_process(proc: Any, wait_timeout: object) -> Any:
+    wait = proc.wait
+    if wait_timeout is None:
+        return wait()
+    try:
+        return wait(timeout=wait_timeout)
+    except TypeError:
+        return wait()
+
+
+def _exit_from_wait_rc(rc: object) -> dict[str, Any]:
+    if rc is None:
+        return _empty_trainer_exit(waited=True)
+    try:
+        code = int(rc)
+    except (TypeError, ValueError):
+        _refuse("trainer.exit", "int exit_code", rc)
+        raise AssertionError("unreachable")
+    info = {"exit_code": code, "signal": None, "timeout": False, "waited": True}
+    if code < 0:
+        info["signal"] = -code
+    return info
+
+
+def wait_for_training_exit(launched: Mapping[str, Any] | None) -> dict[str, Any]:
     """Block until the trainer the launcher started has exited.
 
     Launchers that already wait (return after the process exits) are a no-op
     here. A pid or Popen-like ``process`` is waited in this same process.
+    Returns ``exit_code`` / ``signal`` / ``timeout``. ``waited`` is True when
+    this call observed a process, pid, or explicit launcher exit fields.
     """
     if not isinstance(launched, Mapping):
-        return
+        return _empty_trainer_exit()
+    waited_rc: object | None = None
+    saw_process = False
     proc = launched.get("process")
     if proc is not None and hasattr(proc, "wait"):
-        proc.wait()
-        return
+        saw_process = True
+        wait_timeout = launched.get("wait_timeout")
+        try:
+            waited_rc = _wait_process(proc, wait_timeout)
+        except subprocess.TimeoutExpired:
+            kill = getattr(proc, "kill", None)
+            if callable(kill):
+                try:
+                    kill()
+                    _wait_process(proc, None)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            return {"exit_code": None, "signal": None, "timeout": True, "waited": True}
+        if waited_rc is None:
+            waited_rc = getattr(proc, "returncode", None)
     pid = launched.get("pid") if launched.get("pid") is not None else launched.get("trainer_pid")
-    if pid is None:
-        return
-    try:
-        os.waitpid(int(pid), 0)
-    except ChildProcessError:
-        return
-    except (TypeError, ValueError, OverflowError, OSError) as exc:
-        _refuse("trainer.pid", "waitable pid", f"{type(exc).__name__}:{exc}")
+    if not saw_process and pid is not None:
+        try:
+            _wpid, status = os.waitpid(int(pid), 0)
+            del _wpid
+            saw_process = True
+            if os.WIFSIGNALED(status):
+                sig = os.WTERMSIG(status)
+                return {"exit_code": -sig, "signal": sig, "timeout": False, "waited": True}
+            if os.WIFEXITED(status):
+                return {
+                    "exit_code": os.WEXITSTATUS(status),
+                    "signal": None,
+                    "timeout": False,
+                    "waited": True,
+                }
+            waited_rc = status
+        except ChildProcessError:
+            pass
+        except (TypeError, ValueError, OverflowError, OSError) as exc:
+            _refuse("trainer.pid", "waitable pid", f"{type(exc).__name__}:{exc}")
+    if launched.get("timeout") is True:
+        return {
+            "exit_code": launched.get("exit_code"),
+            "signal": launched.get("signal"),
+            "timeout": True,
+            "waited": True,
+        }
+    if launched.get("signal") is not None:
+        try:
+            sig = int(launched["signal"])
+        except (TypeError, ValueError):
+            _refuse("trainer.exit", "signal number", launched.get("signal"))
+            raise AssertionError("unreachable")
+        code = launched.get("exit_code", -sig)
+        try:
+            code_i = int(code) if code is not None else -sig
+        except (TypeError, ValueError):
+            _refuse("trainer.exit", "int exit_code", code)
+            raise AssertionError("unreachable")
+        return {"exit_code": code_i, "signal": sig, "timeout": False, "waited": True}
+    if "exit_code" in launched:
+        code = launched.get("exit_code")
+        try:
+            code_i = int(code) if code is not None else 0
+        except (TypeError, ValueError):
+            _refuse("trainer.exit", "int exit_code", code)
+            raise AssertionError("unreachable")
+        info = {"exit_code": code_i, "signal": None, "timeout": False, "waited": True}
+        if code_i < 0:
+            info["signal"] = -code_i
+        return info
+    if saw_process:
+        return _exit_from_wait_rc(waited_rc)
+    return _empty_trainer_exit()
+
+
+def apply_trainer_exit(record: dict[str, Any], exit_info: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Record trainer exit on the integrity evidence. Bad exit forces REFUSED."""
+    info = dict(exit_info) if isinstance(exit_info, Mapping) else _empty_trainer_exit()
+    timeout = bool(info.get("timeout"))
+    signal = info.get("signal")
+    if signal is not None:
+        try:
+            signal = int(signal)
+        except (TypeError, ValueError):
+            _refuse("trainer.exit", "signal number", signal)
+            raise AssertionError("unreachable")
+    exit_code = info.get("exit_code")
+    if timeout:
+        pass
+    elif exit_code is None:
+        exit_code = 0
+    else:
+        try:
+            exit_code = int(exit_code)
+        except (TypeError, ValueError):
+            _refuse("trainer.exit", "int exit_code", exit_code)
+            raise AssertionError("unreachable")
+    record["exit_code"] = exit_code
+    if signal is not None:
+        record["signal"] = signal
+    if timeout:
+        record["timeout"] = True
+    bad = timeout or signal is not None or exit_code not in (0,)
+    if bad and record.get("status") == CHECKPOINT_MATCH:
+        record["status"] = CHECKPOINT_REFUSED
+        record["match"] = False
+        record["field"] = "trainer.exit"
+        record["expected"] = 0
+        if timeout:
+            record["actual"] = "timeout"
+        elif signal is not None:
+            record["actual"] = f"signal {signal}"
+        else:
+            record["actual"] = exit_code
+    return record
 
 
 def checkpoint_dir_for(run_dir: Path, checkpoint_id: object) -> Path | None:
@@ -761,12 +924,14 @@ def emit_integrity_evidence_line(
     record: Mapping[str, Any],
     *,
     log_path: Path | None = None,
+    sha256_evidence: str | None = None,
 ) -> str:
-    """Hash the 0400 evidence file and emit one line to stdout and the run log."""
+    """Print one human line after the trainer's stdout is closed. Never a result source."""
     evidence_path = Path(evidence_path)
     if os.name == "posix":
         os.chmod(evidence_path, 0o400)
-    sha256_evidence = sha256_file(evidence_path)
+    if sha256_evidence is None:
+        sha256_evidence = sha256_file(evidence_path)
     computed = record.get("computed_shas") if isinstance(record.get("computed_shas"), Mapping) else {}
     pin_shas = record.get("pin_shas") if isinstance(record.get("pin_shas"), Mapping) else {}
 
@@ -791,6 +956,67 @@ def emit_integrity_evidence_line(
         with log.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
     return line
+
+
+def load_integrity_completion(evidence_path: Path) -> dict[str, Any]:
+    """sha256_evidence and parsed JSON from the 0400 file. Never stdout."""
+    evidence_path = Path(evidence_path)
+    _require_mode_0400(evidence_path, INTEGRITY_EVIDENCE_NAME)
+    sha256_evidence = sha256_file(evidence_path)
+    try:
+        parsed = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except UnicodeDecodeError:
+        _refuse(INTEGRITY_EVIDENCE_NAME, "utf-8 JSON", "invalid encoding")
+        raise AssertionError("unreachable")
+    except OSError as exc:
+        _refuse(INTEGRITY_EVIDENCE_NAME, "readable JSON", f"OSError:{exc.errno}")
+        raise AssertionError("unreachable")
+    except ValueError as exc:
+        _refuse(INTEGRITY_EVIDENCE_NAME, "valid JSON object", f"invalid JSON ({exc})")
+        raise AssertionError("unreachable")
+    if not isinstance(parsed, dict):
+        _refuse(INTEGRITY_EVIDENCE_NAME, "JSON object", type(parsed).__name__)
+    status = parsed.get("status")
+    result = status if status in (CHECKPOINT_MATCH, CHECKPOINT_REFUSED) else CHECKPOINT_REFUSED
+    return {
+        "sha256_evidence": sha256_evidence,
+        "integrity_evidence": parsed,
+        "result": result,
+    }
+
+
+def seal_integrity_evidence(
+    evidence_path: Path,
+    record: Mapping[str, Any],
+    *,
+    log_path: Path | None = None,
+) -> dict[str, Any]:
+    """Hash the file this process wrote, then emit the human line."""
+    sealed = load_integrity_completion(evidence_path)
+    line = emit_integrity_evidence_line(
+        evidence_path,
+        record,
+        log_path=log_path,
+        sha256_evidence=sealed["sha256_evidence"],
+    )
+    sealed["integrity_evidence_line"] = line
+    return sealed
+
+
+def _sha_from_record(record: Mapping[str, Any], field: str) -> str:
+    computed = record.get("computed_shas") if isinstance(record.get("computed_shas"), Mapping) else {}
+    pin_shas = record.get("pin_shas") if isinstance(record.get("pin_shas"), Mapping) else {}
+    value = computed.get(field) or pin_shas.get(field)
+    if type(value) is not str or not value:
+        _refuse(field, "64-char lowercase hex", value)
+    return value
+
+
+def _post_hq_event(event: str, payload: Mapping[str, Any]) -> None:
+    try:
+        cam_pin_spec.post_hq_event(event, dict(payload))
+    except cam_pin_spec.CamPinError as exc:
+        _refuse(exc.field, exc.expected, exc.actual)
 
 
 def default_start_training(pack_dir: Path, evidence: dict[str, Any], log_path: Path) -> dict[str, Any]:
@@ -851,23 +1077,44 @@ def _apply_post_train_record(
     *,
     run_dir: Path,
     log_path: Path | None = None,
+    post_completion: bool = True,
 ) -> None:
     evidence["post_train_shas"] = dict(record.get("computed_shas") or {})
     evidence["post_train_host"] = record["host"]
     evidence["post_train_paths"] = dict(record["paths"])
     evidence["post_train_checked_at"] = record["checked_at"]
+    evidence["exit_code"] = record.get("exit_code", 0)
+    if record.get("signal") is not None:
+        evidence["signal"] = record["signal"]
+    if record.get("timeout"):
+        evidence["timeout"] = True
     ckpt_dir = checkpoint_dir_for(run_dir, evidence.get("checkpoint_id"))
     if ckpt_dir is not None:
         ckpt_path = ckpt_dir / INTEGRITY_EVIDENCE_NAME
         write_evidence(_public_integrity_record(record), ckpt_path, mode=0o400)
-        line = emit_integrity_evidence_line(ckpt_path, record, log_path=log_path)
-        parsed = parse_integrity_evidence_line(line)
+        sealed = seal_integrity_evidence(ckpt_path, record, log_path=log_path)
         evidence["checkpoint_integrity_evidence_path"] = str(ckpt_path.resolve())
         evidence["checkpoint_integrity_status"] = record["status"]
-        evidence["integrity_evidence_line"] = line
-        evidence["sha256_evidence"] = parsed["sha256_evidence"]
+        evidence["integrity_evidence_line"] = sealed["integrity_evidence_line"]
+        evidence["sha256_evidence"] = sealed["sha256_evidence"]
+        evidence["integrity_evidence"] = sealed["integrity_evidence"]
+        evidence["result"] = sealed["result"]
+        if post_completion:
+            _post_hq_event(
+                "completion",
+                {
+                    "run_id": evidence["run_id"],
+                    "sha256_evidence": sealed["sha256_evidence"],
+                    "sha256_pack": _sha_from_record(record, "sha256_pack"),
+                    "sha256_train": _sha_from_record(record, "sha256_train"),
+                    "sha256_holdout": _sha_from_record(record, "sha256_holdout"),
+                    "result": sealed["result"],
+                    "exit_code": record.get("exit_code", 0),
+                },
+            )
     if record["status"] != CHECKPOINT_MATCH:
         evidence["ok"] = False
+        evidence["result"] = CHECKPOINT_REFUSED
 
 
 def _recheck_copies(
@@ -876,6 +1123,7 @@ def _recheck_copies(
     *,
     run_dir: Path,
     log_path: Path | None = None,
+    exit_info: Mapping[str, Any] | None = None,
 ) -> None:
     recorded = evidence.get("paths")
     if not isinstance(recorded, dict):
@@ -887,6 +1135,7 @@ def _recheck_copies(
         manifest_shas=evidence["manifest_shas"],
         host=host,
     )
+    apply_trainer_exit(record, exit_info)
     _apply_post_train_record(evidence, record, run_dir=run_dir, log_path=log_path)
     if record["status"] != CHECKPOINT_MATCH:
         _refuse(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
@@ -966,6 +1215,15 @@ def kick(
         evidence["trainer_config"] = trainer_config
         evidence["trainer_argv"] = trainer_argv
         persist()
+        _post_hq_event(
+            "kick",
+            {
+                "run_id": run_id,
+                "sha256_pack": evidence["computed_shas"]["sha256_pack"],
+                "sha256_train": evidence["computed_shas"]["sha256_train"],
+                "sha256_holdout": evidence["computed_shas"]["sha256_holdout"],
+            },
+        )
         body = {
             "mode": "helper-ft",
             "pack_id": evidence["pack_id"],
@@ -992,14 +1250,22 @@ def kick(
             persist()
         # Training must finish before the end-of-training re-hash. Wait in this
         # same process/host, then re-hash the recorded run-dir copy paths.
-        wait_for_training_exit(result if isinstance(result, dict) else None)
+        exits: list[Mapping[str, Any]] = []
+        exits.append(wait_for_training_exit(result if isinstance(result, dict) else None))
         if start_training is None:
             started = _authorized_start_training(run_private, evidence, log_path, _gate=_GATE_OK)
-            wait_for_training_exit(started if isinstance(started, dict) else None)
+            exits.append(wait_for_training_exit(started if isinstance(started, dict) else None))
         else:
             started = start_training(run_private, evidence, log_path)
-            wait_for_training_exit(started if isinstance(started, dict) else None)
-        _recheck_copies(run_private, evidence, run_dir=run_dir, log_path=log_path)
+            exits.append(wait_for_training_exit(started if isinstance(started, dict) else None))
+        exit_info = combine_trainer_exits(exits)
+        _recheck_copies(
+            run_private,
+            evidence,
+            run_dir=run_dir,
+            log_path=log_path,
+            exit_info=exit_info,
+        )
         persist()
         return evidence
     except KickRefused as exc:
