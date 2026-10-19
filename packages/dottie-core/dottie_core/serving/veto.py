@@ -85,7 +85,16 @@ _DECODERS = frozenset({"base64"})
 _WRAPPERS = frozenset({
     "sudo", "doas", "nice", "nohup", "time", "stdbuf", "command",
     "builtin", "exec", "env", "busybox",
+    "timeout", "setsid", "ionice", "chroot", "watch", "flock",
+    "strace", "taskset", "runuser", "parallel", "unbuffer", "script",
+    "su", "then", "do", "else", "elif",
 })
+_RESERVE = frozenset({
+    "then", "do", "else", "elif", "fi", "done", "esac", "if", "for",
+    "while", "until", "case", "in",
+})
+_RM_LONG = ("--recursive", "--force", "--no-preserve-root")
+_DESTRUCTIVE_MARK = ("rm", "mkfs", "dd", "shred", "wipefs", "mke2fs", "mkswap", "blkdiscard")
 _CONTROL_HOSTS = frozenset({
     "127.0.0.1", "localhost", "0.0.0.0", "::1", "[::1]", "nugatron",
 })
@@ -182,10 +191,17 @@ _BIN_PREFIXES = (
 def _basename(token: str) -> str:
     """Strip absolute bin prefixes only. Do not rsplit URLs or $(...) words."""
     t = token.replace("\\", "/")
+    if t.startswith("/") or t.startswith("./") or t.startswith("../"):
+        while "//" in t:
+            t = t.replace("//", "/")
+        if "/../" in t or t.endswith("/.."):
+            t = normalize_path(t)
     low = t.lower()
     for prefix in _BIN_PREFIXES:
         if low.startswith(prefix):
             return t[len(prefix):]
+    if t.startswith("/") and "://" not in t:
+        return t.rsplit("/", 1)[-1]
     return token
 
 
@@ -449,9 +465,17 @@ def _tokenize(src: str) -> list[tuple[str, str]]:
             tokens.append(("op", ";"))
             i += 1
             continue
+        if ch in "()":
+            tokens.append(("op", ch))
+            i += 1
+            continue
         if ch == "&" and peek(1) == "&":
             tokens.append(("op", "&&"))
             i += 2
+            continue
+        if ch == "&":
+            tokens.append(("op", "&"))
+            i += 1
             continue
         if ch == "|" and peek(1) == "|":
             tokens.append(("op", "||"))
@@ -485,6 +509,13 @@ def _tokenize(src: str) -> list[tuple[str, str]]:
                 tokens.append(("word", "{"))
                 i = j
                 continue
+        if ch == "{" and peek(1).isalnum():
+            j = i + 1
+            while j < n and src[j] not in " \t\r\n;|&<>":
+                j += 1
+            tokens.append(("word", src[i:j]))
+            i = j
+            continue
         if ch in "{}":
             i = _skip_brace_run(src, i)
             tokens.append(("word", "{"))
@@ -548,6 +579,30 @@ def _read_word(src: str, i: int) -> tuple[str, int]:
                 i += 1
             chunks.append("`" + inner + "`")
             continue
+        if ch == "$" and i + 1 < n and src[i + 1] == "'":
+            i += 2
+            buf: list[str] = []
+            while i < n and src[i] != "'":
+                if src[i] == "\\" and i + 1 < n:
+                    nxt = src[i + 1]
+                    if nxt == "n":
+                        buf.append("\n")
+                    elif nxt == "t":
+                        buf.append("\t")
+                    elif nxt == "x" and i + 3 < n and src[i + 2] in _HEX and src[i + 3] in _HEX:
+                        buf.append(chr(int(src[i + 2:i + 4], 16)))
+                        i += 4
+                        continue
+                    else:
+                        buf.append(nxt)
+                    i += 2
+                    continue
+                buf.append(src[i])
+                i += 1
+            chunks.append("".join(buf))
+            if i < n:
+                i += 1
+            continue
         if ch == "'":
             i += 1
             start = i
@@ -589,7 +644,13 @@ def _read_word(src: str, i: int) -> tuple[str, int]:
 def _strip_wrappers(tokens: list[str]) -> list[str]:
     i = 0
     n = len(tokens)
+    while i < n and tokens[i] in "{}!":
+        i += 1
     while i < n:
+        tok = tokens[i]
+        if "=" in tok and not tok.startswith("=") and _IDENT_RE.match(tok.split("=", 1)[0] or ""):
+            i += 1
+            continue
         base = _basename(tokens[i]).lower()
         if base in _WRAPPERS:
             i += 1
@@ -597,7 +658,7 @@ def _strip_wrappers(tokens: list[str]) -> list[str]:
                 tok = tokens[i]
                 if tok.startswith("-") and len(tok) > 1:
                     # sudo -u user, nice -n 10: skip flag and its arg when needed
-                    if tok in {"-n", "-u", "-g", "-C", "--user"} and i + 1 < n and not tokens[i + 1].startswith("-"):
+                    if tok in {"-n", "-u", "-g", "-C", "--user", "-c", "-qc"} and i + 1 < n and not tokens[i + 1].startswith("-"):
                         i += 2
                         continue
                     i += 1
@@ -606,6 +667,8 @@ def _strip_wrappers(tokens: list[str]) -> list[str]:
                     i += 1
                     continue
                 break
+            if i < n and base in {"timeout", "nice", "ionice", "watch", "taskset", "chroot", "flock"} and not tokens[i].startswith("-"):
+                i += 1
             continue
         tokens = tokens[i:]
         if tokens:
@@ -618,7 +681,14 @@ def _split_statements(tokens: list[tuple[str, str]]) -> list[list[tuple[str, str
     statements: list[list[tuple[str, str]]] = []
     cur: list[tuple[str, str]] = []
     for kind, value in tokens:
-        if kind in {"op", "nl"} and value in {";", "&&", "||", "\n"}:
+        if kind == "nl" and cur and cur[-1] == ("op", "|"):
+            continue
+        if kind == "op" and value in {";", "&&", "||", "&", "(", ")"}:
+            if cur:
+                statements.append(cur)
+                cur = []
+            continue
+        if kind == "nl" or (kind == "word" and value.lower() in _RESERVE):
             if cur:
                 statements.append(cur)
                 cur = []
@@ -664,7 +734,11 @@ def _flag_letters(tokens: list[str]) -> tuple[set[str], set[str]]:
         if not tok.startswith("-") or tok == "-":
             continue
         if tok.startswith("--"):
-            longs.add(tok.split("=", 1)[0])
+            head = tok.split("=", 1)[0]
+            longs.add(head)
+            for full in _RM_LONG:
+                if full.startswith(head) and len(head) >= 3:
+                    longs.add(full)
             continue
         letters.update(tok[1:])
     return letters, longs
@@ -682,13 +756,22 @@ def _assignments(tokens: list[tuple[str, str]]) -> dict[str, str]:
 
 
 def _expand_vars(text: str, env: dict[str, str]) -> str:
+    out = text.replace("${IFS}", " ").replace("$IFS", " ")
     if not env:
-        return text
-    out = text
+        return out
     for name, value in env.items():
         out = out.replace("${" + name + "}", value)
         out = out.replace("$" + name, value)
     return out
+
+
+def _expand_brace_list(word: str) -> list[str]:
+    if len(word) < 3 or not (word.startswith("{") and word.endswith("}")):
+        return [word]
+    inner = word[1:-1]
+    if "," not in inner or any(ch in inner for ch in " \t"):
+        return [word]
+    return [part for part in inner.split(",") if part]
 
 
 def _norm_secret_word(word: str) -> str:
@@ -807,12 +890,27 @@ def _stage_is_code_interp(stage: list[tuple[str, str]]) -> bool:
 
 def _is_rm_rf_words(words: list[str]) -> bool:
     words = _strip_wrappers(list(words))
-    if not words or words[0].lower() != "rm":
+    expanded: list[str] = []
+    for tok in words:
+        expanded.extend(_expand_brace_list(tok))
+    words = expanded
+    if not words:
+        return False
+    head = words[0].lower()
+    if head != "rm":
         return False
     letters, longs = _flag_letters(words[1:])
-    recursive = "r" in letters or "R" in letters or "--recursive" in longs
+    recursive = "r" in letters or "R" in letters or "d" in letters or "--recursive" in longs
     force = "f" in letters or "--force" in longs
-    return recursive and force
+    if recursive and force:
+        return True
+    if recursive:
+        for tok in words[1:]:
+            if tok.startswith("-") and tok != "-":
+                continue
+            if tok in {"/", "~", "*", "$HOME", "${HOME}"} or tok.startswith("/") or tok.startswith("~") or tok.startswith("$"):
+                return True
+    return False
 
 
 def _is_mkfs_words(words: list[str]) -> bool:
@@ -885,11 +983,16 @@ def _fetch_outputs(stage: list[tuple[str, str]]) -> set[str]:
 def _script_arg(words: list[str]) -> str | None:
     """Body of ``sh -c SCRIPT`` / ``python -c SCRIPT`` / ``perl -e SCRIPT``."""
     words = _strip_wrappers(list(words))
-    for flag in ("-c", "-e"):
+    for flag in ("-c", "-e", "-lc", "-xc", "-ec", "-qc"):
         if flag in words:
             idx = words.index(flag)
             if idx + 1 < len(words):
                 return words[idx + 1]
+        for tok in words:
+            if tok.startswith(flag) and len(tok) > len(flag) and not tok.startswith("--"):
+                # bash -lcSCRIPT glued; rare
+                if flag in {"-c", "-e"}:
+                    continue
     return None
 
 
@@ -931,7 +1034,10 @@ def _pipe_download_stages(stages: list[list[tuple[str, str]]]) -> bool:
             blob = " ".join(words).lower()
             if "-d" in words or "--decode" in blob:
                 has_decode = True
-        if _is_shell_name(head):
+        if _is_shell_name(head) or head in {".", "source"}:
+            letters, _longs = _flag_letters(_words(stage))
+            if "n" in letters:
+                continue
             has_interp = True
         elif head == "xargs":
             rest = _strip_wrappers(words[1:]) if words else []
@@ -950,6 +1056,9 @@ def _pipe_download_stages(stages: list[list[tuple[str, str]]]) -> bool:
                 inner = value[2:-1] if value.endswith(")") else value[2:]
                 if _is_shell_name(_inner_command_word(inner)):
                     has_interp = True
+        blob = " ".join(_words(stage)).lower()
+        if head in {"echo", "printf"} and ("rm -r" in blob or "rm -rf" in blob or "mkfs" in blob):
+            has_fetch = True
     return bool((has_fetch or has_decode) and has_interp)
 
 
@@ -1160,6 +1269,9 @@ def _scan_text(
                 return finish(MKFS)
             if _is_credential_read(words):
                 return finish(CREDENTIAL_READ)
+            stripped_early = _strip_wrappers(list(words))
+            if stripped_early and stripped_early[0].lower() == "xargs" and _is_rm_rf_words(stripped_early[1:]):
+                return finish(RM_RF)
             head = _command_word(stage)
             stripped_words = _strip_wrappers(list(words))
             raw0 = stripped_words[0] if stripped_words else ""
@@ -1167,12 +1279,18 @@ def _scan_text(
                 inner = _scan_text(" ".join(stripped_words[1:]), env, depth + 1, memo)
                 if inner:
                     return finish(inner)
-            if _is_shell_name(head) or head in _CODE_INTERPS:
+            if _is_shell_name(head) or head in _CODE_INTERPS or head in {"su", "script", "parallel"}:
                 script = _script_arg(words)
                 if script:
                     inner = _scan_text(script, env, depth + 1, memo)
                     if inner:
                         return finish(inner)
+                    low = script.lower()
+                    if head in _CODE_INTERPS and ("rmtree" in low or ("os.system" in low and "rm" in low)):
+                        return finish(RM_RF)
+            if raw0.startswith("$") or raw0.startswith("`"):
+                if _is_rm_rf_words(["rm"] + list(words[1:])):
+                    return finish(RM_RF)
             for snippet in _inner_snippets(stage):
                 inner = _scan_text(snippet, env, depth + 1, memo)
                 if inner:
