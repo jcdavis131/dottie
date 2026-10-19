@@ -4158,6 +4158,13 @@ PACK_GUARD_GHA_KEYS = frozenset(
         "github-token",
         "script",
         "run-name",
+        "runs",
+        "using",
+        "image",
+        "main",
+        "pre",
+        "post",
+        "inputs",
     }
 )
 PACK_GUARD_ALLOWED_TRIGGERS = frozenset(
@@ -4165,6 +4172,25 @@ PACK_GUARD_ALLOWED_TRIGGERS = frozenset(
 )
 PACK_GUARD_LOCAL_USES_PREFIX = "./.github/"
 PACK_GUARD_EXPR_RE = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
+PACK_GUARD_GITHUB_SAFE = frozenset(
+    {
+        "actor",
+        "event_name",
+        "ref",
+        "repository",
+        "run_id",
+        "run_number",
+        "sha",
+        "workflow",
+        "workspace",
+    }
+)
+PACK_GUARD_DOCKER_DIGEST_RE = re.compile(
+    r"^docker://\S+@sha256:[0-9a-f]{64}$"
+)
+PACK_GUARD_SECRETS_INHERIT_RE = re.compile(
+    r"secrets:\s+inherit\b", re.IGNORECASE
+)
 PACK_GUARD_API_POST_RE = re.compile(
     r"github-script|\bgh\b.*\bapi\b|/statuses/|check-runs|check_runs|"
     r"createCommitStatus|api\.github\.com",
@@ -4194,16 +4220,14 @@ PACK_GUARD_PATH_ALLOWLIST_PROD = frozenset(
         "apps/dottie-os/scripts/lab/run_ultradata_harvest.py",
     }
 )
-# Test-only name: S21 normalizes to contain curatedpack. ce30 P_MUST_PASS
-# runs the real guard, so the CI snippet unions this set in.
+# Test-only name: S21 normalizes to contain curatedpack. Factory tests
+# pass this set explicitly; CI PATH_PY A= is production only.
 PACK_GUARD_PATH_ALLOWLIST_TEST = frozenset(
     {
         "apps/x/uncurated_package.py",
     }
 )
-PACK_GUARD_PATH_ALLOWLIST = (
-    PACK_GUARD_PATH_ALLOWLIST_PROD | PACK_GUARD_PATH_ALLOWLIST_TEST
-)
+PACK_GUARD_PATH_ALLOWLIST = PACK_GUARD_PATH_ALLOWLIST_PROD
 PACK_GUARD_PATH_TRANSLIT = {
     "\u0430": "a",
     "\u0435": "e",
@@ -4228,16 +4252,134 @@ PACK_GUARD_PATH_TRANSLIT = {
     "\u0406": "i",
 }
 _PACK_GUARD_ALLOW_REPR = (
-    "{" + ",".join(repr(p) for p in sorted(PACK_GUARD_PATH_ALLOWLIST)) + "}"
+    "{" + ",".join(repr(p) for p in sorted(PACK_GUARD_PATH_ALLOWLIST_PROD)) + "}"
 )
-PACK_GUARD_JSONL_OK_SEGS = frozenset(
-    "fixtures fixture sample sources evals probe_items benchmarks "
-    "hidden_files lessons orchestration reports bundles missions "
-    "examples corpus_proposals analytics coordination flags pipeline "
-    "goals lib data runs .scout".split()
+# Exact parent dirs of tracked jsonl/gz at 0b05ffc8 (32). Immediate parent
+# named fixtures/fixture is also allowed so synthetic test trees pass.
+PACK_GUARD_JSONL_OK_DIRS = frozenset(
+    {
+        ".scout/missions/slasso-analytics-trace-ops",
+        ".scout/missions/slasso-sota-20260815",
+        "apps/arxiviq-factory/sample",
+        "apps/arxiviq-factory/sources",
+        "apps/atlas-outcomes/sample",
+        "apps/atlas-outcomes/sources",
+        "apps/ava-factory/data/orchestration",
+        "apps/ava-factory/evals/probe_items",
+        "apps/ava-factory/runs/cpu_pilot/reports/agentic",
+        "apps/ava-factory/runs/cpu_pilot/reports/base",
+        "apps/ava-factory/scripts/fixtures/probe_error_analysis",
+        "apps/dottie-harness-api/bundles/ultra/runs/slasso-lattice-v2",
+        "apps/dottie-harness-api/lib",
+        "apps/jev-v0/fixtures",
+        "bundles/analytics",
+        "bundles/coordination",
+        "bundles/flags",
+        "bundles/ultra/runs/slasso-analytics-trace-ops",
+        "bundles/ultra/runs/slasso-sota-20260815",
+        "dottie/bundles/ultra/runs/slasso-analytics-trace-ops",
+        "dottie/bundles/ultra/runs/slasso-sota-20260815",
+        "examples",
+        "goals/frontend-swarm-hoops-level-everywhere/hidden_files",
+        "goals/orchestrator-scout-prime-always-on/hidden_files",
+        "hidden_files",
+        "lessons",
+        "packages/dottie-loop/dottie_loop/benchmarks",
+        "pipeline/runs/slasso-analytics-trace-ops",
+        "tasks/artifacts/corpus_proposals/gridiron_forecast_rows",
+        "tasks/artifacts/corpus_proposals/oapen_open_books",
+        "tasks/artifacts/corpus_proposals/repair_transcripts",
+        "workspace/skills/lessons",
+    }
+)
+PACK_GUARD_BLOB_MAX = 3 * 1024 * 1024
+# Exact tracked blobs whose type would otherwise trip S26 magics (sqlite).
+# Still run always-on checks (zip/LFS/tar/size/symlink/gitlink).
+PACK_GUARD_BLOB_OK_PATHS = frozenset(
+    {
+        "tasks/artifacts/ledger_copy.sqlite3",
+    }
+)
+_PACK_GUARD_INNER = r"""
+out=G('cat-file','--batch',inp=raw).stdout
+i=0
+while i<len(out):
+ nl=out.find(bytes([10]),i)
+ if nl<0:break
+ hdr=out[i:nl].split()
+ if len(hdr)<3:
+  i=nl+1
+  continue
+ sz=int(hdr[2]);st=nl+1;oid=hdr[0].decode()
+ if sz>CAP:
+  B[oid]=None
+  i=st+sz+1
+  continue
+ B[oid]=out[st:st+sz];i=st+sz+1
+def jl(b):
+ n=0
+ for line in b.split(bytes([10])):
+  s=line.strip()
+  if not s:continue
+  if s[:1] not in b'{[':return 0
+  try:json.loads(s)
+  except Exception:return 0
+  n+=1
+  if n>=2:return 1
+ return 0
+def tarv7(b):
+ if len(b)<512:return 0
+ fld=b[148:156]
+ try:st=int(fld.replace(bytes([0]),b' ').strip() or b'0',8)
+ except Exception:return 0
+ if sum(b[:148])+256+sum(b[156:512])!=st:return 0
+ name=b[:100].split(bytes([0]),1)[0]
+ return 1 if name and all(32<=c<127 for c in name) else 0
+def b64d(b):
+ s=b''.join(b.split())
+ if len(s)<32 or len(s)%4:return b''
+ try:return base64.b64decode(s,validate=True)
+ except Exception:return b''
+PK3=b'PK'+bytes([3,4]);PK5=b'PK'+bytes([5,6]);PK7=b'PK'+bytes([7,8])
+Z7=b'7z'+bytes([0xbc,0xaf,0x27,0x1c])
+LZ4=bytes([4,0x22,0x4d,0x18]);Z=bytes([0x1f,0x9d]);LZMA=bytes([0x5d,0,0,0x80,0])
+GZ=bytes([0x1f,0x8b]);XZ=bytes([0xfd])+b'7zXZ'+bytes([0]);ZST=bytes([0x28,0xb5,0x2f,0xfd])
+SQL=b'SQLite format 3'+bytes([0])
+def bad(b):
+ if b is None or len(b)>CAP:return 1
+ if b.startswith((LFS,LFS2,LFS3)):return 1
+ if PK3 in b or PK5 in b or PK7 in b:return 1
+ if b.startswith((b'Rar!',Z7)):return 1
+ if len(b)>261 and b[257:262]==b'ustar':return 1
+ if tarv7(b):return 1
+ return 0
+def s26(p):
+ m,o=info.get(p,('',''))
+ if m in ('120000','160000'):return 1
+ d=p[:p.rfind('/')] if '/' in p else ''
+ fx=d in OK or d[d.rfind('/')+1:] in ('fixtures','fixture')
+ b=B.get(o,b'')
+ if bad(b):return 1
+ if p in OKP:return 0
+ cf=p.casefold()
+ ext=any(cf.endswith(e) for e in EXT) or '.jsonl.' in cf or '.ndjson.' in cf
+ mag=isinstance(b,bytes) and b.startswith((GZ,b'BZh',XZ,ZST,SQL,LZ4,Z,LZMA,b'PAR1'))
+ if not fx and isinstance(b,bytes) and (ext or mag or jl(b)):return 1
+ if not fx and isinstance(b,bytes):
+  dcd=b64d(b)
+  if dcd and (bad(dcd) or dcd.startswith((GZ,b'BZh',XZ,ZST,SQL,LZ4,Z,LZMA,b'PAR1')) or jl(dcd)):return 1
+ return 0
+"""
+_PACK_GUARD_INNER_EXEC = (
+    "exec('"
+    + _PACK_GUARD_INNER.strip("\n")
+    .replace("\\", "\\\\")
+    .replace("'", "\\'")
+    .replace("\n", "\\n")
+    + "')"
 )
 PACK_GUARD_PATH_PY = (
-    "import sys,unicodedata,subprocess,os;"
+    "import sys,unicodedata,subprocess,os,json,base64;"
     f"A={_PACK_GUARD_ALLOW_REPR};"
     f"N={PACK_GUARD_PATH_NEEDLES!r};"
     "C=str.maketrans({"
@@ -4253,12 +4395,18 @@ PACK_GUARD_PATH_PY = (
     "any(n in ''.join(segs) for n in N) or any(ord(c)>127 for c in s))"
     "([nrm(y) for y in s.split('/')]);"
     "OK=frozenset("
-    f"{tuple(sorted(PACK_GUARD_JSONL_OK_SEGS))!r}"
+    f"{tuple(sorted(PACK_GUARD_JSONL_OK_DIRS))!r}"
     ");"
-    "fx=lambda p:any(s in OK for s in p.split('/'));"
+    "OKP=frozenset("
+    f"{tuple(sorted(PACK_GUARD_BLOB_OK_PATHS))!r}"
+    ");"
+    f"CAP={PACK_GUARD_BLOB_MAX};"
     "EXT=('.zip','.tar','.tgz','.7z','.rar','.gz','.bz2','.xz',"
-    "'.zst','.jsonl');"
+    "'.zst','.jsonl','.ndjson','.lz4','.lzma','.z01','.parquet',"
+    "'.z','.db','.sqlite','.sqlite3');"
     "LFS=b'version https://git-lfs.github.com/spec/v1';"
+    "LFS2=b'version https://hawser.github.com/spec/v1';"
+    "LFS3=b'version http://git-media.io/v/2';"
     "ge={'PATH':'/usr/bin:/bin','HOME':'/nonexistent',"
     "'GIT_CONFIG_NOSYSTEM':'1','GIT_CONFIG_GLOBAL':'/dev/null',"
     "'GIT_NO_REPLACE_OBJECTS':'1'};"
@@ -4278,27 +4426,10 @@ PACK_GUARD_PATH_PY = (
     " if sha else {});"
     "raw=b''.join((o+chr(10)).encode() for m,o in info.values() if o);"
     "B={};"
-    "exec('out=G(\\'cat-file\\',\\'--batch\\',inp=raw).stdout\\n"
-    "i=0\\n"
-    "while i<len(out):\\n"
-    " nl=out.find(bytes([10]),i)\\n"
-    " if nl<0:break\\n"
-    " hdr=out[i:nl].split()\\n"
-    " if len(hdr)<3:\\n"
-    "  i=nl+1\\n"
-    "  continue\\n"
-    " sz=int(hdr[2]);st=nl+1;B[hdr[0].decode()]=out[st:st+sz];i=st+sz+1');"
-    "s26=lambda p:(lambda m,o: m in ('120000','160000') or"
-    " (any(p.casefold().endswith(e) for e in EXT) and not fx(p)) or"
-    " (bool(o) and (lambda b: b.startswith(LFS) or b.startswith(("
-    "b'PK\\x03\\x04',b'PK\\x05\\x06',b'Rar!',b'7z\\xbc\\xaf\\x27\\x1c'"
-    ")) or b[257:262]==b'ustar' or ((b[:2]==b'\\x1f\\x8b' or"
-    " b[:3]==b'BZh' or b[:6]==b'\\xfd7zXZ\\x00' or"
-    " b[:4]==b'(\\xb5/\\xfd') and not fx(p)))"
-    "(B.get(o,b''))))(*info.get(p,('','')));"
+    f"{_PACK_GUARD_INNER_EXEC};"
     "names=[s for p in open(sys.argv[1],'rb').read().split(bytes([0]))"
     " if p for s in [p.decode('utf-8','surrogateescape')]];"
-    "hits=[s for s in names if s not in A and (hit(s) or s26(s))];"
+    "hits=[s for s in names if (s not in A and hit(s)) or s26(s)];"
     "[sys.stdout.write(s.encode('utf-8','backslashreplace').decode()"
     "+chr(10)) for s in hits];"
     "sys.exit(0 if hits else 1)"
@@ -4364,6 +4495,9 @@ CRITIC_91_CE30_SHA256 = (
 )
 CRITIC_91_F8F1_SHA256 = (
     "4cdf999eef803bd20ee448a3c836230fcf9fe294bf2b3c11a20ffeba081986a0"
+)
+CRITIC_91_0B05_SHA256 = (
+    "36130a164b5130b8404b05986308ad551396cedd02fb17abff6c8f899b4daeaf"
 )
 LEAKGATE_TRACKED_NAMES = frozenset(
     {
@@ -4796,10 +4930,13 @@ def _pack_guard_norm_segment(segment: str) -> str:
     return "".join(ch for ch in folded if ch.isalnum())
 
 
-def _pack_guard_path_is_banned(path: str) -> bool:
+def _pack_guard_path_is_banned(
+    path: str, extra_allow: frozenset[str] | None = None
+) -> bool:
     """S21: exact-path allowlist, else refuse curatedpack/ultradataharvest."""
     posix = path.replace("\\", "/")
-    if posix in PACK_GUARD_PATH_ALLOWLIST:
+    allow = PACK_GUARD_PATH_ALLOWLIST_PROD | (extra_allow or frozenset())
+    if posix in allow:
         return False
     segs = [_pack_guard_norm_segment(part) for part in posix.split("/")]
     blob = "".join(segs)
@@ -5601,22 +5738,80 @@ def _gha_expr_norm(expr: str) -> str:
     return re.sub(r"\s+", "", expr).casefold()
 
 
+def _iter_gha_exprs(text: str) -> list[str]:
+    """GitHub TemplateReader: ${{ }} ends at an unquoted }}; '...' with ''."""
+    found: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        start = text.find("${{", i)
+        if start < 0:
+            break
+        j = start + 3
+        in_sq = False
+        while j < n:
+            ch = text[j]
+            if in_sq:
+                if ch == "'":
+                    if j + 1 < n and text[j + 1] == "'":
+                        j += 2
+                        continue
+                    in_sq = False
+                j += 1
+                continue
+            if ch == "'":
+                in_sq = True
+                j += 1
+                continue
+            if ch == "}" and j + 1 < n and text[j + 1] == "}":
+                found.append(text[start + 3 : j])
+                i = j + 2
+                break
+            j += 1
+        else:
+            found.append(text[start + 3 :])
+            break
+    return found
+
+
 def _gha_expr_is_forbidden(expr: str) -> bool:
     n = _gha_expr_norm(expr)
-    if "secrets" in n:
+    if "secrets" in n or "github_token" in n:
         return True
-    if "github.token" in n:
-        return True
-    if "github['token']" in n or 'github["token"]' in n:
-        return True
-    return "github_token" in n
+    i = 0
+    while True:
+        j = n.find("github", i)
+        if j < 0:
+            return False
+        if j > 0 and (n[j - 1].isalnum() or n[j - 1] == "_"):
+            i = j + 6
+            continue
+        end = j + 6
+        if end < len(n) and (n[end].isalnum() or n[end] == "_"):
+            i = j + 6
+            continue
+        rest = n[end:]
+        if j and n[j - 1] in "(,":
+            return True
+        if not rest or rest[0] in "[*":
+            return True
+        if rest.startswith(".*"):
+            return True
+        if rest[0] != ".":
+            return True
+        k = 1
+        while k < len(rest) and (rest[k].isalnum() or rest[k] == "_"):
+            k += 1
+        prop = rest[1:k]
+        if prop not in PACK_GUARD_GITHUB_SAFE:
+            return True
+        if k < len(rest) and rest[k] in ".[":
+            return True
+        i = end + k
 
 
 def _workflow_body_has_forbidden_expr(body: str) -> bool:
-    return any(
-        _gha_expr_is_forbidden(match.group(1))
-        for match in PACK_GUARD_EXPR_RE.finditer(body)
-    )
+    return any(_gha_expr_is_forbidden(expr) for expr in _iter_gha_exprs(body))
 
 
 def _local_uses_norm(raw: str) -> str:
@@ -5625,6 +5820,17 @@ def _local_uses_norm(raw: str) -> str:
         posix = posix[2:]
     posix = posix.lstrip("/")
     return os.path.normpath(posix).replace("\\", "/")
+
+
+def _gha_entry_under_dot_github(root: Path, rel: str, entry: str) -> bool:
+    action_dir = (root / rel).parent
+    github_root = (root / ".github").resolve()
+    target = (action_dir / entry).resolve()
+    try:
+        target.relative_to(github_root)
+    except ValueError:
+        return False
+    return True
 
 
 def _assert_local_gha_scanned(
@@ -6117,11 +6323,15 @@ def _assert_gha_file_surface(
         raise AssertionError(
             f"{rel} ${{{{ }}}} expression mentions secrets or github.token"
         )
-    if "secrets: inherit" in body:
+    if PACK_GUARD_SECRETS_INHERIT_RE.search(body):
         raise AssertionError(f"{rel} forbids secrets: inherit")
     doc = _load_workflow_yaml(body)
     if not isinstance(doc, dict):
         raise AssertionError(f"{rel} is not a YAML mapping")
+    if _workflow_body_has_forbidden_expr(_dump_strings(doc)):
+        raise AssertionError(
+            f"{rel} parsed YAML ${{{{ }}}} mentions secrets or github.token"
+        )
     on_value = None
     for key, value in doc.items():
         if str(key).casefold() == "on":
@@ -6179,6 +6389,23 @@ def _assert_gha_file_surface(
                 )
     runs = doc.get("runs")
     if isinstance(runs, dict):
+        using = str(runs.get("using") or "").casefold()
+        if using == "docker":
+            image = str(runs.get("image") or "").strip()
+            if not PACK_GUARD_DOCKER_DIGEST_RE.fullmatch(image.casefold()):
+                raise AssertionError(
+                    f"{rel} docker action image must be digest-pinned, "
+                    f"got {image!r}"
+                )
+        if using.startswith("node"):
+            for key in ("main", "pre", "post"):
+                entry = runs.get(key)
+                if not entry:
+                    continue
+                if not _gha_entry_under_dot_github(root, rel, str(entry)):
+                    raise AssertionError(
+                        f"{rel} {key}: {entry!r} resolves outside .github/"
+                    )
         steps = runs.get("steps")
         if isinstance(steps, list):
             for step in steps:
@@ -6477,6 +6704,37 @@ def _commit_pack_guard_tree(repo: Path, env: dict[str, str], message: str) -> No
     )
 
 
+def _head_blob_sizes(repo: Path) -> list[tuple[int, str]]:
+    """HEAD blob sizes from `git ls-tree -r -l` (skips gitlinks)."""
+    proc = subprocess.run(
+        ["git", "ls-tree", "-r", "-l", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_pack_guard_git_env(),
+    )
+    rows: list[tuple[int, str]] = []
+    for line in proc.stdout.splitlines():
+        meta, path = line.split("\t", 1)
+        parts = meta.split()
+        if len(parts) < 4 or parts[3] == "-":
+            continue
+        rows.append((int(parts[3]), path))
+    return rows
+
+
+def _jsonl_parent_dir(path: str) -> str | None:
+    folded = path.casefold()
+    if not (
+        folded.endswith((".jsonl", ".ndjson", ".gz"))
+        or ".jsonl." in folded
+        or ".ndjson." in folded
+    ):
+        return None
+    return path[: path.rfind("/")] if "/" in path else ""
+
+
 def _run_pack_guard_script(
     repo: Path,
     run_script: str,
@@ -6768,7 +7026,7 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             _assert_read_only_token_and_checkouts(job_widen)
 
     def test_pack_guard_path_pattern_refuses_fourteen_allows_three(self) -> None:
-        """S21: shared segment-normalize rule, 22 refused + 4 allowlisted."""
+        """S21: shared segment-normalize rule, 22 refused + 3 prod allowlisted."""
         run = self._run_block()
         self.assertIn(PACK_GUARD_PATH_PY, run)
         must_catch = [
@@ -6797,16 +7055,23 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         ]
         must_pass = [
             "docs/curated-packing-notes.md",
-            "apps/x/uncurated_package.py",
             "scripts/run_ultradata_harvest.py",
             "apps/dottie-os/scripts/lab/run_ultradata_harvest.py",
         ]
+        test_only = "apps/x/uncurated_package.py"
         self.assertEqual(len(must_catch), 22)
-        self.assertEqual(len(must_pass), 4)
+        self.assertEqual(len(must_pass), 3)
         for name in must_catch:
             self.assertTrue(_pack_guard_path_is_banned(name), name)
         for name in must_pass:
             self.assertFalse(_pack_guard_path_is_banned(name), name)
+        self.assertTrue(_pack_guard_path_is_banned(test_only), test_only)
+        self.assertFalse(
+            _pack_guard_path_is_banned(
+                test_only, extra_allow=PACK_GUARD_PATH_ALLOWLIST_TEST
+            ),
+            test_only,
+        )
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             for name in must_catch:
@@ -6928,6 +7193,14 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             CRITIC_91_F8F1_SHA256,
         )
 
+    def test_critic_91_0b05_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_0b05.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_0B05_SHA256,
+        )
+
     def test_ci_pack_guard_run_block_trips_on_tracked_packs(self) -> None:
         run = self._run_block()
         with tempfile.TemporaryDirectory() as tmp:
@@ -6992,7 +7265,30 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             )
 
     def test_this_tree_has_no_tracked_pack_artifacts(self) -> None:
+        """S26: 3 MiB cap + 32 fixture dirs must not refuse this HEAD tree."""
+        blobs = _head_blob_sizes(REPO_ROOT)
+        self.assertGreaterEqual(len(blobs), PACK_GUARD_LS_FILES_FLOOR)
+        over = [(sz, path) for sz, path in blobs if sz > PACK_GUARD_BLOB_MAX]
+        self.assertEqual(
+            over,
+            [],
+            f"tracked blobs exceed CAP={PACK_GUARD_BLOB_MAX}: {over}",
+        )
+        largest_sz, largest_path = max(blobs)
+        self.assertGreater(
+            largest_sz,
+            2 * 1024 * 1024,
+            f"expected the ~2.58 MiB tracked file, got {largest_sz} {largest_path}",
+        )
+        self.assertLessEqual(largest_sz, PACK_GUARD_BLOB_MAX)
+        jsonl_dirs = {
+            parent
+            for path in (p for _, p in blobs)
+            if (parent := _jsonl_parent_dir(path)) is not None
+        }
+        self.assertEqual(jsonl_dirs, PACK_GUARD_JSONL_OK_DIRS)
         run = self._run_block()
+        self.assertIn(f"CAP={PACK_GUARD_BLOB_MAX}", run)
         env = _pack_guard_git_env()
         proc = _run_pack_guard_script(REPO_ROOT, run, env)
         self.assertEqual(
@@ -7000,6 +7296,25 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             0,
             msg=f"stdout={proc.stdout!r} stderr={proc.stderr!r}",
         )
+
+    def test_pack_guard_refuses_blob_over_size_cap(self) -> None:
+        """S26 size cap fails closed one byte over 3 MiB, neutral name."""
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            blob = repo / "apps" / "x" / "weights.bin"
+            blob.parent.mkdir(parents=True, exist_ok=True)
+            blob.write_bytes(b"A" * (PACK_GUARD_BLOB_MAX + 1))
+            _commit_pack_guard_tree(repo, env, "oversize")
+            proc = _run_pack_guard_script(repo, run, env)
+        self.assertNotEqual(
+            proc.returncode,
+            0,
+            msg=f"oversize blob must trip; stdout={proc.stdout!r}",
+        )
+        self.assertIn("apps/x/weights.bin", proc.stdout)
 
     def test_pack_guard_fails_closed_outside_git_repo(self) -> None:
         run = self._run_block()
