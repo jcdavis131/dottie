@@ -321,7 +321,11 @@ print('GREEN' if r.wasSuccessful() else 'RED')
 ON = "on:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n"
 SETUP = "        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
 STEP = "      - name: Refuse tracked pack artifacts\n        run: |\n"
+PACK_JOB = "  pack-guard:\n    runs-on: ubuntu-latest\n"
+SHELL = '        shell: "/usr/bin/bash --noprofile --norc -p -euo pipefail {0}"\n'
+CHECKOUT_WITH = "          persist-credentials: false\n"
 assert ON in ORIG and SETUP in ORIG and STEP in ORIG
+assert PACK_JOB in ORIG and SHELL in ORIG and CHECKOUT_WITH in ORIG
 
 
 def sub(a, b):
@@ -363,6 +367,9 @@ MUTATIONS = [
     ("alias_run_from_anchor", sub(STEP, "      - name: Refuse tracked pack artifacts\n        run: &g |\n"), {}),
     ("earlier_uses_swapped_to_third_party", sub(SETUP, "        uses: evil/setup-python@v5\n"), {}),
     ("earlier_python_test_writes_github_env", lambda t: t, {"apps/dottie-os/tests/test_zz_critic_env.py": EVIL_TEST}),
+    ("donewhen_shell_drops_euo_pipefail", sub(SHELL, '        shell: "/usr/bin/bash --noprofile --norc -p {0}"\n'), {}),
+    ("donewhen_job_name_override", sub(PACK_JOB, "  pack-guard:\n    name: pack-guard-ci\n    runs-on: ubuntu-latest\n"), {}),
+    ("donewhen_checkout_with_ref", sub(CHECKOUT_WITH, "          persist-credentials: false\n          ref: main\n"), {}),
 ]
 
 

@@ -4121,6 +4121,13 @@ PACK_GUARD_USES_PIN_RE = re.compile(
 # pack-guard and dottie-os-smoke: exactly {runs-on, steps}. No needs, name,
 # timeout-minutes, if, continue-on-error, defaults, env, container, services.
 PACK_GUARD_JOB_KEYS = frozenset({"runs-on", "steps"})
+PACK_GUARD_JOB_FORBIDDEN_KEYS = frozenset(
+    {"if", "continue-on-error", "needs", "strategy", "name"}
+)
+PACK_GUARD_CHECKOUT_USES_RE = re.compile(
+    r"^actions/checkout@[0-9a-fA-F]{40}$"
+)
+PACK_GUARD_SHELL_EUO = "-euo pipefail"
 # S6: ci.yml top-level keys and the trigger block on main (a3872eab).
 PACK_GUARD_WORKFLOW_KEYS = frozenset({"name", "on", "jobs"})
 PACK_GUARD_ON_BLOCK = (
@@ -4891,6 +4898,80 @@ def _assert_workflow_job_unique(
         )
 
 
+def _iter_gha_jobs(text: str) -> list[tuple[str, str]]:
+    """(job_id, display_name) for each job under top-level jobs:."""
+    lines = text.splitlines()
+    jobs_at: int | None = None
+    for idx, line in enumerate(lines):
+        if re.match(r"^jobs:\s*$", line):
+            jobs_at = idx
+            break
+    if jobs_at is None:
+        return []
+    found: list[tuple[str, str]] = []
+    job_id: str | None = None
+    name_ov: str | None = None
+
+    def _flush() -> None:
+        nonlocal job_id, name_ov
+        if job_id is None:
+            return
+        display = name_ov if name_ov is not None else job_id
+        found.append((job_id, display))
+        job_id = None
+        name_ov = None
+
+    for line in lines[jobs_at + 1 :]:
+        if (
+            line.strip()
+            and not line.lstrip().startswith("#")
+            and line[:1] not in " \t"
+        ):
+            break
+        header = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+        if header:
+            _flush()
+            job_id = header.group(1)
+            name_ov = None
+            continue
+        named = re.match(r"^    name:\s*(.+?)\s*$", line)
+        if named and job_id is not None and name_ov is None:
+            name_ov = named.group(1).strip().strip("\"'")
+    _flush()
+    return found
+
+
+def _assert_pack_guard_check_name_unique(
+    text: str, repo_root: Path | None = None
+) -> None:
+    """Job id and GitHub check/display name are exactly pack-guard, once."""
+    root = REPO_ROOT if repo_root is None else repo_root
+    ci_rel = str(Path(".github") / "workflows" / "ci.yml")
+    id_hits: list[tuple[str, str, str]] = []
+    display_hits: list[tuple[str, str, str]] = []
+    wf_dir = root / ".github" / "workflows"
+    paths = sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml"))
+    for path in paths:
+        rel = str(path.relative_to(root))
+        body = text if rel == ci_rel else path.read_text(encoding="utf-8")
+        for job_id, display in _iter_gha_jobs(body):
+            if job_id == PACK_GUARD_JOB:
+                id_hits.append((rel, job_id, display))
+            if display == PACK_GUARD_JOB:
+                display_hits.append((rel, job_id, display))
+    expected = [(ci_rel, PACK_GUARD_JOB, PACK_GUARD_JOB)]
+    if id_hits != expected:
+        raise AssertionError(
+            f"job id {PACK_GUARD_JOB!r} must be unique, with display name "
+            f"{PACK_GUARD_JOB!r}; found {id_hits}"
+        )
+    if display_hits != expected:
+        raise AssertionError(
+            f"check/display name {PACK_GUARD_JOB!r} must be unique across "
+            f"every workflow file; found {display_hits}"
+        )
+
+
 def _assert_pack_guard_names_unique(repo_root: Path | None = None) -> None:
     root = REPO_ROOT if repo_root is None else repo_root
     wf_dir = root / ".github" / "workflows"
@@ -5032,9 +5113,17 @@ def _assert_pack_guard_context(text: str) -> dict[str, object]:
             f"got {on_block!r}"
         )
     _assert_pack_guard_names_unique()
+    _assert_pack_guard_check_name_unique(text)
     _assert_uses_pinned_and_allowlisted(text)
     _assert_tests_do_not_write_runner_env()
     _assert_job_keys_exact(text, PACK_GUARD_JOB)
+    pack_keys = _job_keys_from_text(text, job=PACK_GUARD_JOB)
+    banned = pack_keys & PACK_GUARD_JOB_FORBIDDEN_KEYS
+    if banned:
+        raise AssertionError(
+            f"pack-guard job has forbidden keys {sorted(banned)} "
+            "(no if:/continue-on-error/needs:/strategy/name:)"
+        )
     _assert_job_keys_exact(text, DOTTIE_OS_SMOKE_JOB)
     _assert_smoke_job_has_no_hollowing_steps(text)
     blocks = _job_step_blocks_from_text(text)
@@ -5050,15 +5139,21 @@ def _assert_pack_guard_context(text: str) -> dict[str, object]:
             f"pack-guard checkout keys {sorted(checkout)} != "
             f"{sorted(PACK_GUARD_CHECKOUT_KEYS)}"
         )
-    if checkout.get("uses") != PACK_GUARD_CHECKOUT_PIN:
+    uses = str(checkout.get("uses") or "")
+    if not PACK_GUARD_CHECKOUT_USES_RE.fullmatch(uses):
         raise AssertionError(
-            f"pack-guard checkout uses {checkout.get('uses')!r} != "
-            f"{PACK_GUARD_CHECKOUT_PIN!r}"
+            "pack-guard actions/checkout must be pinned to a 40-hex sha; "
+            f"got {uses!r}"
         )
-    if checkout.get("with") != PACK_GUARD_CHECKOUT_WITH:
+    if uses != PACK_GUARD_CHECKOUT_PIN:
+        raise AssertionError(
+            f"pack-guard checkout uses {uses!r} != {PACK_GUARD_CHECKOUT_PIN!r}"
+        )
+    with_ = checkout.get("with")
+    if with_ != PACK_GUARD_CHECKOUT_WITH:
         raise AssertionError(
             "pack-guard checkout with: must be exactly "
-            f"{PACK_GUARD_CHECKOUT_WITH}, got {checkout.get('with')!r}"
+            f"{PACK_GUARD_CHECKOUT_WITH} and nothing else; got {with_!r}"
         )
     if guard.get("name") != PACK_GUARD_STEP_NAME:
         raise AssertionError(
@@ -5069,6 +5164,17 @@ def _assert_pack_guard_context(text: str) -> dict[str, object]:
         raise AssertionError(
             f"pack-guard step keys {sorted(guard)} != "
             f"{sorted(PACK_GUARD_STEP_KEYS)}"
+        )
+    shell = str(guard.get("shell") or "")
+    if PACK_GUARD_SHELL_EUO not in shell:
+        raise AssertionError(
+            "pack-guard shell must include -euo pipefail "
+            f"(bash --noprofile --norc -euo pipefail); got {shell!r}"
+        )
+    if "--noprofile" not in shell or "--norc" not in shell:
+        raise AssertionError(
+            "pack-guard shell must include --noprofile --norc; "
+            f"got {shell!r}"
         )
     if guard.get("shell") != PACK_GUARD_SHELL:
         raise AssertionError(
@@ -5230,6 +5336,14 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         self.assertNotIn("if", step)
         self.assertNotIn("continue-on-error", step)
         self.assertEqual(step.get("shell"), PACK_GUARD_SHELL)
+        self.assertIn(PACK_GUARD_SHELL_EUO, str(step.get("shell")))
+        self.assertIn("--noprofile", str(step.get("shell")))
+        self.assertIn("--norc", str(step.get("shell")))
+        self.assertNotIn("if", _job_keys_from_text(text))
+        self.assertNotIn("continue-on-error", _job_keys_from_text(text))
+        self.assertNotIn("needs", _job_keys_from_text(text))
+        self.assertNotIn("strategy", _job_keys_from_text(text))
+        self.assertNotIn("name", _job_keys_from_text(text))
         self.assertNotIn("working-directory", step)
         self.assertNotIn("env", step)
         self.assertIsInstance(step.get("run"), str)
@@ -5275,6 +5389,48 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             job = jobs.get(PACK_GUARD_JOB)
             self.assertIsInstance(job, dict)
             self.assertEqual(set(job), PACK_GUARD_JOB_KEYS)
+
+    def test_donewhen_mutations_go_red(self) -> None:
+        """Critic done-when: shell -euo, unique pack-guard name, checkout with:."""
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+        shell_line = (
+            '        shell: "/usr/bin/bash --noprofile --norc -p '
+            '-euo pipefail {0}"'
+        )
+        self.assertIn(shell_line, text)
+        cases = (
+            (
+                "shell_drops_euo_pipefail",
+                text.replace(
+                    shell_line,
+                    '        shell: "/usr/bin/bash --noprofile --norc -p {0}"',
+                    1,
+                ),
+            ),
+            (
+                "job_name_override",
+                text.replace(
+                    "  pack-guard:\n    runs-on: ubuntu-latest\n",
+                    "  pack-guard:\n    name: pack-guard-ci\n"
+                    "    runs-on: ubuntu-latest\n",
+                    1,
+                ),
+            ),
+            (
+                "checkout_with_ref",
+                text.replace(
+                    "          persist-credentials: false\n",
+                    "          persist-credentials: false\n"
+                    "          ref: main\n",
+                    1,
+                ),
+            ),
+        )
+        for mid, mutated in cases:
+            with self.subTest(mutation=mid):
+                self.assertNotEqual(mutated, text, f"{mid} did not change ci.yml")
+                with self.assertRaises(AssertionError):
+                    _assert_pack_guard_context(mutated)
 
     def test_critic_91_suite_is_vendored(self) -> None:
         path = TESTS / "test_critic_91_mutations.py"
