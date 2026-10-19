@@ -93,6 +93,7 @@ if not _SEALED_FILE and _LAB not in sys.path:
 
 import cam_pin_spec
 import content_uuid
+import denied_field_schema
 
 PACK_FILE = "curated_pack_v2.jsonl"
 TRAIN_FILE = "curated_pack_v2_train.jsonl"
@@ -3933,6 +3934,25 @@ def collect_reserved_partition(
     return hits
 
 
+def collect_denied_field_violations(
+    recorded_paths: Mapping[str, str],
+) -> list[tuple[str, str]]:
+    """Refuse rows whose denied fields fail the schema check."""
+    rows = _load_jsonl_rows(recorded_paths.get("train"))
+    rows.extend(_load_jsonl_rows(recorded_paths.get("holdout")))
+    if not rows:
+        rows = _unique_pack_rows(recorded_paths)
+    hits: list[tuple[str, str]] = []
+    for row in rows:
+        try:
+            denied_field_schema.check_denied_fields(row)
+        except denied_field_schema.DeniedFieldError as exc:
+            hits.append((exc.field, f"{_row_id(row)}:{exc.reason}"))
+            if len(hits) >= 10:
+                return hits
+    return hits
+
+
 def collect_group_key_violations(
     recorded_paths: Mapping[str, str],
 ) -> list[tuple[str, str]]:
@@ -3990,6 +4010,14 @@ def enforce_pack_gates(
                 field,
                 "one group key per subset",
                 [msg for _field, msg in group_hits[:10]],
+            )
+        denied_hits = collect_denied_field_violations(recorded_paths)
+        if denied_hits:
+            field = denied_hits[0][0]
+            _refuse(
+                field,
+                "schema-valid denied fields",
+                [msg for _field, msg in denied_hits[:10]],
             )
     leaks = collect_state_leaks(recorded_paths, pack_dir=pack_dir)
     if leaks:

@@ -110,7 +110,9 @@ finalize_manifest = _load("finalize_manifest", LAB / "finalize_manifest.py")
 kick_helper_ft = _load("kick_helper_ft", LAB / "kick_helper_ft.py")
 helper_ft_kickoff = _load("helper_ft_kickoff", LAB / "helper_ft_kickoff.py")
 content_uuid = _load("content_uuid", LAB / "content_uuid.py")
+denied_field_schema = _load("denied_field_schema", LAB / "denied_field_schema.py")
 kick_helper_ft.content_uuid = content_uuid
+kick_helper_ft.denied_field_schema = denied_field_schema
 if helper_ft_kickoff.kick_helper_ft is not kick_helper_ft:
     helper_ft_kickoff.kick_helper_ft.content_uuid = content_uuid
 labeled_data_guard = _load("labeled_data_guard", SCRIPTS / "labeled_data_guard.py")
@@ -526,6 +528,7 @@ _TEST_TRUST_BLOBS = {
     "apps/dottie-os/trust/reserved_near_dup_fingerprints.jsonl": "test-fps-blob",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py": "test-spec-blob",
     "apps/dottie-os/scripts/lab/content_uuid.py": "test-uuid-blob",
+    "apps/dottie-os/scripts/lab/denied_field_schema.py": "test-denied-schema-blob",
     "apps/dottie-os/scripts/lab/neardup_tokens-v1.py": "test-tok-blob",
     "apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json": "test-tok-golden-blob",
     "HEAD": "test-head-sha",
@@ -5658,9 +5661,9 @@ class HelperFtLeakGateSyntheticTests(unittest.TestCase):
         for row, action in zip(rows, actions, strict=True):
             meta: dict[str, object] = {"keep": "x"}
             if action == "halt":
-                meta["extra_a"] = "1"
-                meta["extra_b"] = "2"
-                meta["extra_c"] = "3"
+                meta["hint"] = "1"
+                meta["tag"] = "2"
+                meta["uid"] = "3"
             row["state"] = {"message": row["state"]["message"], "meta": meta}
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -5671,7 +5674,11 @@ class HelperFtLeakGateSyntheticTests(unittest.TestCase):
                 kick_helper_ft.kick(dest)
         self.assertEqual(ctx.exception.field, "state.leak")
         self.assertTrue(
-            any("key_count" in str(item) or "extra_" in str(item) for item in ctx.exception.actual)
+            any(
+                token in str(item)
+                for item in ctx.exception.actual
+                for token in ("key_count", "hint", "tag", "uid")
+            )
         )
 
     def test_keycount_uncorrelated_twin_accepted(self) -> None:
@@ -5680,9 +5687,9 @@ class HelperFtLeakGateSyntheticTests(unittest.TestCase):
         for idx, row in enumerate(rows):
             meta: dict[str, object] = {"keep": "x"}
             if idx % 2 == 0:
-                meta["extra_a"] = "1"
-                meta["extra_b"] = "2"
-                meta["extra_c"] = "3"
+                meta["hint"] = "1"
+                meta["tag"] = "2"
+                meta["uid"] = "3"
             row["state"] = {"message": row["state"]["message"], "meta": meta}
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -8081,6 +8088,7 @@ class HelperFtCodePinsTests(unittest.TestCase):
             "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
             "apps/dottie-os/scripts/lab/cam_pin_spec.py",
             "apps/dottie-os/scripts/lab/content_uuid.py",
+            "apps/dottie-os/scripts/lab/denied_field_schema.py",
             "apps/dottie-os/scripts/lab/neardup_tokens-v1.py",
             "apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json",
             "apps/dottie-os/trust/cam_pin_ed25519.pub",
@@ -8476,6 +8484,157 @@ class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
                 self.assertIn("code_pins", str(result.get("field")))
         finally:
             _stop_hq_http_mock(self)
+
+
+DENIED_FIELD_N_TEXT = "the reserved eval n member hid here"
+
+
+def _place_denied_field(row: dict, field: str, value: object) -> dict:
+    placed = json.loads(json.dumps(row))
+    if field == "state.meta":
+        state = dict(placed.get("state") or {})
+        state["meta"] = value
+        placed["state"] = state
+        return placed
+    placed[field] = value
+    return placed
+
+
+class HelperFtDeniedFieldSchemaTests(unittest.TestCase):
+    """Fail-closed schema on fields the near-dup extractor never reads."""
+
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+        _start_hq_http_mock(self)
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            return {"ok": True, "checkpoint_id": "ckpt-denied", "exit_code": 0}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+
+    def tearDown(self) -> None:
+        kick_helper_ft.post_kickoff = self._orig_post
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
+
+    def _valid_row(self, *, rid: str = "keep-labels", action: str = "halt") -> dict:
+        row = _strict_row(rid, action)
+        row["subset"] = "Agent"
+        row["trajectory_id"] = rid
+        return row
+
+    def test_n_text_in_each_denied_field_is_refused_not_dropped(self) -> None:
+        base = self._valid_row()
+        fields = denied_field_schema.DENIED_FIELDS
+        self.assertEqual(
+            fields,
+            (
+                "schema",
+                "id",
+                "tier",
+                "source",
+                "labels",
+                "questions",
+                "consent",
+                "trajectory_id",
+                "record_id",
+                "group_key",
+                "state.meta",
+            ),
+        )
+        for field in fields:
+            with self.subTest(field=field):
+                row = _place_denied_field(base, field, DENIED_FIELD_N_TEXT)
+                if field == "state.meta":
+                    self.assertEqual(row["state"]["meta"], DENIED_FIELD_N_TEXT)
+                else:
+                    self.assertEqual(row[field], DENIED_FIELD_N_TEXT)
+                with self.assertRaises(denied_field_schema.DeniedFieldError) as ctx:
+                    denied_field_schema.check_denied_fields(row)
+                self.assertEqual(ctx.exception.field, field)
+                self.assertTrue(ctx.exception.reason)
+                with self.assertRaises(denied_field_schema.DeniedFieldError) as train_ctx:
+                    denied_field_schema.trainer_input_from_row(row)
+                self.assertEqual(train_ctx.exception.field, field)
+                if field == "state.meta":
+                    self.assertEqual(row["state"]["meta"], DENIED_FIELD_N_TEXT)
+                else:
+                    self.assertEqual(row[field], DENIED_FIELD_N_TEXT)
+
+    def test_valid_row_keeps_labels_and_questions_in_trainer_input(self) -> None:
+        row = self._valid_row(rid="keep-labels", action="halt")
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        payload = denied_field_schema.trainer_input_from_row(row)
+        self.assertEqual(payload["labels"], row["labels"])
+        self.assertEqual(payload["questions"], row["questions"])
+        self.assertEqual(payload["labels"]["action"]["choice"], "halt")
+        self.assertEqual(
+            payload["questions"]["action"]["instructions"],
+            "What should the pair-programmer do?",
+        )
+        self.assertEqual(payload["text"], mill.message_text(row["state"]["message"]))
+        self.assertNotIn("state", payload)
+        self.assertNotIn("message", payload)
+
+    def test_unknown_state_meta_key_is_refused(self) -> None:
+        row = self._valid_row(rid="meta-unknown")
+        row["state"] = {
+            "message": row["state"]["message"],
+            "meta": {"kind": "math_problem", "smuggled": "n-text-here"},
+        }
+        with self.assertRaises(denied_field_schema.DeniedFieldError) as ctx:
+            denied_field_schema.check_denied_fields(row)
+        self.assertEqual(ctx.exception.field, "state.meta")
+        self.assertIn("smuggled", ctx.exception.reason)
+        with self.assertRaises(denied_field_schema.DeniedFieldError):
+            denied_field_schema.trainer_input_from_row(row)
+        self.assertIn("smuggled", row["state"]["meta"])
+
+    def test_kick_refuses_n_text_in_labels_at_schema_gate(self) -> None:
+        poisoned = _place_denied_field(
+            _row(rid="n-labels", action="halt"), "labels", DENIED_FIELD_N_TEXT
+        )
+        partner = _row(rid="n-labels-ok", action="execute")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(
+                dest, [poisoned, partner], pack_id="denied-n-labels"
+            )
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "labels")
+        self.assertEqual(ctx.exception.expected, "schema-valid denied fields")
+        self.assertTrue(any("object required" in str(item) for item in ctx.exception.actual))
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_kick_refuses_unknown_state_meta_key(self) -> None:
+        row = _row(rid="meta-x", action="halt")
+        row["state"] = {
+            "message": row["state"]["message"],
+            "meta": {"kind": "ok", "extra": "hid"},
+        }
+        partner = _row(rid="meta-ok", action="execute")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(
+                dest, [row, partner], pack_id="denied-meta-unknown"
+            )
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.meta")
+        self.assertEqual(ctx.exception.expected, "schema-valid denied fields")
+        self.assertTrue(any("extra" in str(item) for item in ctx.exception.actual))
+        self.assertEqual(self.kickoff_calls, [])
 
 
 if __name__ == "__main__":
