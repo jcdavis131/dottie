@@ -64,7 +64,7 @@ Caps for this harvest run (Forge): agent **120** / code **80** / math **60**.
 | nugatron inbox / registry staging | Ingest pack + MANIFEST; verify sha256 |
 | Radar | Pulse outbox/inbox presence + health; no edits |
 | Brief | Update lab brief from MANIFEST fields |
-| FT job (Cam kick only) | `scripts/lab/kick_helper_ft.py` requires CLI trust anchors (ticket or Mill-signed HQ record), re-hashes pack/train/holdout vs those anchors and MANIFEST, stages 0700 copies, writes evidence, then POSTs `:8765/train/kickoff` with the named pack (never `inbox:latest`). Never auto-promote. |
+| FT job (Cam kick only) | `scripts/lab/kick_helper_ft.py` requires CLI trust anchors (ticket or Mill-signed HQ record), re-hashes pack/train/holdout vs those anchors and MANIFEST, stages 0700 copies, writes evidence, then POSTs `:8765/train/kickoff` with the named pack. The handler re-hashes those copies vs request shas and anchors; `inbox:latest` and other HELPER FT start routes are refused. Never auto-promote. |
 
 ---
 

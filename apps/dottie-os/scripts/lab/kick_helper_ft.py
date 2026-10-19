@@ -597,11 +597,13 @@ def kick(
             "sha256_pack": evidence["computed_shas"]["sha256_pack"],
             "sha256_train": evidence["computed_shas"]["sha256_train"],
             "sha256_holdout": evidence["computed_shas"]["sha256_holdout"],
+            "expected_shas": dict(evidence["expected_shas"]),
             "run_private_dir": evidence["run_private_dir"],
             "paths": evidence["paths"],
             "evidence": dict(evidence),
             "evidence_path": evidence["evidence_path"],
             "run_id": run_id,
+            "checked_at": evidence["checked_at"],
         }
         if kickoff is not None:
             result = kickoff(body)

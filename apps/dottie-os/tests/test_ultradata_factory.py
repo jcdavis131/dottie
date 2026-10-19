@@ -14,6 +14,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 APP = Path(__file__).resolve().parents[1]
@@ -449,6 +450,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(kickoff_body["sha256_holdout"], manifest["sha256_holdout"])
         self.assertIn("run_private_dir", kickoff_body)
         self.assertIn("paths", kickoff_body)
+        self.assertEqual(kickoff_body["expected_shas"]["sha256_pack"], manifest["sha256_pack"])
         self.assertTrue(kickoff_body["evidence"]["ok"])
         self.assertEqual(rc, 0)
         self.assertEqual(evidence["expected_shas"]["sha256_pack"], manifest["sha256_pack"])
@@ -963,21 +965,16 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(mismatched["field"], "pack_id")
 
     def test_handler_refuses_sha_mismatch_on_named_pack(self) -> None:
-        body = {
-            "mode": "helper-ft",
-            "pack_id": "curated_pack_v2-test",
-            "sha256_pack": "a" * 64,
-            "sha256_train": "b" * 64,
-            "sha256_holdout": "c" * 64,
-            "evidence": {
-                "ok": True,
-                "pack_id": "curated_pack_v2-test",
-                "computed_shas": {"sha256_pack": "d" * 64, "sha256_train": "b" * 64, "sha256_holdout": "c" * 64},
-                "expected_shas": {"sha256_pack": "d" * 64, "sha256_train": "b" * 64, "sha256_holdout": "c" * 64},
-            },
-            "paths": {},
-        }
-        result = helper_ft_kickoff.handle_train_kickoff(body)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            body = _fresh_kickoff_body(dest, manifest)
+            body["sha256_pack"] = "a" * 64
+            body["expected_shas"]["sha256_pack"] = "a" * 64
+            body["evidence"]["expected_shas"]["sha256_pack"] = "a" * 64
+            body["evidence"]["computed_shas"]["sha256_pack"] = "a" * 64
+            result = helper_ft_kickoff.handle_train_kickoff(body)
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "sha256_pack")
 
@@ -986,32 +983,7 @@ class HelperFtIntegrityTests(unittest.TestCase):
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
-            body = {
-                "mode": "helper-ft",
-                "pack_id": manifest["pack_id"],
-                "sha256_pack": manifest["sha256_pack"],
-                "sha256_train": manifest["sha256_train"],
-                "sha256_holdout": manifest["sha256_holdout"],
-                "evidence": {
-                    "ok": True,
-                    "pack_id": manifest["pack_id"],
-                    "computed_shas": {
-                        "sha256_pack": manifest["sha256_pack"],
-                        "sha256_train": manifest["sha256_train"],
-                        "sha256_holdout": manifest["sha256_holdout"],
-                    },
-                    "expected_shas": {
-                        "sha256_pack": manifest["sha256_pack"],
-                        "sha256_train": manifest["sha256_train"],
-                        "sha256_holdout": manifest["sha256_holdout"],
-                    },
-                },
-                "paths": {
-                    "pack": str(dest / "curated_pack_v2.jsonl"),
-                    "train": str(dest / "curated_pack_v2_train.jsonl"),
-                    "holdout": str(dest / "curated_pack_v2_holdout.jsonl"),
-                },
-            }
+            body = _fresh_kickoff_body(dest, manifest)
             result = helper_ft_kickoff.handle_train_kickoff(body)
         self.assertTrue(result["ok"])
         self.assertEqual(result["pack_id"], manifest["pack_id"])
@@ -1046,6 +1018,168 @@ class HelperFtIntegrityTests(unittest.TestCase):
             self.assertTrue(evidence_path.is_file())
             self.assertFalse(str(evidence_path).startswith(str(dest.resolve())))
             self.assertIn(evidence["run_id"], evidence_path.name)
+
+
+def _fresh_kickoff_body(dest: Path, manifest: dict, *, run_id: str = "helper-ft-test-run") -> dict:
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    shas = {
+        "sha256_pack": manifest["sha256_pack"],
+        "sha256_train": manifest["sha256_train"],
+        "sha256_holdout": manifest["sha256_holdout"],
+    }
+    return {
+        "mode": "helper-ft",
+        "pack_id": manifest["pack_id"],
+        "run_id": run_id,
+        "checked_at": now,
+        "sha256_pack": shas["sha256_pack"],
+        "sha256_train": shas["sha256_train"],
+        "sha256_holdout": shas["sha256_holdout"],
+        "expected_shas": dict(shas),
+        "paths": {
+            "pack": str(dest / "curated_pack_v2.jsonl"),
+            "train": str(dest / "curated_pack_v2_train.jsonl"),
+            "holdout": str(dest / "curated_pack_v2_holdout.jsonl"),
+        },
+        "evidence": {
+            "ok": True,
+            "pack_id": manifest["pack_id"],
+            "run_id": run_id,
+            "checked_at": now,
+            "computed_shas": dict(shas),
+            "expected_shas": dict(shas),
+        },
+    }
+
+
+class HelperFtKickoffHttpTests(unittest.TestCase):
+    """Real :8765 handler via its WSGI test client. Trainer launch is stubbed below the gate."""
+
+    def setUp(self) -> None:
+        self.launches: list[dict] = []
+
+        def stub_trainer(body: dict) -> dict:
+            self.launches.append(body)
+            return {"ok": True, "checkpoint_id": "stub-ckpt"}
+
+        self.client = helper_ft_kickoff.TestClient(launch_trainer=stub_trainer)
+
+    def test_http_no_evidence_refuses_before_trainer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            body = _fresh_kickoff_body(dest, manifest)
+            del body["evidence"]
+            response = self.client.post("/train/kickoff", json=body)
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["field"], "evidence")
+        self.assertEqual(self.launches, [])
+
+    def test_http_stale_evidence_run_id_refuses_before_trainer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            body = _fresh_kickoff_body(dest, manifest, run_id="run-current")
+            body["evidence"]["run_id"] = "run-previous"
+            response = self.client.post("/train/kickoff", json=body)
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["field"], "evidence.run_id")
+        self.assertEqual(self.launches, [])
+
+    def test_http_stale_evidence_timestamp_refuses_before_trainer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            body = _fresh_kickoff_body(dest, manifest)
+            old = "2020-01-01T00:00:00Z"
+            body["checked_at"] = old
+            body["evidence"]["checked_at"] = old
+            response = self.client.post("/train/kickoff", json=body)
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["field"], "checked_at")
+        self.assertEqual(self.launches, [])
+
+    def test_http_evidence_shas_mismatch_files_refuses_before_trainer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            body = _fresh_kickoff_body(dest, manifest)
+            _flip_one_ascii_byte(dest / "curated_pack_v2.jsonl")
+            response = self.client.post("/train/kickoff", json=body)
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["field"], "sha256_pack")
+        self.assertNotEqual(payload["expected"], payload["actual"])
+        self.assertEqual(self.launches, [])
+
+    def test_http_ok_true_is_not_enough_without_matching_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            body = _fresh_kickoff_body(dest, manifest)
+            self.assertTrue(body["evidence"]["ok"])
+            (dest / "curated_pack_v2_train.jsonl").write_bytes(
+                (dest / "curated_pack_v2_train.jsonl").read_bytes() + b"\n"
+            )
+            response = self.client.post("/train/kickoff", json=body)
+        payload = response.json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["field"], "sha256_train")
+        self.assertEqual(self.launches, [])
+
+    def test_http_other_helper_ft_routes_refuse_before_trainer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            body = _fresh_kickoff_body(dest, manifest)
+            body["inbox"] = "latest"
+            latest = self.client.post("/train/kickoff", json=body)
+            inbox_route = self.client.post("/inbox/latest", json=body)
+            start = self.client.post("/train/start", json=body)
+            validate = self.client.post("/train/inbox-validate", json={"mode": "inbox-validate"})
+            get_kickoff = self.client.get("/train/kickoff")
+            query = self.client.post("/train/kickoff?inbox=latest", json=_fresh_kickoff_body(dest, manifest))
+        for response, field in (
+            (latest, "inbox"),
+            (inbox_route, "inbox"),
+            (start, "route"),
+            (validate, "route"),
+            (get_kickoff, "method"),
+            (query, "inbox"),
+        ):
+            payload = response.json()
+            self.assertEqual(response.status_code, 400)
+            self.assertFalse(payload["ok"])
+            self.assertEqual(payload["field"], field)
+        self.assertEqual(self.launches, [])
+
+    def test_http_matching_pack_rehashes_then_calls_trainer_stub(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            body = _fresh_kickoff_body(dest, manifest)
+            response = self.client.post("/train/kickoff", json=body)
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["launched"])
+        self.assertEqual(payload["checkpoint_id"], "stub-ckpt")
+        self.assertEqual(len(self.launches), 1)
+        self.assertEqual(self.launches[0]["pack_id"], manifest["pack_id"])
 
 
 if __name__ == "__main__":
