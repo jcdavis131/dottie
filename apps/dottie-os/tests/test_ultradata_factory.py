@@ -116,6 +116,16 @@ os.environ.setdefault(
     kick_helper_ft.RESERVED_CONTENT_UUIDS_SHA256_ENV, _RESERVED_CONTENT_UUIDS_SHA256
 )
 ULTRADATA_MATH_HF = "openbmb/UltraData-Math"
+ULTRADATA_MATH_CONFIG = "UltraData-Math-L1"
+
+
+def _math_uuidless(
+    *, rid: str, action: str, config: str = ULTRADATA_MATH_CONFIG
+) -> dict:
+    row = _row(rid=rid, action=action, source=ULTRADATA_MATH_HF)
+    row["source"].pop("uuid", None)
+    row["source"]["config"] = config
+    return row
 
 
 def _uuid_with_residue(modulus: int, residue: int, prefix: str) -> str:
@@ -6201,11 +6211,45 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
         self.assertEqual(ctx.exception.field, "reserved_eval_partition.uuid_missing")
         self.assertTrue(any("miss-uuid" in str(item) for item in ctx.exception.actual))
 
+    def test_uuidless_allowlist_is_hf_config_pair(self) -> None:
+        self.assertEqual(
+            kick_helper_ft.UUIDLESS_SOURCE_ALLOWLIST,
+            frozenset({(ULTRADATA_MATH_HF, ULTRADATA_MATH_CONFIG)}),
+        )
+        hf_only = {"source": {"hf": ULTRADATA_MATH_HF}}
+        self.assertFalse(kick_helper_ft._uuidless_source_allowed(hf_only))
+        l1 = {"source": {"hf": ULTRADATA_MATH_HF, "config": ULTRADATA_MATH_CONFIG}}
+        self.assertTrue(kick_helper_ft._uuidless_source_allowed(l1))
+        l2 = {
+            "source": {"hf": ULTRADATA_MATH_HF, "config": "UltraData-Math-L2"}
+        }
+        self.assertFalse(kick_helper_ft._uuidless_source_allowed(l2))
+        pinned = frozenset({(ULTRADATA_MATH_HF, ULTRADATA_MATH_CONFIG, "rev-abc")})
+        self.assertFalse(kick_helper_ft._uuidless_source_allowed(l1, allowlist=pinned))
+        l1_rev = {
+            "source": {
+                "hf": ULTRADATA_MATH_HF,
+                "config": ULTRADATA_MATH_CONFIG,
+                "revision": "rev-abc",
+            }
+        }
+        self.assertTrue(
+            kick_helper_ft._uuidless_source_allowed(l1_rev, allowlist=pinned)
+        )
+        l1_other_rev = {
+            "source": {
+                "hf": ULTRADATA_MATH_HF,
+                "config": ULTRADATA_MATH_CONFIG,
+                "revision": "rev-other",
+            }
+        }
+        self.assertFalse(
+            kick_helper_ft._uuidless_source_allowed(l1_other_rev, allowlist=pinned)
+        )
+
     def test_uuidless_ultradata_math_with_content_uuid_passes_modulo(self) -> None:
-        a = _row(rid="math-a", action="execute", source=ULTRADATA_MATH_HF)
-        b = _row(rid="math-b", action="halt", source=ULTRADATA_MATH_HF)
-        a["source"].pop("uuid", None)
-        b["source"].pop("uuid", None)
+        a = _math_uuidless(rid="math-a", action="execute")
+        b = _math_uuidless(rid="math-b", action="halt")
         a["source"]["content_uuid"] = content_uuid.content_uuid(a)
         b["source"]["content_uuid"] = content_uuid.content_uuid(b)
         with tempfile.TemporaryDirectory() as tmp:
@@ -6216,11 +6260,25 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
             evidence = kick_helper_ft.kick(dest)
         self.assertEqual(evidence["result"], "MATCH")
 
+    def test_uuidless_same_hf_different_config_refused_uuid_missing(self) -> None:
+        a = _math_uuidless(
+            rid="math-l2", action="execute", config="UltraData-Math-L2"
+        )
+        b = _row(rid="has-uuid", action="halt")
+        a["source"]["content_uuid"] = content_uuid.content_uuid(a)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = self._write(dest, [a, b], pack_id="part-math-l2")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "reserved_eval_partition.uuid_missing")
+        self.assertTrue(any("math-l2" in str(item) for item in ctx.exception.actual))
+
     def test_uuidless_allowlisted_reserved_content_uuid_refused(self) -> None:
-        a = _row(rid="math-csha", action="execute", source=ULTRADATA_MATH_HF)
-        b = _row(rid="math-ok", action="halt", source=ULTRADATA_MATH_HF)
-        a["source"].pop("uuid", None)
-        b["source"].pop("uuid", None)
+        a = _math_uuidless(rid="math-csha", action="execute")
+        b = _math_uuidless(rid="math-ok", action="halt")
         a["source"]["content_uuid"] = content_uuid.content_uuid(a)
         b["source"]["content_uuid"] = content_uuid.content_uuid(b)
         reserved = a["source"]["content_uuid"]
@@ -6236,10 +6294,8 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
         self.assertIn("math-csha", listed)
 
     def test_uuidless_allowlisted_missing_content_uuid_refused(self) -> None:
-        a = _row(rid="math-nocu", action="execute", source=ULTRADATA_MATH_HF)
-        b = _row(rid="math-hold", action="halt", source=ULTRADATA_MATH_HF)
-        a["source"].pop("uuid", None)
-        b["source"].pop("uuid", None)
+        a = _math_uuidless(rid="math-nocu", action="execute")
+        b = _math_uuidless(rid="math-hold", action="halt")
         b["source"]["content_uuid"] = content_uuid.content_uuid(b)
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
@@ -6252,10 +6308,8 @@ class HelperFtReservedPartitionTests(unittest.TestCase):
         self.assertTrue(any("math-nocu" in str(item) for item in ctx.exception.actual))
 
     def test_uuidless_allowlisted_forged_content_uuid_refused(self) -> None:
-        a = _row(rid="math-forge", action="execute", source=ULTRADATA_MATH_HF)
-        b = _row(rid="math-ok2", action="halt", source=ULTRADATA_MATH_HF)
-        a["source"].pop("uuid", None)
-        b["source"].pop("uuid", None)
+        a = _math_uuidless(rid="math-forge", action="execute")
+        b = _math_uuidless(rid="math-ok2", action="halt")
         a["source"]["content_uuid"] = "a" * 64
         b["source"]["content_uuid"] = content_uuid.content_uuid(b)
         with tempfile.TemporaryDirectory() as tmp:
