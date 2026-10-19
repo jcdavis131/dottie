@@ -5354,6 +5354,60 @@ class HelperFtContentUuidTests(unittest.TestCase):
         self.hq_pins[manifest["pack_id"]] = pin
         return pin
 
+    def test_reference_digests_match_5f57ae2a(self) -> None:
+        """Pinned against content_uuid.py sha256 5f57ae2a… before further edits.
+
+        Ordinary JSON (str keys; str/int/float/bool/null/list/dict values;
+        NFC-distinct keys; floats with abs <= 2**53) must stay byte-identical.
+        """
+        golden = {
+            "state": {"m": "caf\u00e9", "n": 1.0, "z": -0.0, "b": True},
+            "questions": {"q": [1, "x"]},
+        }
+        self.assertEqual(
+            content_uuid.canonical_content_bytes(golden),
+            b'{"questions":{"q":[1,"x"]},"state":{"b":true,"m":"caf\xc3\xa9","n":1,"z":0}}',
+        )
+        self.assertEqual(
+            content_uuid.content_uuid(golden),
+            "5abd1a7b73f7e83869b2184f86df3b1291553c5f97e81ae3565156520ed90e47",
+        )
+        nested = {
+            "id": "top",
+            "state": {"id": "nested", "message": "same"},
+            "questions": {"action": {"type": "choice"}},
+        }
+        self.assertEqual(
+            content_uuid.content_uuid(nested),
+            "a9ea6eb2e39a67d9667f7ef7aa6d23835f762a7cfe1f44f53579d929b625c2ca",
+        )
+        mixed = {
+            "state": {"a": [1, "x", False, None], "flag": True, "n": 1, "f": 1.5},
+            "questions": {"q": {"k": "v"}},
+        }
+        self.assertEqual(
+            content_uuid.canonical_content_bytes(mixed),
+            b'{"questions":{"q":{"k":"v"}},"state":{"a":[1,"x",false,null],"f":1.5,"flag":true,"n":1}}',
+        )
+        self.assertEqual(
+            content_uuid.content_uuid(mixed),
+            "832a4043bb7c18f3a2bf6f1a7da94f8e59de559b08090007dad2665bd039b199",
+        )
+        nfc = {"state": {"message": "café"}, "questions": {"action": {"type": "choice"}}}
+        self.assertEqual(
+            content_uuid.content_uuid(nfc),
+            "4300371a1c39a02158e36a8508ddcc90aa5d161d87b49dc07f7d09215a62e38d",
+        )
+        self.assertEqual(content_uuid.content_uuid(nfc), content_uuid.content_uuid({
+            "state": {"message": "cafe\u0301"},
+            "questions": {"action": {"type": "choice"}},
+        }))
+        null_state = {"state": None, "questions": {"action": {"type": "choice"}}}
+        self.assertEqual(
+            content_uuid.content_uuid(null_state),
+            "4855c7d46704a0880030ad9bb86f0668f9883d08d4440ea0c18117b282fa0256",
+        )
+
     def test_canonical_bytes_are_nfc_sorted_compact_utf8(self) -> None:
         composed = {"state": {"message": "café"}, "questions": {"action": {"type": "choice"}}}
         decomposed = {
