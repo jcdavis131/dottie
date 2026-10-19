@@ -28,6 +28,7 @@ uv workspace). Everything else is stdlib + git.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import platform
 import shutil
@@ -137,7 +138,149 @@ def tick(args: argparse.Namespace) -> dict[str, Any]:
     return {"claimed": spec.job_id, "result": res}
 
 
+def _helper_ft_kickoff_path() -> Path | None:
+    here = Path(__file__).resolve()
+    if len(here.parents) >= 4:
+        candidate = here.parents[3] / "apps" / "dottie-os" / "scripts" / "lab" / "helper_ft_kickoff.py"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _load_helper_ft_kickoff():
+    path = _helper_ft_kickoff_path()
+    if path is None:
+        return None
+    spec = importlib.util.spec_from_file_location("helper_ft_kickoff", path)
+    if spec is None or spec.loader is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_STATE_LEAK_KEYS = frozenset(
+    {"risk_hint", "halt_class", "provenance", "agent_config", "category"}
+)
+
+
+def _fallback_state_leaks(body: dict[str, Any]) -> list[str]:
+    """Off-tree runner still refuses leaked gold values when jsonl paths exist."""
+    paths = body.get("paths")
+    if not isinstance(paths, dict):
+        return []
+    pack_dir = body.get("source_pack_dir")
+    evidence = body.get("evidence")
+    if pack_dir is None and isinstance(evidence, dict):
+        pack_dir = evidence.get("source_pack_dir")
+    helper = _load_helper_ft_kickoff()
+    if helper is not None:
+        try:
+            return helper.kick_helper_ft.collect_state_leaks(paths, pack_dir=pack_dir)
+        except Exception:
+            pass
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def walk(value: object, path: str, row_id: str) -> None:
+        if len(found) >= 10:
+            return
+        if isinstance(value, dict):
+            for key, child in value.items():
+                key_s = str(key)
+                child_path = f"{path}.{key_s}"
+                if key_s in _STATE_LEAK_KEYS:
+                    item = f"{row_id}:{child_path}"
+                    if item not in seen:
+                        seen.add(item)
+                        found.append(item)
+                        if len(found) >= 10:
+                            return
+                walk(child, child_path, row_id)
+        elif isinstance(value, list):
+            for idx, child in enumerate(value):
+                walk(child, f"{path}[{idx}]", row_id)
+
+    for key in ("pack", "train", "holdout"):
+        raw = paths.get(key)
+        if not isinstance(raw, str) or not raw:
+            continue
+        path = Path(raw)
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            row_id = obj.get("id") or obj.get("trajectory_id") or "?"
+            walk(obj.get("state"), "state", str(row_id))
+            if len(found) >= 10:
+                return found
+    return found
+
+
+def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
+    """HELPER FT ``POST /train/kickoff``. Never accepts ``inbox: latest``.
+
+    Canonical implementation: ``apps/dottie-os/scripts/lab/helper_ft_kickoff.py``.
+    Checks run before any GPU launch. When this runner is copied off-tree,
+    still refuse latest/missing evidence.
+    """
+    mod = _load_helper_ft_kickoff()
+    if mod is not None:
+        return mod.handle_train_kickoff(body)
+    if not isinstance(body, dict):
+        return {"ok": False, "field": "body", "expected": "object", "actual": type(body).__name__}
+    inbox = body.get("inbox")
+    if "inbox_latest" in body:
+        return {"ok": False, "field": "inbox_latest", "expected": "absent", "actual": "present"}
+    if isinstance(inbox, str) and inbox.strip().lower() in {"latest", "inbox_latest", "inbox-latest"}:
+        return {"ok": False, "field": "inbox", "expected": "named pack_id", "actual": inbox}
+    if body.get("mode") == "inbox-validate":
+        return {"ok": False, "field": "mode", "expected": "helper-ft", "actual": "inbox-validate"}
+    if body.get("not_for_train") is True or (
+        isinstance(body.get("evidence"), dict) and body["evidence"].get("not_for_train") is True
+    ):
+        if body.get("smoke") is not True and body.get("mode") != "helper-ft-smoke":
+            return {"ok": False, "field": "not_for_train", "expected": False, "actual": True}
+    leaks = _fallback_state_leaks(body)
+    if leaks:
+        return {"ok": False, "field": "state.leak", "expected": "absent", "actual": leaks[:10]}
+    if not body.get("evidence"):
+        return {"ok": False, "field": "evidence", "expected": "present", "actual": "missing"}
+    return {"ok": False, "field": "handler", "expected": "helper_ft_kickoff.py", "actual": "missing"}
+
+
+def helper_ft_wsgi_app(*, launch_trainer=None):
+    """WSGI app for the in-repo :8765 HELPER FT route."""
+    mod = _load_helper_ft_kickoff()
+    if mod is None:
+        raise RuntimeError("helper_ft_kickoff.py missing")
+    return mod.make_app(launch_trainer=launch_trainer)
+
+
+def serve_helper_ft_kickoff(host: str = "127.0.0.1", port: int = 8765, *, launch_trainer=None) -> None:
+    """Bind :8765 and run HELPER FT checks before any wired trainer launch."""
+    mod = _load_helper_ft_kickoff()
+    if mod is None:
+        raise RuntimeError("helper_ft_kickoff.py missing")
+    mod.serve(host, port, launch_trainer=launch_trainer)
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "--helper-ft-serve":
+        serve_helper_ft_kickoff()
+        return 0
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--queue-repo", required=True, help="git URL of the private forge queue repository")
     ap.add_argument("--workdir", default="~/forge")

@@ -1,5 +1,6 @@
 # Generated packs and hop artifacts — never commit
 curated_pack_*.jsonl
+!tests/fixtures/leakgate_eval/**/curated_pack_*.jsonl
 curated_pack_*.json
 staging/
 hop/

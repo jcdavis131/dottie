@@ -623,6 +623,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install cryptography (Ed25519 pack-pin verify)
+        run: pip install "cryptography>=41,<46"
       - name: Stdlib UltraData factory smoke (no HF, no FT)
         run: |
           set -euo pipefail
@@ -638,6 +640,8 @@ jobs:
             echo "FAIL: unittest did not report OK"
             exit 1
           fi
+      - name: Tests must not write apps/dottie-os/trust/
+        run: git diff --exit-code apps/dottie-os/trust/
       - name: Refuse tracked pack artifacts
         run: |
           set -euo pipefail

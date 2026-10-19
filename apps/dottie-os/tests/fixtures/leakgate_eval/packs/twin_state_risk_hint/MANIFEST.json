@@ -1,0 +1,14 @@
+{
+ "pack_id": "leakfix-twin_state_risk_hint",
+ "rows": 16,
+ "train_rows": 12,
+ "holdout_rows": 4,
+ "sha256_pack": "99b94ed8658d52d01c21760f0ce510feeddd1a57dbb5faf4df55cb4666cd09f5",
+ "sha256_train": "1754bf21d082b344d5fcc3a0d347690eda94eed44edd7ddf2e9f52d8d67d6ffa",
+ "sha256_holdout": "62468a5f0e03c1d7224913f5c8fefa3e48e5cf6a7ecb8777ebde3a4b6f174ea1",
+ "eval_only": true,
+ "not_for_train": true,
+ "champion_touched": false,
+ "ft_kicked": false,
+ "live_gate_touched": false
+}

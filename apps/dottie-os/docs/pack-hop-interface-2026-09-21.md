@@ -36,7 +36,10 @@ Caps for this harvest run (Forge): agent **120** / code **80** / math **60**.
   "produced_at": "<ISO8601>",
   "producer_host": "jcd-pc",
   "rows": 0,
+  "train_rows": 0,
   "sha256_pack": "<hex of curated_pack_v2.jsonl>",
+  "sha256_train": "<hex of curated_pack_v2_train.jsonl>",
+  "sha256_holdout": "<hex of curated_pack_v2_holdout.jsonl>",
   "holdout_frac": 0.20,
   "holdout_rows": 0,
   "tier_counts": {"L0": 0, "L1": 0, "L2": 0, "L3": 0},
@@ -61,7 +64,7 @@ Caps for this harvest run (Forge): agent **120** / code **80** / math **60**.
 | nugatron inbox / registry staging | Ingest pack + MANIFEST; verify sha256 |
 | Radar | Pulse outbox/inbox presence + health; no edits |
 | Brief | Update lab brief from MANIFEST fields |
-| FT job (later, Cam kick only) | Read pack; never if `champion_touched` path confused with HELPER |
+| FT job (Cam kick only) | `scripts/lab/kick_helper_ft.py` fetches a Cam-signed pack-pin from the hardcoded `SWARM_HQ_ORIGIN` (HTTPS `GET /api/packs/<pack_id>/pin`, no redirects, no `SWARM_HQ_URL`). Ed25519 `cam_sig` is verified against `trust/cam_pin_ed25519.pub` (cofactor `[8]A != identity`, prime-order `[L]A == identity`, canonical `y < p`, `S < L`). The pin must match MANIFEST and run-private copies. The trainer receives only those run-dir copy paths. After the trainer exits on the training host, those recorded paths are re-hashed into `<checkpoint>/integrity_evidence.json` (0400). `result`/`sha256_evidence` come from that file, never scraped stdout; nonzero exit/signal/timeout is `REFUSED`. POSTs kick and completion events to the pinned origin, and emits one `HELPER_FT_INTEGRITY_EVIDENCE` line for humans. `--cam-pin`, pin env vars, and local pin files are refused. Then POSTs `:8765/train/kickoff`. The handler re-fetches the same HQ pin; a body-only pin is not provenance. `inbox:latest` and other HELPER FT start routes are refused. `origin/main` ancestry is a local-ref hint, not the hard gate (CODEOWNERS + branch protection are). Never auto-promote. |
 
 ---
 

@@ -1,0 +1,715 @@
+{
+ "fixture_set_id": "leakgate_fixtures-20261018-230457",
+ "produced_at": "2026-10-18T23:04:57-05:00",
+ "producer": "Mill (box; data only under /workspace/packs/)",
+ "source_pack": "ultradata_l3halt_lenmatch_20261018-224530/curated_pack_v2.jsonl",
+ "base_rows": 16,
+ "base_gold_counts": {
+  "execute": 5,
+  "halt": 4,
+  "escalate": 1,
+  "tool": 3,
+  "web": 1,
+  "algo": 1,
+  "other": 1
+ },
+ "gold_definition": "L3: labels.action.choice ; L2: labels.domain.choice ; numeric gold: labels.safe.noul",
+ "total_fixture_rows": 896,
+ "cases": 56,
+ "expect_counts_cases": {
+  "refuse": 25,
+  "accept": 31
+ },
+ "expect_counts_rows": {
+  "refuse": 400,
+  "accept": 496
+ },
+ "row_counts_by_case": {
+  "leak_meta_risk_hint": 16,
+  "twin_meta_risk_hint": 16,
+  "leak_meta_halt_class": 16,
+  "twin_meta_halt_class": 16,
+  "leak_meta_provenance": 16,
+  "twin_meta_provenance": 16,
+  "leak_meta_agent_config": 16,
+  "twin_meta_agent_config": 16,
+  "leak_state_category": 16,
+  "twin_state_category": 16,
+  "leak_state_risk_hint": 16,
+  "twin_state_risk_hint": 16,
+  "leak_deep_nesting": 16,
+  "twin_deep_nesting": 16,
+  "leak_toplevel_risk_hint": 16,
+  "twin_toplevel_risk_hint": 16,
+  "leak_key_Risk_Hint": 16,
+  "twin_key_Risk_Hint": 16,
+  "leak_key_RISK_DASH_HINT": 16,
+  "twin_key_RISK_DASH_HINT": 16,
+  "leak_key_riskHint": 16,
+  "twin_key_riskHint": 16,
+  "leak_key_risk_dot_hint": 16,
+  "twin_key_risk_dot_hint": 16,
+  "leak_key_space_risk_hint": 16,
+  "twin_key_space_risk_hint": 16,
+  "leak_key_risk__hint": 16,
+  "twin_key_risk__hint": 16,
+  "leak_unicode_cyrillic": 16,
+  "twin_unicode_cyrillic": 16,
+  "leak_unicode_fullwidth": 16,
+  "twin_unicode_fullwidth": 16,
+  "leak_unicode_zwj": 16,
+  "twin_unicode_zwj": 16,
+  "leak_json_in_meta_extra": 16,
+  "twin_json_in_meta_extra": 16,
+  "leak_json_in_message_suffix": 16,
+  "twin_json_in_message_suffix": 16,
+  "leak_newkey_meta_hint": 16,
+  "twin_newkey_meta_hint": 16,
+  "leak_newkey_meta_verdict": 16,
+  "twin_newkey_meta_verdict": 16,
+  "leak_newkey_meta_tag": 16,
+  "twin_newkey_meta_tag": 16,
+  "leak_newkey_meta_p_numeric": 16,
+  "twin_newkey_meta_p_numeric": 16,
+  "leak_base64_label": 16,
+  "twin_base64_label": 16,
+  "leak_sidecar_labels": 16,
+  "twin_sidecar_labels": 16,
+  "clean_base": 16,
+  "clean_label_word_in_command": 16,
+  "clean_status_mixed": 16,
+  "clean_meta_lang_tool": 16,
+  "clean_substring_key": 16,
+  "clean_numeric_uncorrelated": 16
+ },
+ "case_list": [
+  {
+   "case": "leak_meta_risk_hint",
+   "expect": "refuse",
+   "twin_of": "twin_meta_risk_hint",
+   "note": "exact key state.meta.risk_hint = gold action/domain (classic leak)"
+  },
+  {
+   "case": "twin_meta_risk_hint",
+   "expect": "accept",
+   "twin_of": "leak_meta_risk_hint",
+   "note": "clean twin of leak_meta_risk_hint: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_meta_halt_class",
+   "expect": "refuse",
+   "twin_of": "twin_meta_halt_class",
+   "note": "state.meta.halt_class bijective to gold -> predicts label"
+  },
+  {
+   "case": "twin_meta_halt_class",
+   "expect": "accept",
+   "twin_of": "leak_meta_halt_class",
+   "note": "clean twin of leak_meta_halt_class: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_meta_provenance",
+   "expect": "refuse",
+   "twin_of": "twin_meta_provenance",
+   "note": "state.meta.provenance encodes gold"
+  },
+  {
+   "case": "twin_meta_provenance",
+   "expect": "accept",
+   "twin_of": "leak_meta_provenance",
+   "note": "clean twin of leak_meta_provenance: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_meta_agent_config",
+   "expect": "refuse",
+   "twin_of": "twin_meta_agent_config",
+   "note": "state.meta.agent_config value tracks gold"
+  },
+  {
+   "case": "twin_meta_agent_config",
+   "expect": "accept",
+   "twin_of": "leak_meta_agent_config",
+   "note": "clean twin of leak_meta_agent_config: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_state_category",
+   "expect": "refuse",
+   "twin_of": "twin_state_category",
+   "note": "state.category = gold (one level above meta)"
+  },
+  {
+   "case": "twin_state_category",
+   "expect": "accept",
+   "twin_of": "leak_state_category",
+   "note": "clean twin of leak_state_category: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_state_risk_hint",
+   "expect": "refuse",
+   "twin_of": "twin_state_risk_hint",
+   "note": "risk_hint directly under state"
+  },
+  {
+   "case": "twin_state_risk_hint",
+   "expect": "accept",
+   "twin_of": "leak_state_risk_hint",
+   "note": "clean twin of leak_state_risk_hint: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_deep_nesting",
+   "expect": "refuse",
+   "twin_of": "twin_deep_nesting",
+   "note": "deeply nested state.meta.audit.trace.risk_hint = gold"
+  },
+  {
+   "case": "twin_deep_nesting",
+   "expect": "accept",
+   "twin_of": "leak_deep_nesting",
+   "note": "clean twin of leak_deep_nesting: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_toplevel_risk_hint",
+   "expect": "refuse",
+   "twin_of": "twin_toplevel_risk_hint",
+   "note": "row top-level risk_hint = gold (leak ONLY if top-level is model input; included+labeled)"
+  },
+  {
+   "case": "twin_toplevel_risk_hint",
+   "expect": "accept",
+   "twin_of": "leak_toplevel_risk_hint",
+   "note": "clean twin of leak_toplevel_risk_hint: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_key_Risk_Hint",
+   "expect": "refuse",
+   "twin_of": "twin_key_Risk_Hint",
+   "note": "case variant key Risk_Hint = gold"
+  },
+  {
+   "case": "twin_key_Risk_Hint",
+   "expect": "accept",
+   "twin_of": "leak_key_Risk_Hint",
+   "note": "clean twin of leak_key_Risk_Hint: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_key_RISK_DASH_HINT",
+   "expect": "refuse",
+   "twin_of": "twin_key_RISK_DASH_HINT",
+   "note": "separator variant RISK-HINT = gold"
+  },
+  {
+   "case": "twin_key_RISK_DASH_HINT",
+   "expect": "accept",
+   "twin_of": "leak_key_RISK_DASH_HINT",
+   "note": "clean twin of leak_key_RISK_DASH_HINT: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_key_riskHint",
+   "expect": "refuse",
+   "twin_of": "twin_key_riskHint",
+   "note": "camelCase riskHint = gold"
+  },
+  {
+   "case": "twin_key_riskHint",
+   "expect": "accept",
+   "twin_of": "leak_key_riskHint",
+   "note": "clean twin of leak_key_riskHint: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_key_risk_dot_hint",
+   "expect": "refuse",
+   "twin_of": "twin_key_risk_dot_hint",
+   "note": "dotted key 'risk.hint' = gold"
+  },
+  {
+   "case": "twin_key_risk_dot_hint",
+   "expect": "accept",
+   "twin_of": "leak_key_risk_dot_hint",
+   "note": "clean twin of leak_key_risk_dot_hint: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_key_space_risk_hint",
+   "expect": "refuse",
+   "twin_of": "twin_key_space_risk_hint",
+   "note": "leading-space key ' risk_hint' = gold"
+  },
+  {
+   "case": "twin_key_space_risk_hint",
+   "expect": "accept",
+   "twin_of": "leak_key_space_risk_hint",
+   "note": "clean twin of leak_key_space_risk_hint: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_key_risk__hint",
+   "expect": "refuse",
+   "twin_of": "twin_key_risk__hint",
+   "note": "double-underscore risk__hint = gold"
+  },
+  {
+   "case": "twin_key_risk__hint",
+   "expect": "accept",
+   "twin_of": "leak_key_risk__hint",
+   "note": "clean twin of leak_key_risk__hint: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_unicode_cyrillic",
+   "expect": "refuse",
+   "twin_of": "twin_unicode_cyrillic",
+   "note": "Cyrillic-lookalike key (U+0456) = gold"
+  },
+  {
+   "case": "twin_unicode_cyrillic",
+   "expect": "accept",
+   "twin_of": "leak_unicode_cyrillic",
+   "note": "clean twin of leak_unicode_cyrillic: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_unicode_fullwidth",
+   "expect": "refuse",
+   "twin_of": "twin_unicode_fullwidth",
+   "note": "fullwidth-lookalike key = gold"
+  },
+  {
+   "case": "twin_unicode_fullwidth",
+   "expect": "accept",
+   "twin_of": "leak_unicode_fullwidth",
+   "note": "clean twin of leak_unicode_fullwidth: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_unicode_zwj",
+   "expect": "refuse",
+   "twin_of": "twin_unicode_zwj",
+   "note": "zero-width-joiner inside key = gold"
+  },
+  {
+   "case": "twin_unicode_zwj",
+   "expect": "accept",
+   "twin_of": "leak_unicode_zwj",
+   "note": "clean twin of leak_unicode_zwj: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_json_in_meta_extra",
+   "expect": "refuse",
+   "twin_of": "twin_json_in_meta_extra",
+   "note": "label smuggled as JSON string in state.meta.extra"
+  },
+  {
+   "case": "twin_json_in_meta_extra",
+   "expect": "accept",
+   "twin_of": "leak_json_in_meta_extra",
+   "note": "clean twin of leak_json_in_meta_extra: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_json_in_message_suffix",
+   "expect": "refuse",
+   "twin_of": "twin_json_in_message_suffix",
+   "note": "label JSON appended to message tail (message-channel leak)"
+  },
+  {
+   "case": "twin_json_in_message_suffix",
+   "expect": "accept",
+   "twin_of": "leak_json_in_message_suffix",
+   "note": "clean twin of leak_json_in_message_suffix: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_newkey_meta_hint",
+   "expect": "refuse",
+   "twin_of": "twin_newkey_meta_hint",
+   "note": "innocuous NEW key meta.hint = gold for every row"
+  },
+  {
+   "case": "twin_newkey_meta_hint",
+   "expect": "accept",
+   "twin_of": "leak_newkey_meta_hint",
+   "note": "clean twin of leak_newkey_meta_hint: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_newkey_meta_verdict",
+   "expect": "refuse",
+   "twin_of": "twin_newkey_meta_verdict",
+   "note": "innocuous NEW key meta.verdict = gold"
+  },
+  {
+   "case": "twin_newkey_meta_verdict",
+   "expect": "accept",
+   "twin_of": "leak_newkey_meta_verdict",
+   "note": "clean twin of leak_newkey_meta_verdict: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_newkey_meta_tag",
+   "expect": "refuse",
+   "twin_of": "twin_newkey_meta_tag",
+   "note": "innocuous NEW key meta.tag = gold"
+  },
+  {
+   "case": "twin_newkey_meta_tag",
+   "expect": "accept",
+   "twin_of": "leak_newkey_meta_tag",
+   "note": "clean twin of leak_newkey_meta_tag: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_newkey_meta_p_numeric",
+   "expect": "refuse",
+   "twin_of": "twin_newkey_meta_p_numeric",
+   "note": "numeric meta.p = labels.safe.noul (gold score copied)"
+  },
+  {
+   "case": "twin_newkey_meta_p_numeric",
+   "expect": "accept",
+   "twin_of": "leak_newkey_meta_p_numeric",
+   "note": "clean twin of leak_newkey_meta_p_numeric: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_base64_label",
+   "expect": "refuse",
+   "twin_of": "twin_base64_label",
+   "note": "base64(gold) in meta.code, aligned with label"
+  },
+  {
+   "case": "twin_base64_label",
+   "expect": "accept",
+   "twin_of": "leak_base64_label",
+   "note": "clean twin of leak_base64_label: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "leak_sidecar_labels",
+   "expect": "refuse",
+   "twin_of": "twin_sidecar_labels",
+   "note": "sidecar file in pack dir maps id->gold (labels leaked beside rows)"
+  },
+  {
+   "case": "twin_sidecar_labels",
+   "expect": "accept",
+   "twin_of": "leak_sidecar_labels",
+   "note": "clean twin of leak_sidecar_labels: same field/shape, value NOT label-correlated (constant) -> ACCEPT"
+  },
+  {
+   "case": "clean_base",
+   "expect": "accept",
+   "twin_of": null,
+   "note": "untouched real rows; must ACCEPT (negative control)"
+  },
+  {
+   "case": "clean_label_word_in_command",
+   "expect": "accept",
+   "twin_of": null,
+   "note": "label words appear inside command text, uncorrelated with gold -> ACCEPT"
+  },
+  {
+   "case": "clean_status_mixed",
+   "expect": "accept",
+   "twin_of": null,
+   "note": "meta.status holds label words but MIXED vs gold across pack -> ACCEPT"
+  },
+  {
+   "case": "clean_meta_lang_tool",
+   "expect": "accept",
+   "twin_of": null,
+   "note": "normal meta.lang/meta.tool, not label-predictive -> ACCEPT"
+  },
+  {
+   "case": "clean_substring_key",
+   "expect": "accept",
+   "twin_of": null,
+   "note": "key name contains a leak substring ('categor') but value is not a label -> ACCEPT"
+  },
+  {
+   "case": "clean_numeric_uncorrelated",
+   "expect": "accept",
+   "twin_of": null,
+   "note": "numeric meta field uncorrelated with scores -> ACCEPT"
+  }
+ ],
+ "mini_pack_sha256": {
+  "leak_meta_risk_hint": {
+   "pack": "91fd6fea70f82431cff1cc908b1b36c78403dc9333c9d078946996c2285f685a",
+   "train": "2ac59200d01a6cc333f15270c5d8f2ef8a48caee99beb18cbaf6200b22e5646c",
+   "holdout": "a55ed2414e3b88f39f46d5a2e5e0a3bb33119b4a26604b7b2c717cac8e21aabd"
+  },
+  "twin_meta_risk_hint": {
+   "pack": "abd61aeb348381fd700a9902b023c28a2afa893a3dba17fd0a9ff13453c0eeee",
+   "train": "18e758ad87239fe7554b67ac4e2a10030c943677194ba3919cec24e2299711e6",
+   "holdout": "5fdad958c434fbd0ab92b94a35a19ebc39bbcd230c64d775836ee80af407822a"
+  },
+  "leak_meta_halt_class": {
+   "pack": "4b37aceec6723428c0e2b86406f0e42ab2489007cffb20ee9a876f0af185589e",
+   "train": "8e1a8562d92e618f6d9e09cdc7a432b18fb89877564ab54dc984634955493af3",
+   "holdout": "2122f22caac9840043ecd3c55830c8121948d4c0f465f9eb0e013a28d40e8960"
+  },
+  "twin_meta_halt_class": {
+   "pack": "0050e85aad05faca7f016715bf09fb21aea367d565117f9c48849d85c3e33c4d",
+   "train": "3ffbe5d788805be1c75af287f395916cbef359e10635602263c6f5b22dcb6a64",
+   "holdout": "fb9ff95bfac496b02ac4ced8b821fa7f70b32b078035808f96e98a69f218df10"
+  },
+  "leak_meta_provenance": {
+   "pack": "fd4b1f78496978a7939d624757215cfb78c31bdfe6b6eb0a9f2c01cdbb5f900b",
+   "train": "84296b234857fef2cba13d90686d0bd992b030293e613f462243f0f0fd24d5a3",
+   "holdout": "53813c488ad2941c781275e96286cf49536986126f801f5f82df5706afa2acdd"
+  },
+  "twin_meta_provenance": {
+   "pack": "2319d961ac808456170935baf6a4d6abad51ab4b8c93ca68e34b68e3b47f3a08",
+   "train": "bff91fdbae23e030baa921604d081249ee908b86152698f778e314f1ff0ad89d",
+   "holdout": "6df78229e879b760b3bcf591cb9e3324ce5b9717ca23444194344b0be4f9fa70"
+  },
+  "leak_meta_agent_config": {
+   "pack": "5a7d2687dbfb3d9c905b6615b3ae7dec072c0f5922e5a7c94556b5df4db3ffbc",
+   "train": "444e7537170427cd55606845a4ec1a2e2224e17ace2409cd796cda7fbaeb4835",
+   "holdout": "75fd2ec5933788a3d27b937c9ec8faf02d3e0468471a5c4240d9b01bbfe9f2fa"
+  },
+  "twin_meta_agent_config": {
+   "pack": "bfdf34a7a59b5d24d662bdac4eb9d7c7e8b629f13f747841a2312cdff413485a",
+   "train": "5317be114bc58111db7ae05dfa7ecc8ab54b9018dfe915bdf95e3d0f6b617a68",
+   "holdout": "3db4b7ff0a18175a777ffbfb6f75d99387b5f42dda39ed5fa944c954029f9b10"
+  },
+  "leak_state_category": {
+   "pack": "4ebef3beee4bdfc7a0a78f7dc4ff18d9a7e2d3b12c8540bca75c750c5981ed40",
+   "train": "065932f907e7f92e7e3980d9ca633f3509fcab7c2a28134b112fe56e12d64dd3",
+   "holdout": "d65ff54d5a34e8f1506beed8f0c5f8ca213a1d2bdcf4e21c6d6ec4593771d6a0"
+  },
+  "twin_state_category": {
+   "pack": "e2cd06dbc5b32f1bebe5a48fe33f9a75dc4578996c9ce95ad4e6b1a8b348c85a",
+   "train": "1de617d9b7f8b99636544f0a01423134dc90c907e4e0e1ef19859725e71c17ed",
+   "holdout": "0ba11d9aecb69b1fb6808a55196ad64678534d8a384d22c9634f81a0206ec2f6"
+  },
+  "leak_state_risk_hint": {
+   "pack": "8b5ed6656dbe8a9c2ca1a8c2fbc0485c1448ce3d8d98a57b8cfa885775447855",
+   "train": "493dcced1433975a2f3c147b0a445004557cd991e457c2a0dfb9280b0c841eeb",
+   "holdout": "2d7d58793dac99ff164509cf831bb928a27319f87950258e67e972223adccefc"
+  },
+  "twin_state_risk_hint": {
+   "pack": "99b94ed8658d52d01c21760f0ce510feeddd1a57dbb5faf4df55cb4666cd09f5",
+   "train": "1754bf21d082b344d5fcc3a0d347690eda94eed44edd7ddf2e9f52d8d67d6ffa",
+   "holdout": "62468a5f0e03c1d7224913f5c8fefa3e48e5cf6a7ecb8777ebde3a4b6f174ea1"
+  },
+  "leak_deep_nesting": {
+   "pack": "6d4f8a434b3f259a7f4060124cde32b5a10ed56d437e18366e09aacc69282ac0",
+   "train": "84c18c3af54bbd66a848ca30364f2153e757901a92fbf8da9b6e4d5d5bf50d52",
+   "holdout": "9fd8d39bb29cd6a68c7a69fb1e1842a571020529692f9eaefc297f9278394dec"
+  },
+  "twin_deep_nesting": {
+   "pack": "3e3c187223125e35825062db30751fd037e07bdabb936c9e35e8da74cfa0d0aa",
+   "train": "9182bad48ef6889e489ea07e1de7267c339732d4348b554b693c35318323792a",
+   "holdout": "16755107997c86e3d6e236278507322640e3f17915226389ba216019245c2241"
+  },
+  "leak_toplevel_risk_hint": {
+   "pack": "c415a812057de730163e4aec42ad7de91a3be86779c16b7a3161665278d0a9a1",
+   "train": "475933bfde8c7ac6ce3604d0a97008dd58d10c398c58eac0b858e772d9187063",
+   "holdout": "9d59066d209fc46d072130660d762b8a39ca1cfc141004b6e816a617d9a4dfd0"
+  },
+  "twin_toplevel_risk_hint": {
+   "pack": "cef085865d10e9dcf1f5f4d85864fd8007872892085f63d2dd291af39e44a5a7",
+   "train": "c85351bf0faa7bb9f97f397486707ce3b1330418c00ac1627f8391669664020e",
+   "holdout": "bfb7daf81a7a1b80bacfaadf1495bd87e2397fc567859e738d4e487d907e1232"
+  },
+  "leak_key_Risk_Hint": {
+   "pack": "4526a725d2252c9110976403f7f62fadbc81efec47181c5dbb6482ec6c6d6a96",
+   "train": "61adc54c35710330a58a5e58936644dd3fc306b286d1fd6974706e8441272d53",
+   "holdout": "683859cc249c1f633656cc3bdac040eb37055d9d26116d85ef8a57d4f0433b1c"
+  },
+  "twin_key_Risk_Hint": {
+   "pack": "93d5b18e039b600066c77ef93681b123cfc58ddc40aeb2061d48634f86509aa0",
+   "train": "19bb9727796a6e6faf7b1ffcf5340e18d3fa95a800d7a45df1028990e85a6c50",
+   "holdout": "8a86287c04ecbc5b2b3b793ded25909110b3dfde425ba73bf02dcf4eea516f79"
+  },
+  "leak_key_RISK_DASH_HINT": {
+   "pack": "11516e13617129ea750fc51f5338d4c4c9ad83d0d7c623c93bcb5a993cc72913",
+   "train": "76019bfb98276eb5ed73f94bc5d851c80bca6b7118a44fda4342a6f773df5072",
+   "holdout": "ae806b27d69859bb5e4ee71cd1ef18e63c107b16219dd6250a26cb37fdc4230b"
+  },
+  "twin_key_RISK_DASH_HINT": {
+   "pack": "3de33661e108372384769bb72871470ffcdb1ffcd4b9f4ddf033701c22167899",
+   "train": "7d9947806624eb056961d704eb1fd8c18c04d12783bab9cf87226671a345c465",
+   "holdout": "3938c3d65ea41f5f72b3b6bb262fbbd8561762f4851f5f3c09a43ea3bd8463a1"
+  },
+  "leak_key_riskHint": {
+   "pack": "c7fa29c1fc639878f641e6ceb5ef7fc973df2004fc0ecbb7a9f7f7e32b688c9c",
+   "train": "7aef9e304a2eaf8c52b590ac80650eb637d547c01e7b9119313185f1ac0099f0",
+   "holdout": "108a2d2efefee162a8f8898df4bf9c8c6e6fde56eb6585fbc057177057341365"
+  },
+  "twin_key_riskHint": {
+   "pack": "a5a9ac1f9a7437cece40894da32b53aaca07c71d7f7c17d1401b6c708d9e9402",
+   "train": "07514f1bce0ec8d60dc366066ae21f04b5085da2ddbdd86cce688f4efe60f2e2",
+   "holdout": "11eafb9a548f27d6aec8e82bb0d1466096902e180cc35a2d7d06d8f84c48e58a"
+  },
+  "leak_key_risk_dot_hint": {
+   "pack": "ca197c75bd4a6e33f32750f39da5a077d775b3854967555b33a003622ba3ed05",
+   "train": "cf4a4e3d19641c7e7929a76c86fa45b3d8b41afeec005afa9a375c9566b8972d",
+   "holdout": "254ab01067cfb9f82661fa87cfc07962e4f78179e5023703bb3999915f8a9731"
+  },
+  "twin_key_risk_dot_hint": {
+   "pack": "5733fea450608f7bfa880167e5d3dd3c21c05ba11e8ed0323460b0ce2f145497",
+   "train": "d5010648249b9a7e470ffcf4b314b5972d1cbb5246b210a7945e38ab5fe6fe03",
+   "holdout": "f63d49bc7fbb880bf052f52065ade86371bd5b8c8c4c0ecda1137d7bf571e623"
+  },
+  "leak_key_space_risk_hint": {
+   "pack": "71f3e2ebb9d5745ee5feefcdb13a50f3026b65b26ed5bc923ee2f6dfa7361b97",
+   "train": "bb1e9e4c19b4b5e91520134932ca881d7e44ff42099ceec55b367b95cef4bbda",
+   "holdout": "9219599a23324a215ca44bd86e8f9a21cf12d493be2c518a01d62b08fed304bc"
+  },
+  "twin_key_space_risk_hint": {
+   "pack": "321e03fa7492a33a7b38f344bcfb4a03f8f36ae59a11470535ac0a973eb1bfd5",
+   "train": "ad845d2fa4ce03815878c70fea6840df3a0e018ecbe0230302d64027c015351b",
+   "holdout": "73f668f3a116906c0e7b6d2bd233d93484c0e20404f9a986dc22243973fd73c7"
+  },
+  "leak_key_risk__hint": {
+   "pack": "a44144dab5feb9f610e6dd0dba6d21274c846349a4d8e4e199cfc1feda538a09",
+   "train": "8631495a88b8d2365686f8d0767177062ece0299ad050b19d19988958290199f",
+   "holdout": "cbbd45dec1d749eea88ebd7ee7c93105a0ba94b8b1eac67df2358045c1d5324f"
+  },
+  "twin_key_risk__hint": {
+   "pack": "dba4a4502d0188dfbd8c8ec89309077e280865af14112ffdd28a34159b1090d9",
+   "train": "2bdb43ab6c0134de8e325d1f0abe4ca9c2e84bc9bfd01bcbf017ced9152a7809",
+   "holdout": "e097aae40162f063375041af80831b28f5ec419719eb8f025632dba4fe69abf0"
+  },
+  "leak_unicode_cyrillic": {
+   "pack": "4cf7fcb269f301d0be0ff4812696635d13931628085abb41b6e520b87392d754",
+   "train": "159ea8ba793d7380141f941f31783d6b68290fba132f8e333417513c800f9e5a",
+   "holdout": "7aca661011698967287dd72ae91825134730bf4e0db43341c06cc3afc837aa7c"
+  },
+  "twin_unicode_cyrillic": {
+   "pack": "9a1bd349c801a77804cb618b37dee24fd6f792e4a215c3c5d45bc2450260d50a",
+   "train": "d48750484d94f6c2b688b0c36ee3cbf1ee0c477e3e93363f9549d6af068b9900",
+   "holdout": "6bb526cf33877f384d1cad3e6090ea965a34387ab06431beace2b3c144b14a27"
+  },
+  "leak_unicode_fullwidth": {
+   "pack": "72533804b6609e1f9e2bb243aeeac1d88d23a062799c0323b5c796108ee8cc22",
+   "train": "f1941aafdaac8e6e1af42ea5dccb0ecf40de2eab7b39a6fed3a394f7bf82f176",
+   "holdout": "f95ed62087430912d9507d80a200c19dd54dbb39610f02ed79b6a75258ac54f6"
+  },
+  "twin_unicode_fullwidth": {
+   "pack": "cf6fe4c99c67b9d60e0d1eafd02e57ddb066889a7d6b9c6283da638ae93b4317",
+   "train": "55d8f94035d7c7d88ffbfb1321403d14c7fa3c8b26b1e420a38c7e754f0b9337",
+   "holdout": "2882a01e87ae172f7b536ab1510b740c167f49c0bf8c28f229d6bef7fbd03654"
+  },
+  "leak_unicode_zwj": {
+   "pack": "5c780939a16048833a122e6839f303b237d6dd3fe79b4ebbaa704c17330717f1",
+   "train": "eccbf45af30eba25e0ce981284d2ca2c33ce6dda8ac0d9d887d3352eea6b3124",
+   "holdout": "e190c9aa00404dc99f47e2a164d6f55a946b911cce76aa9f2ecef14d5f14e03d"
+  },
+  "twin_unicode_zwj": {
+   "pack": "f78a5f8ae177ea61bbed04d5bb0808c88597b8f6a802f9811de715fa0aecb275",
+   "train": "f32dd74337872b88952c6bd2dd70ec71b39c0a4bd618748f4fb489dce004882d",
+   "holdout": "a18151dfd0c3648b6951f1906361ad91f7fd223ff774e46a3eed117d255e6183"
+  },
+  "leak_json_in_meta_extra": {
+   "pack": "5580543fa6d725b149564f223b565a5a1230d50672c91c816545ac3ebd81bb33",
+   "train": "29355799d3b6787c0ca502962484a99e0ef0fdb641d8469950fc85aeec4a1c98",
+   "holdout": "cab5191bbd656548cfbf8022c64abf057b3dc5949a332e3ee996b2241698cf70"
+  },
+  "twin_json_in_meta_extra": {
+   "pack": "23935af42488822c2e68566e76083e0a5c3ff054bd892be2199fe308ac2f9338",
+   "train": "a31c0fd650865bf86422d9cc02904bcf682cfdc6add0ad13fe3a78a064f48d8d",
+   "holdout": "428810bbca7323e5452dd69aefb37257de1a3b34d6e22f1b5fa916502a3e11af"
+  },
+  "leak_json_in_message_suffix": {
+   "pack": "5376a86f7fd58ce03371b6acdc1c7bcb60a72cbb5afc9e1b51c1b30a830d8369",
+   "train": "e0216a0975882eee1e9d13a9d4bd1c65986c5d7e9fad4780d50c9823b27e267f",
+   "holdout": "c06ecd79c9a95598a9582b3326242a28d571cd04115d459af1c3a29c496b7b0a"
+  },
+  "twin_json_in_message_suffix": {
+   "pack": "8fc8c4e7e6ea7a824cb57ce11a8a6e9a7fc10864cf6422d7b2dfe82bf445d74a",
+   "train": "c974351e6ec5703dd539cb8a65814b29e34a0b6aa5d933bc70fa83446fbc2091",
+   "holdout": "959dd6de3120748889a32587467f27c4ee106ff9fcc18f25fcb4aa52d1d77cf6"
+  },
+  "leak_newkey_meta_hint": {
+   "pack": "1a6160fae9eccff5dd727c4f044aa01fb014c43bef56a70bd4ab3349bba8e015",
+   "train": "7e8244b0e7282163713f902e6a4504f264cb509245b9b35e9d476381043fea01",
+   "holdout": "f1c93af43fe69fe64355e81e1905370e2d458a614d6f4439837977e771384237"
+  },
+  "twin_newkey_meta_hint": {
+   "pack": "61d0e3d8357e2049ea77829022374256e46b16e881b94e99d5e5699cdd0daaad",
+   "train": "e430fc92ca8f4262693c0fdb5521818a02997cb5f2be59e1cb9d47719ddbba57",
+   "holdout": "8df60dd705b80111a69c860cb62be9ac6933ba345c4b4e93a937c7601497e650"
+  },
+  "leak_newkey_meta_verdict": {
+   "pack": "0e8000144a52e932f6259b82fc08b5e7521592bdcb328eabfeee70c55295ee21",
+   "train": "6dd7436953c0f2433e1f15ba317260f9dcac09572c308b1dafed9a815d6dfe72",
+   "holdout": "24ba97f7557106749f5399dcc3e4d24f55b011836481a3f255387ed548453296"
+  },
+  "twin_newkey_meta_verdict": {
+   "pack": "533160f9c33a58082ff2673b06da170a6c1252e95f8b5425d133e65e22c937e1",
+   "train": "a21b7049242583be3d59cd6d976a9acaecd82a1c95fc0f62ad2e91b23f7e721c",
+   "holdout": "d42d0a0c225b9eb310d353d23ff270aaa070d11446c112f0693328e122b24258"
+  },
+  "leak_newkey_meta_tag": {
+   "pack": "d74fd49ff3836f497b29f0bb88de73c2f843191cd30bef4398aeb409da7fe441",
+   "train": "4c49c5672e52f6c61d3db4296803eadc7a8eb1c2d39c67f97221d3f70141c8fa",
+   "holdout": "70c26ecd9dc3d090ce6cc60bb17ce2411470ee82e830a6fdd1479d903971c7d9"
+  },
+  "twin_newkey_meta_tag": {
+   "pack": "59fd98a13eabb9d03f1640da19bad86d695c4102e064f5d428569a9c8147898e",
+   "train": "916edff9f226d6fa237e8c3887232bf1f4b833ba091b31018a0697510351aa63",
+   "holdout": "a1439ab353b9bbff9119eaea46fb1a82902350f3344cbff80680a006651ce52f"
+  },
+  "leak_newkey_meta_p_numeric": {
+   "pack": "e8a214caf6533863a4f693de45a71b92f2388cc51f9e17c792f8ebebf17cecfe",
+   "train": "5e0a235dd4ebf9b8dda794f30a7545c0a1bcedffe5ede0e4171fed7a32bf7d01",
+   "holdout": "a69fa82bef1601149c6164845baf86b91862ad0d7e2f945b6e51594994f5ba21"
+  },
+  "twin_newkey_meta_p_numeric": {
+   "pack": "07b6ff38375f07c3dfaa5c1e4e7ead3c320d701eeafad647e3eb6fa15158bb9b",
+   "train": "e47bd166ae30e86462ac568a05adafe0a5f45be0ce67652e342d0911d93eda12",
+   "holdout": "3d69c2eaf445e8d753fdf2aa59a4f9b6e0d499ce828ae15b5dcc75fb41b82620"
+  },
+  "leak_base64_label": {
+   "pack": "885bd22394d093472e201bc05554f66726ec5dc1bc3a10c00d4d3a656c4c1023",
+   "train": "b3cb892e2aea9b850dfec4d4e02379dfa98439011b116ed6e075e61e70c29140",
+   "holdout": "1c0adf4c460e2a225b6aa57eb2f8d2b50c909e1c702b19eb7aaa1d791a8dd30f"
+  },
+  "twin_base64_label": {
+   "pack": "c2a48df44f7f8a6b845b265683f5d102eff851c7da9482c084aa4d040c45b945",
+   "train": "3839b2da99ec740b7f0f865eb63ad637fcebb8ed90f5dcf3635647498737dbd0",
+   "holdout": "6a0ba3a47571d9636844b993978e69d29e96ca83f63a847d7820bd326545e883"
+  },
+  "leak_sidecar_labels": {
+   "pack": "548c99374551269955c6abf5d99b8535eb061c9292e063a4976be9b880c8a39b",
+   "train": "7bfc665b11b95d6e000c99a15caf1f8ee414cfb04cacbe326be8421fea058703",
+   "holdout": "5219925dd2e6d272d98d32d44a69130a56d0cda2799bc43fcf3a03516d487892",
+   "sidecar": "e30ecd5ed2aae0fd8235166731cf5dcc29247071d88b4d8398fa2d8882bb1179"
+  },
+  "twin_sidecar_labels": {
+   "pack": "548c99374551269955c6abf5d99b8535eb061c9292e063a4976be9b880c8a39b",
+   "train": "7bfc665b11b95d6e000c99a15caf1f8ee414cfb04cacbe326be8421fea058703",
+   "holdout": "5219925dd2e6d272d98d32d44a69130a56d0cda2799bc43fcf3a03516d487892",
+   "sidecar": "8b226e8418cadb7d9387894e30c071b89b4a818bc1c9b4a3de1a32ed897d20fb"
+  },
+  "clean_base": {
+   "pack": "548c99374551269955c6abf5d99b8535eb061c9292e063a4976be9b880c8a39b",
+   "train": "7bfc665b11b95d6e000c99a15caf1f8ee414cfb04cacbe326be8421fea058703",
+   "holdout": "5219925dd2e6d272d98d32d44a69130a56d0cda2799bc43fcf3a03516d487892"
+  },
+  "clean_label_word_in_command": {
+   "pack": "65fbc78a7e00c818cbd547deec5339e820d956c950abcbe726716b8a48f3bef1",
+   "train": "a548ea6c92a60d3b76ed834f7d5dd2d462461fdf3435c1f93f64f64c84fb7a6f",
+   "holdout": "0f962cc3322e1d0df4dbf48a44585ba2760b0dd363ca795e4e93d12bc08cc8d6"
+  },
+  "clean_status_mixed": {
+   "pack": "24d7f5b106e2466a400916426851acfc4717a703cf3578782d47b01bcbd66dbb",
+   "train": "28f7684a8808e37ebe3ef3fbe8e1b204eca8a12836e6393a3157d4d847b42038",
+   "holdout": "7b7ac27091aee20e25528d920403e2b3cc506b848733e21969ce703972bbb8ab"
+  },
+  "clean_meta_lang_tool": {
+   "pack": "2ab937f2b123c686f63f4b2c011d5f9fa1aab043fc57f22e77b29575b43b8e01",
+   "train": "3d6b87e06cc4cd28c75bbbb809f8e2edba4e9c2789404a4975257826183aff95",
+   "holdout": "7db08f2056088724fff5f131ff85649f211b40948b1a4b4dfe6c166329207886"
+  },
+  "clean_substring_key": {
+   "pack": "a2af43dea1ea2b8dc26ef371de12f46cdba117e17ba817f386e2c6f0e2e52804",
+   "train": "2727e625a49afb0de2ee1cb9e307db5f8a9c9b3eb96f402386b793da42452509",
+   "holdout": "f82be675be7f851e7efc401d25463df9a2e14cdd0fc7daf9ddd808570cd81c39"
+  },
+  "clean_numeric_uncorrelated": {
+   "pack": "e7334a501f5978a3a4f2b4bc3e12dc2aa7146e8ea8cbe9ca5b7be71e6640dc05",
+   "train": "f26496d369a114766d251b78d01d1aa5744a21fe5391a17053a32078b970a355",
+   "holdout": "0a4808963127fd36c0a53b32f1557d34c4a5da5c47c00a56bdcb6d8d0a7b2340"
+  }
+ },
+ "sha256_fixtures_jsonl": "e415a0ea5dae1e1cf3ddd21573a798041e46351d5e6e9ff68c40f39ea480b99d",
+ "sha256_readme_md": "36894d8917c026f1079af29a72b654098e5377bf5cbfc3ffd5d393bbd6205e11",
+ "not_for_train": true,
+ "eval_only": true,
+ "champion_touched": false,
+ "ft_kicked": false,
+ "live_gate_touched": false,
+ "scope": "open adversarial build-against set; Critic holds a separate held-out set"
+}

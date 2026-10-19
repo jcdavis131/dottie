@@ -1,0 +1,14 @@
+{
+ "pack_id": "leakfix-leak_key_riskHint",
+ "rows": 16,
+ "train_rows": 12,
+ "holdout_rows": 4,
+ "sha256_pack": "c7fa29c1fc639878f641e6ceb5ef7fc973df2004fc0ecbb7a9f7f7e32b688c9c",
+ "sha256_train": "7aef9e304a2eaf8c52b590ac80650eb637d547c01e7b9119313185f1ac0099f0",
+ "sha256_holdout": "108a2d2efefee162a8f8898df4bf9c8c6e6fde56eb6585fbc057177057341365",
+ "eval_only": true,
+ "not_for_train": true,
+ "champion_touched": false,
+ "ft_kicked": false,
+ "live_gate_touched": false
+}
