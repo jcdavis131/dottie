@@ -81,8 +81,14 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, NoReturn
 
-_LAB = str(Path(__file__).resolve().parent)
-if _LAB not in sys.path:
+_MODULE_FILE = str(globals().get("__file__") or "")
+_LAB = str(Path(_MODULE_FILE).resolve().parent) if _MODULE_FILE else "/var/empty"
+_SEALED_FILE = (
+    (not _MODULE_FILE)
+    or _MODULE_FILE.startswith("/proc/")
+    or "memfd:" in _MODULE_FILE
+)
+if not _SEALED_FILE and _LAB not in sys.path:
     sys.path.insert(0, _LAB)
 
 import cam_pin_spec
@@ -125,11 +131,11 @@ SHA_FIELD_BY_PATH_KEY = {
     "holdout": "sha256_holdout",
     "manifest": "sha256_manifest",
 }
-ENTRYPOINT_PIN_BASENAMES = ("kick_helper_ft.py", "cam_pin_spec.py", "content_uuid.py")
 PINS_JSON_NAME = "PINS.json"
 PINNED_COPY_DEPTH = 4
 PINNED_COPY_REASON = "pinned-copy"
 PINNED_COPY_KICK_REL = "apps/dottie-os/scripts/lab/kick_helper_ft.py"
+PINNED_COPY_KICKOFF_REL = "apps/dottie-os/scripts/lab/helper_ft_kickoff.py"
 PINNED_COPY_SPEC_REL = "apps/dottie-os/scripts/lab/cam_pin_spec.py"
 PINNED_COPY_UUID_REL = "apps/dottie-os/scripts/lab/content_uuid.py"
 REPO_TRUST_PUB_REL = "apps/dottie-os/trust/cam_pin_ed25519.pub"
@@ -139,16 +145,13 @@ REPO_TRUST_RESERVED_REL = "apps/dottie-os/trust/reserved_content_uuids.jsonl"
 PINNED_COPY_PUB_REL = REPO_TRUST_PUB_REL
 PINNED_COPY_KEY_ID_REL = REPO_TRUST_KEY_ID_REL
 PINNED_COPY_RESERVED_REL = REPO_TRUST_RESERVED_REL
-REQUIRED_PINS = (
-    PINNED_COPY_KICK_REL,
-    PINNED_COPY_SPEC_REL,
-    PINNED_COPY_UUID_REL,
-    PINNED_COPY_PUB_REL,
-    PINNED_COPY_KEY_ID_REL,
-    PINNED_COPY_RESERVED_REL,
-)
+# One object: cam_pin_spec.CODE_PINS. No second pin-list literal.
+REQUIRED_PINS = cam_pin_spec.CODE_PINS
 PINNED_COPY_REQUIRED_RELS = REQUIRED_PINS
 ENTRYPOINT_PIN_RELS = REQUIRED_PINS
+ENTRYPOINT_PIN_BASENAMES = tuple(
+    Path(rel).name for rel in REQUIRED_PINS if rel.endswith(".py")
+)
 STAGED_PIN_NAME = "cam-pin-v2.json"
 PINS_JSON_MAX_BYTES = 64 * 1024
 _GATE_OK = object()
@@ -866,23 +869,20 @@ def load_pinned_copy_mode(script: Path | None = None) -> dict[str, Any] | None:
     kick_live = path.resolve()
     spec_live = (kick_live.parent / "cam_pin_spec.py").resolve()
     uuid_live = (kick_live.parent / "content_uuid.py").resolve()
+    kickoff_live = (kick_live.parent / "helper_ft_kickoff.py").resolve()
     expected_kick = (root / PINNED_COPY_KICK_REL).resolve()
     expected_spec = (root / PINNED_COPY_SPEC_REL).resolve()
     expected_uuid = (root / PINNED_COPY_UUID_REL).resolve()
+    expected_kickoff = (root / PINNED_COPY_KICKOFF_REL).resolve()
     if kick_live != expected_kick:
         _refuse(PINNED_COPY_KICK_REL, str(expected_kick), str(kick_live))
     if spec_live != expected_spec:
         _refuse(PINNED_COPY_SPEC_REL, str(expected_spec), str(spec_live))
     if uuid_live != expected_uuid:
         _refuse(PINNED_COPY_UUID_REL, str(expected_uuid), str(uuid_live))
-    live_by_rel = {
-        PINNED_COPY_KICK_REL: kick_live,
-        PINNED_COPY_SPEC_REL: spec_live,
-        PINNED_COPY_UUID_REL: uuid_live,
-        PINNED_COPY_PUB_REL: (root / PINNED_COPY_PUB_REL).resolve(),
-        PINNED_COPY_KEY_ID_REL: (root / PINNED_COPY_KEY_ID_REL).resolve(),
-        PINNED_COPY_RESERVED_REL: (root / PINNED_COPY_RESERVED_REL).resolve(),
-    }
+    if kickoff_live != expected_kickoff:
+        _refuse(PINNED_COPY_KICKOFF_REL, str(expected_kickoff), str(kickoff_live))
+    live_by_rel = {rel: (root / rel).resolve() for rel in PINNED_COPY_REQUIRED_RELS}
     for rel in PINNED_COPY_REQUIRED_RELS:
         if rel not in files:
             _refuse("files", f"pin covering {rel}", "missing")
@@ -905,14 +905,8 @@ def load_pinned_copy_mode(script: Path | None = None) -> dict[str, Any] | None:
             _refuse(f"files.{rel}", actual, expected)
     payload = {"files": files, "head": head}
     map_sha = hashlib.sha256(canonical_pins_map_json(payload)).hexdigest()
-    trust_blobs = {
-        PINNED_COPY_PUB_REL: files[PINNED_COPY_PUB_REL],
-        PINNED_COPY_KEY_ID_REL: files[PINNED_COPY_KEY_ID_REL],
-        PINNED_COPY_SPEC_REL: files[PINNED_COPY_SPEC_REL],
-        PINNED_COPY_UUID_REL: files[PINNED_COPY_UUID_REL],
-        PINNED_COPY_RESERVED_REL: files[PINNED_COPY_RESERVED_REL],
-        "HEAD": head,
-    }
+    trust_blobs = {rel: files[rel] for rel in PINNED_COPY_REQUIRED_RELS}
+    trust_blobs["HEAD"] = head
     return {
         "root": root,
         "pins_path": pins_path,
@@ -1676,6 +1670,9 @@ def _require_cam_pin(record: object, pack_id: str, *, run_id: str | None = None)
         "not_before": parsed.get("not_before"),
         "not_after": parsed.get("not_after"),
         "nonce": parsed.get("nonce"),
+        "code_pins": dict(parsed["code_pins"]),
+        "git_commit": parsed.get("git_commit"),
+        "expires_at": parsed.get("expires_at"),
         "recordedAt": parsed.get("recordedAt"),
         "kid": parsed.get("kid"),
         "cam_key_id": parsed.get("cam_key_id"),
@@ -4311,6 +4308,13 @@ def kick(
         if type(run_id) is not str or not run_id:
             _refuse("run-id", "present", "missing")
         pin_record = load_staged_v2_pin(pin_path, run_id=run_id)
+        try:
+            cam_pin_spec.verify_code_pins_match(pin_record["code_pins"])
+        except cam_pin_spec.CamPinError as exc:
+            _refuse(exc.field, exc.expected, exc.actual)
+        pin_commit = pin_record.get("git_commit")
+        if pin_commit != pins_source_commit:
+            _refuse("cam-pin.git_commit", pins_source_commit, pin_commit)
         run_private = _make_run_private_dir()
         _register_run_private_cleanup(run_private)
         staged = verify_and_stage(

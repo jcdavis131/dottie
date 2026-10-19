@@ -7,6 +7,7 @@ No Hugging Face download, no FT, no LIVE/champion. Run with:
 
 from __future__ import annotations
 
+import ast
 import base64
 import decimal
 import hashlib
@@ -656,7 +657,15 @@ def _cam_pin(manifest: dict, **overrides: object) -> dict:
         "stampVerified": True,
         "cam_key_id": TEST_CAM_KEY_ID,
     }
+    if "expires_at" not in overrides:
+        pin["expires_at"] = pin["not_after"]
+    if "git_commit" not in overrides:
+        pin["git_commit"] = _default_pin_git_commit()
+    if "code_pins" not in overrides:
+        pin["code_pins"] = _live_entrypoint_pins()
     pin.update(overrides)
+    if "not_after" in overrides and "expires_at" not in overrides:
+        pin["expires_at"] = pin["not_after"]
     binding = pin.get("binding")
     if isinstance(binding, dict):
         if type(pin.get("pack_id")) is str:
@@ -761,6 +770,16 @@ def _cli_args(dest: Path, log_path: Path | None = None) -> list[str]:
 
 
 FORGE_PINS_SOURCE_COMMIT_FIXTURE = "c" * 40
+
+
+def _default_pin_git_commit() -> str:
+    git_sha = kick_helper_ft._script_git_sha()
+    if type(git_sha) is str and len(git_sha) == kick_helper_ft.GIT_SHA_LEN:
+        return git_sha
+    env = os.environ.get(kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV)
+    if type(env) is str and len(env) == kick_helper_ft.GIT_SHA_LEN:
+        return env
+    return FORGE_PINS_SOURCE_COMMIT_FIXTURE
 
 
 def _live_entrypoint_pins() -> dict[str, str]:
@@ -2152,6 +2171,7 @@ class HelperFtPinnedCopyTests(unittest.TestCase):
         _stop_hq_http_mock(self)
 
     def _pin(self, manifest: dict, **overrides: object) -> dict:
+        overrides.setdefault("git_commit", PINNED_COPY_HEAD)
         pin = _cam_pin(manifest, **overrides)
         self.hq_pins[manifest["pack_id"]] = pin
         return pin
@@ -3022,6 +3042,9 @@ class HelperFtCritic3dacTests(unittest.TestCase):
                         "issued_at": _rfc3339_z(issued),
                         "not_before": _rfc3339_z(not_before),
                         "not_after": _rfc3339_z(not_after),
+                        "expires_at": _rfc3339_z(not_after),
+                        "git_commit": "ab" * 20,
+                        "code_pins": {rel: "11" * 32 for rel in cam_pin_spec.CODE_PINS},
                         "nonce": "ab" * 32,
                         "sha256_pack": "11" * 32,
                         "sha256_train": "22" * 32,
@@ -7263,6 +7286,9 @@ class HelperFtK1PinV2Tests(unittest.TestCase):
             "sha256_pack": "11" * 32,
             "sha256_train": "22" * 32,
             "sha256_holdout": "33" * 32,
+            "expires_at": "2026-10-19T18:00:00Z",
+            "git_commit": "ab" * 20,
+            "code_pins": {rel: "11" * 32 for rel in cam_pin_spec.CODE_PINS},
             "rows_total": 0,
             "rows_train": 0,
             "rows_holdout": 0,
@@ -7454,8 +7480,14 @@ class HelperFtK1PinV2Tests(unittest.TestCase):
             kick_helper_ft.PINNED_COPY_KEY_ID_REL,
             "apps/dottie-os/trust/cam_pin_key_id",
         )
-        self.assertEqual(kick_helper_ft.PINNED_COPY_PUB_REL, cam_pin_spec.TRUST_RELPATHS[0])
-        self.assertEqual(kick_helper_ft.PINNED_COPY_KEY_ID_REL, cam_pin_spec.TRUST_RELPATHS[1])
+        self.assertIs(kick_helper_ft.REQUIRED_PINS, cam_pin_spec.CODE_PINS)
+        self.assertIs(cam_pin_spec.REQUIRED_PINS, cam_pin_spec.CODE_PINS)
+        self.assertIs(cam_pin_spec.TRUST_RELPATHS, cam_pin_spec.CODE_PINS)
+        self.assertIs(kick_helper_ft.PINNED_COPY_REQUIRED_RELS, cam_pin_spec.CODE_PINS)
+        self.assertIs(kick_helper_ft.ENTRYPOINT_PIN_RELS, cam_pin_spec.CODE_PINS)
+        self.assertIn(kick_helper_ft.PINNED_COPY_PUB_REL, cam_pin_spec.CODE_PINS)
+        self.assertIn(kick_helper_ft.PINNED_COPY_KEY_ID_REL, cam_pin_spec.CODE_PINS)
+        self.assertIn(kick_helper_ft.PINNED_COPY_KICKOFF_REL, cam_pin_spec.CODE_PINS)
         self.assertIn(kick_helper_ft.PINNED_COPY_UUID_REL, kick_helper_ft.REQUIRED_PINS)
         self.assertIn(kick_helper_ft.PINNED_COPY_RESERVED_REL, kick_helper_ft.REQUIRED_PINS)
         self.assertIn(
@@ -7532,6 +7564,241 @@ class HelperFtK1PinV2Tests(unittest.TestCase):
         src = Path(kick_helper_ft.__file__).read_text(encoding="utf-8")
         self.assertIn("load_staged_v2_pin", src)
         self.assertNotIn("fetch_cam_pin(pack_id)", src.split("def kick", 1)[1].split("def build_parser", 1)[0])
+
+
+def _repo_root() -> Path:
+    return Path(kick_helper_ft.__file__).resolve().parents[4]
+
+
+def _code_pins_import_closure(repo: Path) -> list[str]:
+    """Import kick + kickoff under python -I and list in-repo module files."""
+    tracer = (
+        "import importlib, json, sys\n"
+        "from pathlib import Path\n"
+        "repo = Path(sys.argv[1]).resolve()\n"
+        "lab = repo / 'apps' / 'dottie-os' / 'scripts' / 'lab'\n"
+        "sys.path.insert(0, str(lab))\n"
+        "importlib.import_module('helper_ft_kickoff')\n"
+        "importlib.import_module('kick_helper_ft')\n"
+        "found = []\n"
+        "for mod in list(sys.modules.values()):\n"
+        "    f = getattr(mod, '__file__', None)\n"
+        "    if not f:\n"
+        "        continue\n"
+        "    p = Path(f).resolve()\n"
+        "    try:\n"
+        "        rel = p.relative_to(repo).as_posix()\n"
+        "    except ValueError:\n"
+        "        continue\n"
+        "    if '/__pycache__/' in rel or rel.endswith('.pyc'):\n"
+        "        continue\n"
+        "    found.append(rel)\n"
+        "print(json.dumps(sorted(set(found))))\n"
+    )
+    env = {key: value for key, value in os.environ.items() if not key.startswith("PYTHON")}
+    proc = subprocess.run(
+        [sys.executable, "-I", "-c", tracer, str(repo)],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd="/",
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(proc.stderr or proc.stdout or f"rc={proc.returncode}")
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+class HelperFtCodePinsTests(unittest.TestCase):
+    """Single CODE_PINS set, v2 binding, sealed copy, refusal cases (a)–(e)."""
+
+    _KickRefused = None
+
+    def setUp(self) -> None:
+        self._KickRefused = helper_ft_kickoff.kick_helper_ft.KickRefused
+        _start_hq_http_mock(self)
+
+    def tearDown(self) -> None:
+        _stop_hq_http_mock(self)
+        cam_pin_spec.clear_pinned_copy_trust()
+
+    def _dummy_manifest(self) -> dict:
+        return {
+            "pack_id": "code-pins-pack",
+            "sha256_pack": "11" * 32,
+            "sha256_train": "22" * 32,
+            "sha256_holdout": "33" * 32,
+            "rows": 0,
+            "train_rows": 0,
+            "holdout_rows": 0,
+        }
+
+    def test_single_code_pins_object_and_required_paths(self) -> None:
+        self.assertIs(cam_pin_spec.REQUIRED_PINS, cam_pin_spec.CODE_PINS)
+        self.assertIs(cam_pin_spec.TRUST_RELPATHS, cam_pin_spec.CODE_PINS)
+        self.assertIs(kick_helper_ft.REQUIRED_PINS, cam_pin_spec.CODE_PINS)
+        self.assertIs(kick_helper_ft.ENTRYPOINT_PIN_RELS, cam_pin_spec.CODE_PINS)
+        self.assertIs(kick_helper_ft.PINNED_COPY_REQUIRED_RELS, cam_pin_spec.CODE_PINS)
+        required = {
+            "apps/dottie-os/scripts/lab/kick_helper_ft.py",
+            "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
+            "apps/dottie-os/scripts/lab/cam_pin_spec.py",
+            "apps/dottie-os/scripts/lab/content_uuid.py",
+            "apps/dottie-os/trust/cam_pin_ed25519.pub",
+            "apps/dottie-os/trust/cam_pin_key_id",
+            "apps/dottie-os/trust/reserved_content_uuids.jsonl",
+        }
+        self.assertEqual(set(cam_pin_spec.CODE_PINS), required)
+
+    def test_import_closure_under_python_isolated_is_pinned(self) -> None:
+        repo = _repo_root()
+        closure = _code_pins_import_closure(repo)
+        pinned = set(cam_pin_spec.CODE_PINS)
+        for rel in closure:
+            self.assertIn(rel, pinned, f"unpinned import {rel}")
+        for rel in cam_pin_spec.CODE_PIN_MODULE_NAMES.values():
+            self.assertIn(rel, closure)
+
+    def test_no_second_pin_list_literal(self) -> None:
+        names = {
+            "CODE_PINS",
+            "REQUIRED_PINS",
+            "TRUST_RELPATHS",
+            "ENTRYPOINT_PIN_RELS",
+            "PINNED_COPY_REQUIRED_RELS",
+        }
+        roots = (
+            APP / "scripts",
+            APP / "tools",
+        )
+        offenders: list[str] = []
+        for root in roots:
+            for path in root.rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.Assign):
+                        continue
+                    for target in node.targets:
+                        if not isinstance(target, ast.Name) or target.id not in names:
+                            continue
+                        if path.resolve() == Path(cam_pin_spec.__file__).resolve():
+                            if target.id == "CODE_PINS":
+                                self.assertIsInstance(node.value, ast.Tuple)
+                            else:
+                                self.assertIsInstance(node.value, ast.Name)
+                                self.assertEqual(node.value.id, "CODE_PINS")
+                            continue
+                        if isinstance(node.value, (ast.Tuple, ast.List)):
+                            offenders.append(f"{path}:{target.id}")
+        self.assertEqual(offenders, [])
+
+    def test_a_unpinned_imported_module_byte_change_refused(self) -> None:
+        manifest = self._dummy_manifest()
+        pin = _cam_pin(manifest)
+        with _pinned_copy_root() as root:
+            _stage_pinned_copy(root)
+            _unlock_pinned_copy_tree(root)
+            evil = root / "apps" / "dottie-os" / "scripts" / "lab" / "unpinned_mod.py"
+            evil.write_text("MARKER = 'unpinned-a'\n", encoding="utf-8")
+            evil.write_bytes(evil.read_bytes()[:-2] + b"B\n")
+            proc = helper_ft_kickoff.launch_sealed_child(
+                root=root,
+                pin=pin,
+                run_id=str(pin["run_id"]),
+                extra_env={"HELPER_FT_PROBE_IMPORT": "unpinned_mod"},
+            )
+        self.assertNotEqual(proc.returncode, 0)
+        combined = (proc.stdout or "") + (proc.stderr or "")
+        self.assertIn("unpinned", combined.lower())
+        self.assertNotIn("HELPER_FT_SEALED_OK", proc.stdout)
+
+    def test_b_swapped_run_id_refused(self) -> None:
+        manifest = self._dummy_manifest()
+        pin = _cam_pin(manifest, run_id="run-A")
+        with self.assertRaises(self._KickRefused) as ctx:
+            helper_ft_kickoff.launch_sealed_child(
+                root=_repo_root(), pin=pin, run_id="run-B"
+            )
+        self.assertEqual(ctx.exception.field, "cam-pin.binding.run_id")
+        self.assertEqual(ctx.exception.expected, "run-A")
+        self.assertEqual(ctx.exception.actual, "run-B")
+
+    def test_c_expired_pin_refused(self) -> None:
+        manifest = self._dummy_manifest()
+        past = datetime.now(timezone.utc) - timedelta(hours=3)
+        expired = past + timedelta(hours=1)
+        pin = _cam_pin(
+            manifest,
+            issued_at=_rfc3339_z(past),
+            not_before=_rfc3339_z(past),
+            not_after=_rfc3339_z(expired),
+            expires_at=_rfc3339_z(expired),
+        )
+        with self.assertRaises(self._KickRefused) as ctx:
+            helper_ft_kickoff.launch_sealed_child(
+                root=_repo_root(), pin=pin, run_id=str(pin["run_id"])
+            )
+        self.assertEqual(ctx.exception.field, "cam-pin.not_after")
+
+    def test_d_v2_pin_without_code_pins_refused(self) -> None:
+        manifest = self._dummy_manifest()
+        pin = _cam_pin(manifest)
+        pin.pop("code_pins")
+        with self.assertRaises(self._KickRefused) as ctx:
+            helper_ft_kickoff.launch_sealed_child(
+                root=_repo_root(), pin=pin, run_id=str(pin["run_id"])
+            )
+        self.assertEqual(ctx.exception.field, "cam-pin.code_pins")
+        self.assertEqual(ctx.exception.actual, "missing")
+
+    def test_e_disk_swap_after_hash_executes_sealed_bytes(self) -> None:
+        manifest = self._dummy_manifest()
+        pin = _cam_pin(manifest)
+        with _pinned_copy_root() as root:
+            _stage_pinned_copy(root)
+            kick_path = root / kick_helper_ft.PINNED_COPY_KICK_REL
+            original = kick_path.read_bytes()
+            original_sha = hashlib.sha256(original).hexdigest()
+
+            def swap() -> None:
+                _unlock_pinned_copy_tree(root)
+                kick_path.write_bytes(original + b"\n# SEAL_SWAP_MARKER\n")
+
+            proc = helper_ft_kickoff.launch_sealed_child(
+                root=root,
+                pin=pin,
+                run_id=str(pin["run_id"]),
+                after_seal=swap,
+            )
+            swapped_sha = hashlib.sha256(kick_path.read_bytes()).hexdigest()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("HELPER_FT_SEALED_OK", proc.stdout)
+        self.assertIn("HELPER_FT_SEALED_MAIN_SHA=" + original_sha, proc.stdout)
+        self.assertNotEqual(swapped_sha, original_sha)
+        self.assertNotIn("SEAL_SWAP_MARKER", proc.stdout)
+
+    def test_v1_pin_never_authorizes_sealed_launch(self) -> None:
+        v1 = _sign_pin(
+            {
+                "pack_id": "code-pins-pack",
+                "sha256_pack": "11" * 32,
+                "sha256_train": "22" * 32,
+                "sha256_holdout": "33" * 32,
+                "rows_total": 0,
+                "rows_train": 0,
+                "rows_holdout": 0,
+                "recordedAt": "2026-10-19T00:00:00.000Z",
+                "kid": "cam-stamp-kid-1",
+                "cam_key_id": TEST_CAM_KEY_ID,
+            }
+        )
+        with self.assertRaises(self._KickRefused) as ctx:
+            helper_ft_kickoff.launch_sealed_child(
+                root=_repo_root(), pin=v1, run_id="helper-ft-test-run"
+            )
+        self.assertEqual(ctx.exception.field, "cam-pin.format")
+        self.assertEqual(ctx.exception.actual, cam_pin_spec.PIN_FORMAT_V1)
 
 
 if __name__ == "__main__":

@@ -24,15 +24,22 @@ import json
 import os
 import socket
 import stat
+import subprocess
 import sys
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from wsgiref.simple_server import make_server
 
-_LAB = str(Path(__file__).resolve().parent)
-if _LAB not in sys.path:
+_MODULE_FILE = str(globals().get("__file__") or "")
+_LAB = str(Path(_MODULE_FILE).resolve().parent) if _MODULE_FILE else "/var/empty"
+_SEALED_FILE = (
+    (not _MODULE_FILE)
+    or _MODULE_FILE.startswith("/proc/")
+    or "memfd:" in _MODULE_FILE
+)
+if not _SEALED_FILE and _LAB not in sys.path:
     sys.path.insert(0, _LAB)
 
 import cam_pin_spec
@@ -276,6 +283,7 @@ def build_command(
         raise kick_helper_ft.KickRefused("cam-pin", "staged v2 pin path or fd", "missing")
     cmd = [
         python or sys.executable,
+        "-I",
         str(Path(__file__).resolve().parent / "kick_helper_ft.py"),
         "--pack",
         str(pack),
@@ -291,6 +299,221 @@ def build_command(
     if smoke:
         cmd.append("--smoke")
     return cmd
+
+
+def _read_path_once(path: Path, field: str) -> bytes:
+    """Single open+read. Caller must not re-open this path for the same pin."""
+    try:
+        fd = os.open(path, kick_helper_ft._open_flags_read())
+    except OSError as exc:
+        raise kick_helper_ft.KickRefused(field, "readable regular file", f"OSError:{exc.errno}") from exc
+    try:
+        return kick_helper_ft._read_fd_bytes(fd)
+    except OSError as exc:
+        raise kick_helper_ft.KickRefused(field, "readable regular file", f"OSError:{exc.errno}") from exc
+    finally:
+        os.close(fd)
+
+
+def seal_code_pins(code_pins: Mapping[str, str], *, root: Path) -> dict[str, int]:
+    """Hash+copy each CODE_PINS file in one read into a sealed memfd. No path re-read."""
+    base = Path(root).resolve()
+    expected = cam_pin_spec.require_code_pins(dict(code_pins))
+    verified: dict[str, bytes] = {}
+    for rel in cam_pin_spec.CODE_PINS:
+        path = (base / rel).resolve()
+        try:
+            path.relative_to(base)
+        except ValueError as exc:
+            raise kick_helper_ft.KickRefused(
+                f"cam-pin.code_pins.{rel}", f"under {base}", str(path)
+            ) from exc
+        buf = _read_path_once(path, f"cam-pin.code_pins.{rel}")
+        actual = hashlib.sha256(buf).hexdigest()
+        if actual != expected[rel]:
+            raise kick_helper_ft.KickRefused(f"cam-pin.code_pins.{rel}", expected[rel], actual)
+        verified[rel] = buf
+    fds: dict[str, int] = {}
+    try:
+        for rel, buf in verified.items():
+            field = f"cam-pin.code_pins.{rel}"
+            name = "codepin-" + rel.replace("/", "_")
+            fd = kick_helper_ft._register_held_fd(kick_helper_ft._memfd_create(name))
+            kick_helper_ft._write_all(fd, buf, field)
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+            except OSError as exc:
+                raise kick_helper_ft.KickRefused(field, "seekable memfd", f"OSError:{exc.errno}") from exc
+            kick_helper_ft._seal_memfd(fd, field)
+            fds[rel] = fd
+    except kick_helper_ft.KickRefused:
+        for fd in fds.values():
+            kick_helper_ft._close_quietly(fd)
+        raise
+    return fds
+
+
+def _sealed_bootstrap_source(
+    *,
+    module_fds: Mapping[str, int],
+    main_fd: int,
+    repo_root: str,
+) -> bytes:
+    payload = {
+        "module_fds": {name: int(fd) for name, fd in module_fds.items()},
+        "main_fd": int(main_fd),
+        "repo_root": str(repo_root),
+        "lab_rel": "apps/dottie-os/scripts/lab",
+    }
+    blob = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    return (
+        "#!/usr/bin/env python3\n"
+        "import importlib.abc\n"
+        "import importlib.machinery\n"
+        "import importlib.util\n"
+        "import hashlib\n"
+        "import json\n"
+        "import os\n"
+        "import runpy\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"_SEAL = json.loads({blob!r})\n"
+        "PINNED = {str(k): int(v) for k, v in _SEAL['module_fds'].items()}\n"
+        "MAIN_FD = int(_SEAL['main_fd'])\n"
+        "REPO = Path(_SEAL['repo_root']).resolve()\n"
+        "LAB = REPO / _SEAL['lab_rel']\n"
+        "class PinnedMetaFinder(importlib.abc.MetaPathFinder):\n"
+        "    def find_spec(self, fullname, path, target=None):\n"
+        "        fd = PINNED.get(fullname)\n"
+        "        if fd is not None:\n"
+        "            origin = f'/proc/self/fd/{fd}'\n"
+        "            class _FdLoader(importlib.machinery.SourceFileLoader):\n"
+        "                def exec_module(self, module):\n"
+        "                    module.__dict__['__file__'] = self.path\n"
+        "                    module.__file__ = self.path\n"
+        "                    return super().exec_module(module)\n"
+        "            loader = _FdLoader(fullname, origin)\n"
+        "            spec = importlib.util.spec_from_loader(fullname, loader, origin=origin)\n"
+        "            if spec is not None:\n"
+        "                spec.has_location = True\n"
+        "            return spec\n"
+        "        stem = fullname.split('.', 1)[0]\n"
+        "        guess = LAB / (fullname.replace('.', '/') + '.py')\n"
+        "        if guess.is_file() and stem not in PINNED:\n"
+        "            raise ImportError(\n"
+        "                f'HELPER FT refused: import {fullname}: expected pinned or stdlib actual unpinned'\n"
+        "            )\n"
+        "        spec = importlib.machinery.PathFinder.find_spec(fullname, path, target)\n"
+        "        origin = getattr(spec, 'origin', None) if spec is not None else None\n"
+        "        if origin and origin not in ('built-in', 'frozen'):\n"
+        "            try:\n"
+        "                resolved = Path(origin).resolve()\n"
+        "                resolved.relative_to(REPO)\n"
+        "            except (ValueError, OSError):\n"
+        "                return None\n"
+        "            raise ImportError(\n"
+        "                f'HELPER FT refused: import {fullname}: expected pinned or stdlib actual unpinned {origin}'\n"
+        "            )\n"
+        "        return None\n"
+        "cleaned = []\n"
+        "for entry in sys.path:\n"
+        "    if not entry:\n"
+        "        continue\n"
+        "    try:\n"
+        "        Path(entry).resolve().relative_to(REPO)\n"
+        "        continue\n"
+        "    except (ValueError, OSError):\n"
+        "        cleaned.append(entry)\n"
+        "sys.path[:] = cleaned\n"
+        "sys.meta_path.insert(0, PinnedMetaFinder())\n"
+        "if '--sealed-probe' in sys.argv:\n"
+        "    os.lseek(MAIN_FD, 0, os.SEEK_SET)\n"
+        "    digest = hashlib.sha256()\n"
+        "    with open(f'/proc/self/fd/{MAIN_FD}', 'rb') as handle:\n"
+        "        digest.update(handle.read())\n"
+        "    os.lseek(MAIN_FD, 0, os.SEEK_SET)\n"
+        "    import cam_pin_spec, content_uuid, kick_helper_ft  # noqa: F401\n"
+        "    extra = os.environ.get('HELPER_FT_PROBE_IMPORT')\n"
+        "    if extra:\n"
+        "        __import__(extra)\n"
+        "    sys.stdout.write('HELPER_FT_SEALED_OK\\n')\n"
+        "    sys.stdout.write('HELPER_FT_SEALED_MAIN_SHA=' + digest.hexdigest() + '\\n')\n"
+        "    raise SystemExit(0)\n"
+        "runpy.run_path(f'/proc/self/fd/{MAIN_FD}', run_name='__main__')\n"
+    ).encode("ascii")
+
+
+def launch_sealed_child(
+    *,
+    root: Path,
+    pin: Mapping[str, Any],
+    run_id: str,
+    argv: list[str] | None = None,
+    python: str | None = None,
+    extra_env: Mapping[str, str] | None = None,
+    after_seal: Callable[[], None] | None = None,
+    timeout: float = 30.0,
+) -> subprocess.CompletedProcess[str]:
+    """Verify the v2 pin, seal CODE_PINS into memfds, exec ``python -I`` from those fds.
+
+    The repo is not on the child ``sys.path``. Unpinned first-party imports are
+    refused. Fds are inherited; hashed paths are never re-opened after the
+    single read in ``seal_code_pins``.
+    """
+    try:
+        parsed = cam_pin_spec.parse_kick_pin_payload(dict(pin), run_id=run_id)
+    except cam_pin_spec.CamPinError as exc:
+        raise kick_helper_ft.KickRefused(exc.field, exc.expected, exc.actual) from exc
+    base = Path(root).resolve()
+    fds: dict[str, int] = {}
+    bootstrap_fd: int | None = None
+    try:
+        fds = seal_code_pins(parsed["code_pins"], root=base)
+        if after_seal is not None:
+            after_seal()
+        module_fds = {
+            name: fds[rel] for name, rel in cam_pin_spec.CODE_PIN_MODULE_NAMES.items()
+        }
+        main_fd = fds[cam_pin_spec.CODE_PIN_MODULE_NAMES["kick_helper_ft"]]
+        bootstrap = _sealed_bootstrap_source(
+            module_fds=module_fds, main_fd=main_fd, repo_root=str(base)
+        )
+        bootstrap_fd = kick_helper_ft._register_held_fd(
+            kick_helper_ft._memfd_create("codepin-bootstrap")
+        )
+        kick_helper_ft._write_all(bootstrap_fd, bootstrap, "sealed.bootstrap")
+        try:
+            os.lseek(bootstrap_fd, 0, os.SEEK_SET)
+        except OSError as exc:
+            raise kick_helper_ft.KickRefused(
+                "sealed.bootstrap", "seekable memfd", f"OSError:{exc.errno}"
+            ) from exc
+        kick_helper_ft._seal_memfd(bootstrap_fd, "sealed.bootstrap")
+        pass_fds = tuple([bootstrap_fd, *fds.values()])
+        env = {key: value for key, value in os.environ.items() if not key.startswith("PYTHON")}
+        if extra_env:
+            env.update({str(key): str(value) for key, value in extra_env.items()})
+        cmd = [
+            python or sys.executable,
+            "-I",
+            f"/proc/self/fd/{bootstrap_fd}",
+            *(argv or ["--sealed-probe"]),
+        ]
+        return subprocess.run(
+            cmd,
+            pass_fds=pass_fds,
+            cwd="/",
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    finally:
+        if bootstrap_fd is not None:
+            kick_helper_ft._close_quietly(bootstrap_fd)
+        for fd in fds.values():
+            kick_helper_ft._close_quietly(fd)
 
 
 def require_staged_v2_pin(

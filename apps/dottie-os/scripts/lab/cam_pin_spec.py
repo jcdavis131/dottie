@@ -10,9 +10,10 @@ Signed bytes (UTF-8), byte-for-byte::
 
 Kicks use ``swarm-hq-pin-v2`` (Ed25519, ``key_id``, binding
 ``{pack_id, run_id, lease_owner}``, ``issued_at``/``not_before``/``not_after``
-with a 24 h cap and 120 s start-side skew, ``nonce``, and sha256
-pack/train/holdout). v1 remains verify-only for history and is refused for
-kicks. Timestamps are ASCII-only strict RFC 3339.
+with a 24 h cap and 120 s start-side skew, ``nonce``, sha256
+pack/train/holdout, ``code_pins`` (path→sha256 for ``CODE_PINS``),
+``git_commit``, and ``expires_at``). v1 remains verify-only for history and
+is refused for kicks. Timestamps are ASCII-only strict RFC 3339.
 
 The pin JSON also carries ``cam_sig`` (base64 Ed25519 signature of those
 bytes) and ``cam_key_id`` / ``key_id``. Verify only against the public key committed at
@@ -32,6 +33,7 @@ HTTPS only, certificate verification on, no proxies, no redirects.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -74,7 +76,10 @@ SIGNED_KEYS = (
 )
 SIGNED_KEYS_V2 = (
     "binding",
+    "code_pins",
+    "expires_at",
     "format",
+    "git_commit",
     "issued_at",
     "key_id",
     "nonce",
@@ -103,14 +108,35 @@ HQ_EVENTS = frozenset({"kick", "completion"})
 MAX_PIN_BYTES = 64 * 1024
 HQ_DEADLINE_SECONDS = 15.0
 SHA256_LEN = 64
+GIT_SHA_LEN = 40
 _HEX = frozenset("0123456789abcdef")
 _PLACEHOLDER_ORIGIN = frozenset({"", "unset", "placeholder", "todo", "https://unset.invalid"})
 _PUB_NAME = "cam_pin_ed25519.pub"
 _KEY_ID_NAME = "cam_pin_key_id"
+
+
+_MODULE_FILE = str(globals().get("__file__") or "")
+
+
+def _trust_dir_from_here() -> Path:
+    """apps/dottie-os/trust next to this file. Sealed /proc/fd and memfd have no tree."""
+    here_raw = _MODULE_FILE or str(globals().get("__file__") or "")
+    if not here_raw:
+        return Path("/var/empty/dottie-os-sealed-trust")
+    here = Path(here_raw).resolve()
+    posix = here.as_posix()
+    if posix.startswith("/proc/") or posix.startswith("/memfd:"):
+        return Path("/var/empty/dottie-os-sealed-trust")
+    try:
+        return here.parents[2] / "trust"
+    except IndexError:
+        return Path("/var/empty/dottie-os-sealed-trust")
+
+
 # Frozen path: apps/dottie-os/trust/cam_pin_ed25519.pub relative to this file.
 # Pinned-copy mode rebinds these to <copy-root>/apps/dottie-os/trust/.
-CAM_PIN_PUB_PATH = Path(__file__).resolve().parents[2] / "trust" / _PUB_NAME
-CAM_PIN_KEY_ID_PATH = Path(__file__).resolve().parents[2] / "trust" / _KEY_ID_NAME
+CAM_PIN_PUB_PATH = _trust_dir_from_here() / _PUB_NAME
+CAM_PIN_KEY_ID_PATH = _trust_dir_from_here() / _KEY_ID_NAME
 PINNED_COPY_ROOT: Path | None = None
 _DEFAULT_CAM_PIN_PUB_PATH = CAM_PIN_PUB_PATH
 _DEFAULT_CAM_PIN_KEY_ID_PATH = CAM_PIN_KEY_ID_PATH
@@ -133,14 +159,24 @@ INT32_MAX = 2**31
 # Repo-relative paths whose HEAD blobs must match the working tree.
 # Server layout: apps/dottie-os/trust/ (not <copy-root>/trust/).
 TRUST_DIR_REL = "apps/dottie-os/trust"
-TRUST_RELPATHS = (
+# Single canonical pin set. kick_helper_ft and the launcher alias this object.
+CODE_PINS = (
+    "apps/dottie-os/scripts/lab/kick_helper_ft.py",
+    "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
+    "apps/dottie-os/scripts/lab/cam_pin_spec.py",
+    "apps/dottie-os/scripts/lab/content_uuid.py",
     "apps/dottie-os/trust/cam_pin_ed25519.pub",
     "apps/dottie-os/trust/cam_pin_key_id",
     "apps/dottie-os/trust/reserved_content_uuids.jsonl",
-    "apps/dottie-os/scripts/lab/cam_pin_spec.py",
-    "apps/dottie-os/scripts/lab/content_uuid.py",
 )
-REQUIRED_PINS = TRUST_RELPATHS
+REQUIRED_PINS = CODE_PINS
+TRUST_RELPATHS = CODE_PINS
+CODE_PIN_MODULE_NAMES = {
+    "kick_helper_ft": "apps/dottie-os/scripts/lab/kick_helper_ft.py",
+    "helper_ft_kickoff": "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
+    "cam_pin_spec": "apps/dottie-os/scripts/lab/cam_pin_spec.py",
+    "content_uuid": "apps/dottie-os/scripts/lab/content_uuid.py",
+}
 ORIGIN_MAIN_REF = "origin/main"
 # Twisted Edwards Ed25519 (RFC 8032). Cofactor and canonical checks run in
 # this module before cryptography's verify. Not a hardcoded encoding list.
@@ -326,6 +362,99 @@ def require_nonce(field: str, value: object) -> str:
     return require_sha256_hex(field, value)
 
 
+def require_git_commit(field: str, value: object) -> str:
+    if type(value) is not str or len(value) != GIT_SHA_LEN or any(ch not in _HEX for ch in value):
+        _refuse(field, "40-char lowercase hex", value)
+    return value
+
+
+def require_code_pins(value: object) -> dict[str, str]:
+    """Exact CODE_PINS keys, each a 64-char lowercase sha256. No extra paths."""
+    if not isinstance(value, dict) or not value:
+        _refuse(
+            "cam-pin.code_pins",
+            "path→sha256 object",
+            type(value).__name__ if not isinstance(value, dict) else "empty",
+        )
+    extra = [key for key in value if key not in CODE_PINS]
+    if extra:
+        _refuse("cam-pin.code_pins", "CODE_PINS paths", f"unknown {extra[0]}")
+    pins: dict[str, str] = {}
+    for rel in CODE_PINS:
+        if rel not in value:
+            _refuse("cam-pin.code_pins", f"pin covering {rel}", "missing")
+        pins[rel] = require_sha256_hex(f"cam-pin.code_pins.{rel}", value.get(rel))
+    return pins
+
+
+def code_pins_root() -> Path:
+    """Repo or pinned-copy root that holds CODE_PINS paths."""
+    if PINNED_COPY_ROOT is not None:
+        return Path(PINNED_COPY_ROOT)
+    return Path(__file__).resolve().parents[4]
+
+
+def sha256_file_bytes(path: Path) -> tuple[bytes, str]:
+    """One read: return file bytes and sha256. Caller must not re-open the path."""
+    flags = os.O_RDONLY
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        _refuse(str(path), "readable regular file", f"OSError:{exc.errno}")
+        raise AssertionError("unreachable") from exc
+    try:
+        chunks: list[bytes] = []
+        while True:
+            block = os.read(fd, 1 << 20)
+            if not block:
+                break
+            chunks.append(block)
+        buf = b"".join(chunks)
+    except OSError as exc:
+        _refuse(str(path), "readable regular file", f"OSError:{exc.errno}")
+        raise AssertionError("unreachable") from exc
+    finally:
+        os.close(fd)
+    return buf, hashlib.sha256(buf).hexdigest()
+
+
+def live_code_pins(*, root: Path | None = None) -> dict[str, str]:
+    """sha256 of each CODE_PINS path under ``root`` (repo or pinned-copy)."""
+    base = Path(root).resolve() if root is not None else code_pins_root().resolve()
+    pins: dict[str, str] = {}
+    for rel in CODE_PINS:
+        path = (base / rel).resolve()
+        try:
+            path.relative_to(base)
+        except ValueError:
+            _refuse(f"cam-pin.code_pins.{rel}", f"under {base}", str(path))
+        if not path.is_file():
+            _refuse(f"cam-pin.code_pins.{rel}", "readable regular file", "missing")
+        _buf, digest = sha256_file_bytes(path)
+        pins[rel] = digest
+    return pins
+
+
+def verify_code_pins_match(
+    code_pins: dict[str, str],
+    *,
+    root: Path | None = None,
+) -> dict[str, str]:
+    """Refuse any missing or mismatched CODE_PINS hash against live files."""
+    expected = require_code_pins(code_pins)
+    live = live_code_pins(root=root)
+    for rel in CODE_PINS:
+        if expected[rel] != live[rel]:
+            _refuse(f"cam-pin.code_pins.{rel}", live[rel], expected[rel])
+    return expected
+
+
 def _require_v2_binding(value: object) -> dict[str, str]:
     if not isinstance(value, dict) or not value:
         _refuse("cam-pin.binding", "object", type(value).__name__)
@@ -434,7 +563,14 @@ def parse_v2_pin_payload(
     not_before = require_rfc3339("cam-pin.not_before", payload.get("not_before"))
     not_after = require_rfc3339("cam-pin.not_after", payload.get("not_after"))
     verify_v2_lifetime(issued_at, not_before, not_after, now=now)
+    expires_at = require_rfc3339("cam-pin.expires_at", payload.get("expires_at"))
+    if payload.get("expires_at") != payload.get("not_after"):
+        _refuse("cam-pin.expires_at", payload.get("not_after"), payload.get("expires_at"))
+    if expires_at != not_after:
+        _refuse("cam-pin.expires_at", not_after.isoformat(), expires_at.isoformat())
     nonce = require_nonce("cam-pin.nonce", payload.get("nonce"))
+    code_pins = require_code_pins(payload.get("code_pins"))
+    git_commit = require_git_commit("cam-pin.git_commit", payload.get("git_commit"))
     record: dict[str, Any] = {
         "format": PIN_FORMAT_V2,
         "key_id": payload["key_id"],
@@ -442,7 +578,10 @@ def parse_v2_pin_payload(
         "issued_at": payload["issued_at"],
         "not_before": payload["not_before"],
         "not_after": payload["not_after"],
+        "expires_at": payload["expires_at"],
         "nonce": nonce,
+        "code_pins": code_pins,
+        "git_commit": git_commit,
         "sha256_pack": require_sha256_hex("cam-pin.sha256_pack", payload.get("sha256_pack")),
         "sha256_train": require_sha256_hex("cam-pin.sha256_train", payload.get("sha256_train")),
         "sha256_holdout": require_sha256_hex(
@@ -1164,6 +1303,9 @@ def pin_identity(pin: dict[str, Any]) -> dict[str, Any]:
             "sha256_pack": pin.get("sha256_pack"),
             "sha256_train": pin.get("sha256_train"),
             "sha256_holdout": pin.get("sha256_holdout"),
+            "code_pins": pin.get("code_pins"),
+            "git_commit": pin.get("git_commit"),
+            "expires_at": pin.get("expires_at"),
             "cam_sig": pin.get("cam_sig"),
         }
         for rows_field in ("rows_total", "rows_train", "rows_holdout"):
