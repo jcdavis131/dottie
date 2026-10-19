@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Import seam: field paths, DENY_KEYS, and denied-field schema come from mill.
 
-Do not author path lists, DENY_KEYS, or schema rules here. Mill tokenizer
-v2.2 owns ``extract_paths(row)`` (ordered ``(json_path, raw_value)`` pairs
-with raw byte spans, decoded JSON-string args included) and the schema
-check. The gate and the trainer import this module only.
+Do not author path lists, DENY_KEYS, schema rules, CAP, SAMPLE_MARGIN, or
+BUCKETS here. Mill tokenizer v2.2 owns ``extract_paths(row)`` (ordered
+json_path strings), ``get_by_path(row, json_path)`` path round-trips, and
+``check_denied(row)`` which raises mill ``DeniedFieldError``. The trainer
+reads row values only through ``get_by_path``. The gate and the trainer
+import this module only.
 
-Until v2.2 is vendored, every extract_paths / check_denied / trainer /
-gate-tokenize call fail-closes. v1 stays pinned for near-dup tokens,
-HMAC, and the rest of the kick.
+Until v2.2 is vendored, every extract_paths / get_by_path / check_denied /
+trainer / gate-tokenize call fail-closes. v1 stays pinned for near-dup
+tokens, HMAC, and the rest of the kick.
 """
 from __future__ import annotations
 
@@ -28,6 +30,10 @@ class RowFieldsError(Exception):
         super().__init__(f"{field}: {reason}")
 
 
+class DeniedFieldError(RowFieldsError):
+    """Mill ``check_denied`` refused a denied field. Catch and refuse the row."""
+
+
 def _refuse(field: str, reason: str) -> None:
     raise RowFieldsError(field, reason)
 
@@ -39,8 +45,10 @@ def _pinned_mill() -> Any:
 
 def extract_paths_ready() -> bool:
     mill = _pinned_mill()
-    return callable(getattr(mill, "extract_paths", None)) and callable(
-        getattr(mill, "check_denied", None)
+    return (
+        callable(getattr(mill, "extract_paths", None))
+        and callable(getattr(mill, "check_denied", None))
+        and callable(getattr(mill, "get_by_path", None))
     )
 
 
@@ -64,35 +72,73 @@ def _mill_dummy_fn(mill: Any) -> Any:
 
 
 def _mill_bucket_attr(mill: Any) -> Any:
-    for name in ("FP_BUCKETS", "BUCKET_SIZES", "FINGERPRINT_BUCKETS", "PAD_BUCKETS"):
+    for name in ("BUCKETS", "FP_BUCKETS", "BUCKET_SIZES", "FINGERPRINT_BUCKETS", "PAD_BUCKETS"):
         val = getattr(mill, name, None)
         if val is not None:
             return val
     return None
 
 
-def mill_fp_pad_ready() -> bool:
-    """True when mill v2.2 exports fingerprint buckets and dummy-tag derivation."""
+def mill_constants_ready() -> bool:
+    """True when mill v2.2 exports CAP, SAMPLE_MARGIN, and BUCKETS. Gate never defines them."""
     mill = _pinned_mill()
-    return extract_paths_ready() and _mill_dummy_fn(mill) is not None and _mill_bucket_attr(mill) is not None
+    cap = getattr(mill, "CAP", None)
+    margin = getattr(mill, "SAMPLE_MARGIN", None)
+    return (
+        extract_paths_ready()
+        and type(cap) is int
+        and type(margin) in (int, float)
+        and _mill_bucket_attr(mill) is not None
+    )
 
 
-def mill_fp_buckets() -> tuple[int, ...]:
+def mill_fp_pad_ready() -> bool:
+    """True when mill v2.2 exports buckets, dummy tags, CAP, and SAMPLE_MARGIN."""
+    mill = _pinned_mill()
+    return mill_constants_ready() and _mill_dummy_fn(mill) is not None
+
+
+def mill_cap() -> int:
+    mill = _require_v22()
+    cap = getattr(mill, "CAP", None)
+    if type(cap) is not int or cap < 1:
+        _refuse("extract_paths", "mill CAP is missing")
+        raise AssertionError("unreachable")
+    return cap
+
+
+def mill_sample_margin() -> float:
+    mill = _require_v22()
+    margin = getattr(mill, "SAMPLE_MARGIN", None)
+    if type(margin) is int:
+        return float(margin)
+    if type(margin) is not float:
+        _refuse("extract_paths", "mill SAMPLE_MARGIN is missing")
+        raise AssertionError("unreachable")
+    return margin
+
+
+def mill_buckets() -> tuple[int, ...]:
     mill = _require_v22()
     raw = _mill_bucket_attr(mill)
     if raw is None:
-        _refuse("extract_paths", "mill fingerprint bucket list is missing")
+        _refuse("extract_paths", "mill bucket list is missing")
         raise AssertionError("unreachable")
     buckets: list[int] = []
     for item in raw:
         if type(item) is not int or item < 1:
-            _refuse("extract_paths", "mill fingerprint bucket list is invalid")
+            _refuse("extract_paths", "mill bucket list is invalid")
             raise AssertionError("unreachable")
         buckets.append(item)
     if not buckets:
-        _refuse("extract_paths", "mill fingerprint bucket list is empty")
+        _refuse("extract_paths", "mill bucket list is empty")
         raise AssertionError("unreachable")
     return tuple(buckets)
+
+
+def mill_fp_buckets() -> tuple[int, ...]:
+    """Fingerprint pad buckets. Same mill ``BUCKETS`` export; never a second list."""
+    return mill_buckets()
 
 
 def mill_min_ref() -> dict[str, int]:
@@ -172,6 +218,11 @@ def _require_v22() -> Any:
 def _refuse_mill(exc: BaseException) -> None:
     if isinstance(exc, RowFieldsError):
         raise exc
+    mill = _pinned_mill()
+    mill_denied = getattr(mill, "DeniedFieldError", None) if mill is not None else None
+    if isinstance(mill_denied, type) and isinstance(exc, mill_denied):
+        _raise_denied(exc)
+        raise AssertionError("unreachable")
     field = getattr(exc, "field", None)
     reason = getattr(exc, "reason", None)
     if type(field) is not str:
@@ -182,90 +233,132 @@ def _refuse_mill(exc: BaseException) -> None:
     raise AssertionError("unreachable")
 
 
+def _raise_denied(exc: BaseException) -> None:
+    field = getattr(exc, "field", None)
+    reason = getattr(exc, "reason", None)
+    if type(field) is not str:
+        field = "extract_paths"
+    if type(reason) is not str:
+        reason = str(exc)
+    raise DeniedFieldError(field, reason)
+
+
 def _run_check_denied(mill: Any, row: object) -> None:
     try:
         mill.check_denied(row)
-    except RowFieldsError:
+    except DeniedFieldError:
         raise
     except Exception as exc:
         _refuse_mill(exc)
 
 
-def _pair_path(item: object) -> str:
+def _path_from_item(item: object) -> str:
+    if type(item) is str and item:
+        return item
     if isinstance(item, (tuple, list)) and item and type(item[0]) is str:
         return item[0]
     if isinstance(item, Mapping) and type(item.get("path")) is str:
         return item["path"]
-    _refuse("extract_paths", "pair has no json_path")
+    _refuse("extract_paths", "item has no json_path")
     raise AssertionError("unreachable")
 
 
-def extract_paths(row: object) -> Sequence[Any]:
-    """Ordered ``(json_path, raw_value, byte_span)`` from mill v2.2. Fail-closed until vendored."""
+def extract_paths(row: object) -> Sequence[str]:
+    """Ordered json_path strings from mill v2.2. Fail-closed until vendored.
+
+    Path round-trips, not byte spans. Values come from ``get_by_path``.
+    """
     mill = _require_v22()
     _run_check_denied(mill, row)
     try:
-        pairs = mill.extract_paths(row)
-    except RowFieldsError:
+        raw = mill.extract_paths(row)
+    except DeniedFieldError:
         raise
     except Exception as exc:
         _refuse_mill(exc)
         raise AssertionError("unreachable")
-    if pairs is None:
+    if raw is None:
         _refuse("extract_paths", "mill extract_paths returned nothing")
         raise AssertionError("unreachable")
-    return pairs
+    paths: list[str] = []
+    for item in raw:
+        paths.append(_path_from_item(item))
+    return tuple(paths)
 
 
 def check_denied(row: object) -> None:
-    """Mill v2.2 denied-field schema check. Fail-closed until vendored."""
+    """Mill v2.2 denied-field schema check. Raises DeniedFieldError. Fail-closed until vendored."""
     mill = _require_v22()
-    _run_check_denied(mill, row)
+    try:
+        _run_check_denied(mill, row)
+    except DeniedFieldError:
+        raise
+
+
+def get_by_path(row: object, json_path: object) -> Any:
+    """Mill v2.2 path round-trip. Fail-closed until vendored. Never walks the row here."""
+    mill = _require_v22()
+    fn = getattr(mill, "get_by_path", None)
+    if not callable(fn):
+        _refuse("extract_paths", "mill get_by_path is missing")
+        raise AssertionError("unreachable")
+    if type(json_path) is not str or not json_path:
+        _refuse("extract_paths", "json_path missing")
+        raise AssertionError("unreachable")
+    try:
+        return fn(row, json_path)
+    except DeniedFieldError:
+        raise
+    except Exception as exc:
+        _refuse_mill(exc)
+        raise AssertionError("unreachable")
 
 
 def gate_tokens(row: object) -> frozenset[str]:
-    """Tokenize extract_paths values via mill. Fail-closed until v2.2."""
+    """Tokenize ``get_by_path`` values for each ``extract_paths`` path. Fail-closed until v2.2."""
     mill = _require_v22()
-    pairs = extract_paths(row)
+    try:
+        check_denied(row)
+    except DeniedFieldError:
+        raise
     tokenize = getattr(mill, "message_tokens", None)
     if not callable(tokenize):
         _refuse("extract_paths", "mill tokenizer has no message_tokens")
         raise AssertionError("unreachable")
     tokens: set[str] = set()
-    for item in pairs:
-        if isinstance(item, Mapping):
-            raw = item.get("raw")
-            if raw is None:
-                raw = item.get("value")
-        elif isinstance(item, (tuple, list)) and len(item) >= 2:
-            raw = item[1]
-        else:
-            _refuse("extract_paths", "pair is not (json_path, raw_value, ...)")
-            raise AssertionError("unreachable")
+    for json_path in extract_paths(row):
+        raw = get_by_path(row, json_path)
         if type(raw) is bytes:
             raw = raw.decode("utf-8")
         extracted = tokenize(raw)
+        is_no_text = getattr(mill, "is_no_text", None)
+        if callable(is_no_text) and is_no_text(extracted):
+            continue
         tokens.update(extracted)
     return frozenset(tokens)
 
 
-def trainer_input_from_row(row: Mapping[str, Any]) -> Sequence[Any]:
-    """extract_paths pairs on the mill allowlist, after schema check. Fail-closed until v2.2.
+def trainer_input_from_row(row: Mapping[str, Any]) -> Sequence[tuple[str, Any]]:
+    """Trainer values: mill ``get_by_path`` on ``extract_paths`` only. No row subscript or ``.get``.
 
-    Allowlist is mill's, separate from DENY_KEYS. Paths not on the exact
-    allowlist are not trainer input (no free text through case/spacing/lookalike keys).
+    ``check_denied`` raises DeniedFieldError; catch and refuse the row.
     """
-    mill = _require_v22()
-    pairs = extract_paths(row)
-    allow = _mill_trainer_allowlist(mill)
-    return [item for item in pairs if _pair_path(item) in allow]
+    try:
+        check_denied(row)
+    except DeniedFieldError:
+        raise
+    paths = extract_paths(row)
+    out: list[tuple[str, Any]] = []
+    for json_path in paths:
+        out.append((json_path, get_by_path(row, json_path)))
+    return out
 
 
 def scanned_field_paths(row: object) -> tuple[str, ...]:
     """Gate scan paths from mill extract_paths on this row."""
-    return tuple(_pair_path(item) for item in extract_paths(row))
+    return tuple(extract_paths(row))
 
 
 def trainer_read_paths(row: object) -> tuple[str, ...]:
-    """Trainer read paths. Same mill extract_paths pairs as the gate."""
-    return tuple(_pair_path(item) for item in trainer_input_from_row(row))
+    """Trainer read paths. Same mill extract_paths as the gate; values via get_by_path."""
+    return tuple(json_path for json_path, _value in trainer_input_from_row(row))

@@ -9,8 +9,9 @@ from typing import Any, Mapping, Sequence
 
 import row_fields
 
-DeniedFieldError = row_fields.RowFieldsError
+DeniedFieldError = row_fields.DeniedFieldError
 MILL_EXTRACT_PATHS_READY = row_fields.extract_paths_ready
+RowFieldsError = row_fields.RowFieldsError
 
 
 def check_denied_fields(row: object) -> None:

@@ -3098,12 +3098,20 @@ def load_reserved_near_dup_fingerprints(
                     "missing",
                 )
             try:
-                buckets = row_fields.mill_fp_buckets()
+                cap = row_fields.mill_cap()
+                margin = row_fields.mill_sample_margin()
+                buckets = row_fields.mill_buckets()
             except row_fields.RowFieldsError:
                 _refuse(
                     "reserved_near_dup_fingerprints",
-                    "mill v2.2 bucket list",
+                    "mill v2.2 CAP, SAMPLE_MARGIN, and BUCKETS",
                     "missing",
+                )
+            if cap < 1 or margin < 0:
+                _refuse(
+                    "reserved_near_dup_fingerprints",
+                    "mill CAP and SAMPLE_MARGIN",
+                    "invalid",
                 )
             if len(public) not in buckets:
                 _refuse(
@@ -4160,7 +4168,9 @@ def collect_denied_field_violations(
     for row in rows:
         try:
             denied_field_schema.check_denied_fields(row)
-        except denied_field_schema.DeniedFieldError as exc:
+        except row_fields.DeniedFieldError as exc:
+            hits.append((exc.field, f"{_row_id(row)}:{exc.reason}"))
+        except row_fields.RowFieldsError as exc:
             hits.append((exc.field, f"{_row_id(row)}:{exc.reason}"))
             if len(hits) >= 10:
                 return hits

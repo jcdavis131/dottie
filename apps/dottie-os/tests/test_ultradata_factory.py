@@ -8508,6 +8508,8 @@ def _place_denied_field(row: dict, field: str, value: object) -> dict:
 
 
 def _extract_pair_path(item: object) -> str:
+    if type(item) is str and item:
+        return item
     if isinstance(item, (tuple, list)) and item:
         path = item[0]
         if type(path) is str:
@@ -8530,7 +8532,9 @@ def _extract_pair_raw_bytes(item: object) -> bytes:
         return raw
     if type(raw) is str:
         return raw.encode("utf-8")
-    raise AssertionError(f"extract_paths raw_value is not bytes/str: {type(raw).__name__}")
+    if raw is None:
+        return b""
+    return json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
 def _extract_pair_span(item: object) -> tuple[int, int] | None:
@@ -8558,6 +8562,7 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
         self.assertFalse(row_fields.extract_paths_ready())
         self.assertFalse(row_fields.mill_v2x_ready())
         self.assertFalse(row_fields.mill_fp_pad_ready())
+        self.assertFalse(row_fields.mill_constants_ready())
         self.assertFalse((LAB / "neardup_tokens-v2.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2.1.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2_1.py").is_file())
@@ -8570,6 +8575,14 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
         with self.assertRaises(row_fields.RowFieldsError):
             row_fields.check_denied(row)
         with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.get_by_path(row, "state.message")
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.mill_cap()
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.mill_sample_margin()
+        with self.assertRaises(row_fields.RowFieldsError):
+            row_fields.mill_buckets()
+        with self.assertRaises(row_fields.RowFieldsError):
             row_fields.trainer_input_from_row(row)
         with self.assertRaises(row_fields.RowFieldsError):
             row_fields.gate_tokens(row)
@@ -8577,14 +8590,79 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
             row_fields.scanned_field_paths(row)
         with self.assertRaises(row_fields.RowFieldsError):
             row_fields.trainer_read_paths(row)
-        with self.assertRaises(denied_field_schema.DeniedFieldError):
+        with self.assertRaises(row_fields.RowFieldsError):
             denied_field_schema.trainer_input_from_row(row)
-        with self.assertRaises(denied_field_schema.DeniedFieldError):
+        with self.assertRaises(row_fields.RowFieldsError):
             denied_field_schema.check_denied_fields(row)
         self.assertEqual(
             content_uuid.NEAR_DUP_TOKENIZER_SHA256,
             "50d5015a051832608391208b7fc3f48259d6e94443213bb46143a06aa2a4f173",
         )
+
+
+class HelperFtTrainerSeamAstTests(unittest.TestCase):
+    """Static checks: trainer builder does not touch rows; gate does not redefine mill constants."""
+
+    def test_trainer_input_builder_has_no_row_subscript_or_get(self) -> None:
+        src = Path(row_fields.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        fn = None
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name == "trainer_input_from_row":
+                fn = node
+                break
+        self.assertIsNotNone(fn)
+        saw_get_by_path = False
+        offenders: list[str] = []
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id == "row":
+                offenders.append(f"subscript row[...] at line {node.lineno}")
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "row"
+            ):
+                offenders.append(f"row.get(...) at line {node.lineno}")
+            if isinstance(node, ast.Call):
+                name = None
+                if isinstance(node.func, ast.Name):
+                    name = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    name = node.func.attr
+                if name == "get_by_path":
+                    saw_get_by_path = True
+        self.assertEqual(offenders, [])
+        self.assertTrue(saw_get_by_path)
+
+    def test_gate_does_not_redefine_mill_cap_sample_margin_buckets(self) -> None:
+        names = {"CAP", "SAMPLE_MARGIN", "BUCKETS"}
+        roots = (
+            Path(row_fields.__file__),
+            Path(kick_helper_ft.__file__),
+            Path(cam_pin_spec.__file__),
+            Path(denied_field_schema.__file__),
+            Path(helper_ft_kickoff.__file__),
+            Path(content_uuid.__file__),
+        )
+        offenders: list[str] = []
+        for path in roots:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                targets: list[ast.AST] = []
+                if isinstance(node, ast.Assign):
+                    targets.extend(node.targets)
+                elif isinstance(node, ast.AnnAssign) and node.target is not None:
+                    targets.append(node.target)
+                elif isinstance(node, ast.AugAssign):
+                    targets.append(node.target)
+                for target in targets:
+                    if isinstance(target, ast.Name) and target.id in names:
+                        offenders.append(f"{path.name}:{target.id}:{target.lineno}")
+                    if isinstance(target, ast.Attribute) and target.attr in names:
+                        offenders.append(f"{path.name}:{target.attr}:{target.lineno}")
+        self.assertEqual(offenders, [])
 
 
 @unittest.skipUnless(row_fields.extract_paths_ready(), _EXTRACT_PATHS_SKIP)
@@ -8617,31 +8695,42 @@ class HelperFtMillExtractPathsTests(unittest.TestCase):
                 else:
                     self.assertEqual(row[field], DENIED_FIELD_N_TEXT)
                 ok = self._valid_row(rid=f"ok-{field}")
-                pairs = row_fields.extract_paths(ok)
-                for item in pairs:
-                    self.assertNotIn(n_bytes, _extract_pair_raw_bytes(item))
+                for json_path in row_fields.extract_paths(ok):
+                    raw = row_fields.get_by_path(ok, json_path)
+                    blob = raw if type(raw) is bytes else str(raw).encode("utf-8")
+                    self.assertNotIn(n_bytes, blob)
 
-    def test_byte_spans_round_trip_to_raw_row(self) -> None:
-        row = self._valid_row(rid="span-round")
-        encoded = json.dumps(row, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-        pairs = row_fields.extract_paths(row)
-        self.assertTrue(pairs)
-        encodings = [
-            encoded,
-            json.dumps(row, ensure_ascii=False).encode("utf-8"),
-            json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
-                "utf-8"
-            ),
-        ]
-        saw_span = False
-        for item in pairs:
-            span = _extract_pair_span(item)
-            self.assertIsNotNone(span)
-            saw_span = True
-            start, end = span
-            raw = _extract_pair_raw_bytes(item)
-            self.assertTrue(any(blob[start:end] == raw for blob in encodings))
-        self.assertTrue(saw_span)
+    def test_gate_and_trainer_values_equal_via_get_by_path(self) -> None:
+        """Path round-trip: gate tokenize values == trainer reads, both via get_by_path."""
+        row = self._valid_row(rid="path-round")
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        gate_paths = list(row_fields.extract_paths(row))
+        train = list(row_fields.trainer_input_from_row(row))
+        train_paths = [_extract_pair_path(item) for item in train]
+        self.assertEqual(gate_paths, train_paths)
+        self.assertEqual(
+            row_fields.scanned_field_paths(row), row_fields.trainer_read_paths(row)
+        )
+        gate_vals = [row_fields.get_by_path(row, json_path) for json_path in gate_paths]
+        train_vals = [row_fields.get_by_path(row, json_path) for json_path in train_paths]
+        stored = []
+        for item in train:
+            if isinstance(item, (tuple, list)) and len(item) >= 2:
+                stored.append(item[1])
+            else:
+                raise AssertionError(f"trainer pair has no value: {item!r}")
+        self.assertEqual(gate_vals, train_vals)
+        self.assertEqual(gate_vals, stored)
+        tokens = row_fields.gate_tokens(row)
+        expected: set[str] = set()
+        for raw in gate_vals:
+            if type(raw) is bytes:
+                raw = raw.decode("utf-8")
+            extracted = mill.message_tokens(raw)
+            if mill.is_no_text(extracted):
+                continue
+            expected.update(extracted)
+        self.assertEqual(tokens, frozenset(expected))
 
     def test_training_text_equals_raw_bytes(self) -> None:
         row = self._valid_row(rid="raw-bytes", action="execute")
@@ -8649,12 +8738,15 @@ class HelperFtMillExtractPathsTests(unittest.TestCase):
         row["state"] = {"message": raw}
         mill = content_uuid._load_mill_near_dup_tokenizer()
         pairs = row_fields.trainer_input_from_row(row)
-        gate_pairs = row_fields.extract_paths(row)
-        self.assertEqual(len(pairs), len(gate_pairs))
+        gate_paths = list(row_fields.extract_paths(row))
+        self.assertEqual(len(pairs), len(gate_paths))
         found_message = False
         for item in pairs:
             blob = _extract_pair_raw_bytes(item)
             path = _extract_pair_path(item)
+            via = row_fields.get_by_path(row, path)
+            via_bytes = via if type(via) is bytes else str(via).encode("utf-8")
+            self.assertEqual(blob, via_bytes)
             if path.endswith("message") or blob == raw.encode("utf-8"):
                 found_message = True
                 self.assertEqual(blob, raw.encode("utf-8"))
@@ -8664,7 +8756,7 @@ class HelperFtMillExtractPathsTests(unittest.TestCase):
 
     def test_gate_paths_equal_trainer_paths(self) -> None:
         row = self._valid_row(rid="path-eq")
-        gate_paths = [_extract_pair_path(item) for item in row_fields.extract_paths(row)]
+        gate_paths = list(row_fields.extract_paths(row))
         train_paths = [
             _extract_pair_path(item) for item in row_fields.trainer_input_from_row(row)
         ]
@@ -8675,17 +8767,16 @@ class HelperFtMillExtractPathsTests(unittest.TestCase):
 
     def test_no_data_silently_dropped(self) -> None:
         row = self._valid_row(rid="no-drop")
-        pairs = list(row_fields.extract_paths(row))
+        paths = list(row_fields.extract_paths(row))
         train = list(row_fields.trainer_input_from_row(row))
-        gate_blobs = [
-            (_extract_pair_path(item), _extract_pair_raw_bytes(item)) for item in pairs
+        gate_vals = [(json_path, row_fields.get_by_path(row, json_path)) for json_path in paths]
+        train_vals = [
+            (_extract_pair_path(item), item[1] if isinstance(item, (tuple, list)) else None)
+            for item in train
         ]
-        train_blobs = [
-            (_extract_pair_path(item), _extract_pair_raw_bytes(item)) for item in train
-        ]
-        self.assertEqual(gate_blobs, train_blobs)
-        self.assertTrue(pairs)
-        joined = b"\n".join(blob for _path, blob in train_blobs)
+        self.assertEqual(gate_vals, train_vals)
+        self.assertTrue(paths)
+        joined = b"\n".join(_extract_pair_raw_bytes(item) for item in train)
         self.assertIn(row["state"]["message"].encode("utf-8"), joined)
         self.assertIn(b"halt", joined)
         self.assertIn(b"What should the pair-programmer do?", joined)
@@ -8695,11 +8786,13 @@ class HelperFtMillExtractPathsTests(unittest.TestCase):
         detail = json.dumps({"command": command}, separators=(",", ":"))
         row = self._valid_row(rid="json-arg")
         row["state"] = {"message": f"tool=shell; detail={detail}"}
-        pairs = row_fields.extract_paths(row)
-        blobs = [_extract_pair_raw_bytes(item) for item in pairs]
+        blobs = []
+        for json_path in row_fields.extract_paths(row):
+            raw = row_fields.get_by_path(row, json_path)
+            blobs.append(raw if type(raw) is bytes else str(raw).encode("utf-8"))
         self.assertTrue(
             any(command.encode("utf-8") in blob for blob in blobs),
-            "decoded JSON-string args must appear in extract_paths pairs",
+            "decoded JSON-string args must appear via get_by_path",
         )
 
     def test_gate_tokenizes_extract_paths_values(self) -> None:
@@ -8707,9 +8800,14 @@ class HelperFtMillExtractPathsTests(unittest.TestCase):
         mill = content_uuid._load_mill_near_dup_tokenizer()
         tokens = row_fields.gate_tokens(row)
         expected: set[str] = set()
-        for item in row_fields.extract_paths(row):
-            raw = _extract_pair_raw_bytes(item).decode("utf-8")
-            expected.update(mill.message_tokens(raw))
+        for json_path in row_fields.extract_paths(row):
+            raw = row_fields.get_by_path(row, json_path)
+            if type(raw) is bytes:
+                raw = raw.decode("utf-8")
+            extracted = mill.message_tokens(raw)
+            if mill.is_no_text(extracted):
+                continue
+            expected.update(extracted)
         self.assertEqual(tokens, frozenset(expected))
 
     def test_labels_and_questions_reach_trainer_intact(self) -> None:
@@ -8776,12 +8874,23 @@ class _FakeNoText:
 _FAKE_NO_TEXT = _FakeNoText()
 
 
+class _FakeDeniedFieldError(Exception):
+    def __init__(self, field: str, reason: str) -> None:
+        self.field = field
+        self.reason = reason
+        super().__init__(f"{field}: {reason}")
+
+
 def _install_fake_v22_mill() -> object:
     mill = types.ModuleType("neardup_tokens_v1")
     mill.NO_TEXT = _FAKE_NO_TEXT
     mill.NoTextError = _FakeNoTextError
+    mill.DeniedFieldError = _FakeDeniedFieldError
     mill.ALLOW_PATHS = frozenset({"state.message", "labels", "questions"})
+    mill.BUCKETS = (32, 64)
     mill.FP_BUCKETS = (32, 64)
+    mill.CAP = 512
+    mill.SAMPLE_MARGIN = 0.07
     mill.MIN_REF_NCHAR = 20
     mill.MIN_REF_B = 16
     mill.DENY_KEYS = frozenset(
@@ -8816,36 +8925,34 @@ def _install_fake_v22_mill() -> object:
     )
     mill.DENY_STATE = frozenset(["meta"])
 
-    def extract_paths(row: object) -> list[tuple[str, bytes, None]]:
-        pairs: list[tuple[str, bytes, None]] = []
+    def extract_paths(row: object) -> list[str]:
+        paths: list[str] = []
+        if not isinstance(row, dict):
+            return paths
         allow = mill.ALLOW_PATHS
 
-        def walk(obj: object, prefix: str) -> None:
-            if prefix in allow:
-                if type(obj) is str:
-                    pairs.append((prefix, obj.encode("utf-8"), None))
-                elif type(obj) is bytes:
-                    pairs.append((prefix, obj, None))
-                else:
-                    pairs.append(
-                        (
-                            prefix,
-                            json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode(
-                                "utf-8"
-                            ),
-                            None,
-                        )
-                    )
-                return
-            if isinstance(obj, dict):
-                for key, value in obj.items():
-                    path = f"{prefix}.{key}" if prefix else str(key)
-                    walk(value, path)
-            elif type(obj) is str:
-                pairs.append((prefix, obj.encode("utf-8"), None))
+        def present(json_path: str) -> bool:
+            cur: object = row
+            for part in json_path.split("."):
+                if not isinstance(cur, dict) or part not in cur:
+                    return False
+                cur = cur[part]
+            return True
 
-        walk(row, "")
-        return pairs
+        for json_path in sorted(allow):
+            if present(json_path):
+                paths.append(json_path)
+        return paths
+
+    def get_by_path(row: object, json_path: object) -> object:
+        if type(json_path) is not str or not json_path:
+            raise TypeError("json_path")
+        cur: object = row
+        for part in json_path.split("."):
+            if not isinstance(cur, dict) or part not in cur:
+                raise KeyError(json_path)
+            cur = cur[part]
+        return cur
 
     def check_denied(row: object) -> None:
         if not isinstance(row, dict):
@@ -8853,12 +8960,12 @@ def _install_fake_v22_mill() -> object:
         n_text = DENIED_FIELD_N_TEXT
         labels = row.get("labels")
         if type(labels) is str and n_text in labels:
-            raise row_fields.RowFieldsError("labels", "N text in denied field")
+            raise _FakeDeniedFieldError("labels", "N text in denied field")
         state = row.get("state")
         if isinstance(state, dict):
             meta = state.get("meta")
             if type(meta) is str and n_text in meta:
-                raise row_fields.RowFieldsError("state.meta", "N text in denied field")
+                raise _FakeDeniedFieldError("state.meta", "N text in denied field")
         for field in (
             "schema",
             "id",
@@ -8872,7 +8979,7 @@ def _install_fake_v22_mill() -> object:
         ):
             value = row.get(field)
             if type(value) is str and n_text in value:
-                raise row_fields.RowFieldsError(field, "N text in denied field")
+                raise _FakeDeniedFieldError(field, "N text in denied field")
 
     def is_no_text(value: object) -> bool:
         return value is _FAKE_NO_TEXT
@@ -8927,6 +9034,7 @@ def _install_fake_v22_mill() -> object:
         return frozenset(tags)
 
     mill.extract_paths = extract_paths
+    mill.get_by_path = get_by_path
     mill.check_denied = check_denied
     mill.is_no_text = is_no_text
     mill.row_tokens = row_tokens
@@ -8987,9 +9095,44 @@ class HelperFtV22SeamGateTests(unittest.TestCase):
     def test_seam_ready_with_fake_mill(self) -> None:
         self.assertTrue(row_fields.extract_paths_ready())
         self.assertTrue(row_fields.mill_v2x_ready())
+        self.assertTrue(row_fields.mill_constants_ready())
         self.assertTrue(row_fields.mill_fp_pad_ready())
+        self.assertEqual(row_fields.mill_buckets(), (32, 64))
         self.assertEqual(row_fields.mill_fp_buckets(), (32, 64))
+        self.assertEqual(row_fields.mill_cap(), 512)
+        self.assertEqual(row_fields.mill_sample_margin(), 0.07)
         self.assertEqual(row_fields.mill_min_ref(), cam_pin_spec.PINNED_NEAR_DUP_MIN_REF)
+
+    def test_gate_and_trainer_values_equal_via_get_by_path(self) -> None:
+        row = self._valid_row(rid="path-round")
+        gate_paths = list(row_fields.extract_paths(row))
+        train = list(row_fields.trainer_input_from_row(row))
+        train_paths = [_extract_pair_path(item) for item in train]
+        self.assertEqual(gate_paths, train_paths)
+        gate_vals = [row_fields.get_by_path(row, json_path) for json_path in gate_paths]
+        stored = [item[1] for item in train]
+        self.assertEqual(gate_vals, stored)
+        tokens = row_fields.gate_tokens(row)
+        expected: set[str] = set()
+        for raw in gate_vals:
+            if type(raw) is bytes:
+                raw = raw.decode("utf-8")
+            extracted = self._mill.message_tokens(raw)
+            if self._mill.is_no_text(extracted):
+                continue
+            expected.update(extracted)
+        self.assertEqual(tokens, frozenset(expected))
+
+    def test_check_denied_denied_field_error_refuses_row(self) -> None:
+        row = self._valid_row(rid="denied-n")
+        row["labels"] = DENIED_FIELD_N_TEXT
+        with self.assertRaises(row_fields.DeniedFieldError) as ctx:
+            row_fields.check_denied(row)
+        self.assertEqual(ctx.exception.field, "labels")
+        with self.assertRaises(row_fields.DeniedFieldError):
+            row_fields.trainer_input_from_row(row)
+        with self.assertRaises(denied_field_schema.DeniedFieldError):
+            denied_field_schema.check_denied_fields(row)
 
     def test_deny_trainer_case_spacing_lookalike_keys(self) -> None:
         n_text = DENIED_FIELD_N_TEXT
@@ -9272,7 +9415,7 @@ class HelperFtV22SeamGateTests(unittest.TestCase):
             "rows_total": 0,
             "rows_train": 0,
             "rows_holdout": 0,
-            "near_dup_fp_buckets": list(self._mill.FP_BUCKETS),
+            "near_dup_fp_buckets": list(self._mill.BUCKETS),
             "near_dup_min_ref": dict(cam_pin_spec.PINNED_NEAR_DUP_MIN_REF),
         }
         fields.update(overrides)
@@ -9335,11 +9478,15 @@ class HelperFtMillFpPadTests(unittest.TestCase):
     def test_mill_exports_buckets_and_dummy_tags(self) -> None:
         mill = content_uuid._load_mill_near_dup_tokenizer()
         self.assertTrue(row_fields.mill_fp_pad_ready())
-        buckets = row_fields.mill_fp_buckets()
+        self.assertTrue(row_fields.mill_constants_ready())
+        buckets = row_fields.mill_buckets()
         self.assertTrue(buckets)
         self.assertTrue(all(type(item) is int and item >= 16 for item in buckets))
+        self.assertEqual(row_fields.mill_cap(), 512)
+        self.assertEqual(row_fields.mill_sample_margin(), 0.07)
         self.assertEqual(row_fields.mill_min_ref(), cam_pin_spec.PINNED_NEAR_DUP_MIN_REF)
         self.assertTrue(callable(getattr(mill, "dummy_tags", None) or getattr(mill, "derive_dummy_shingles", None)))
+        self.assertTrue(callable(getattr(mill, "get_by_path", None)))
 
     def test_dummy_tag_in_candidate_never_counts(self) -> None:
         key = b"factory-hmac-material-not-logged"
