@@ -4083,6 +4083,7 @@ LEAKGATE_MANIFEST_SHA256 = "81209b912e35e7c9850e09a155d25595e76cd3b67051a464a4f9
 LEAKGATE_FIXTURES_JSONL_SHA256 = "3562f36139c6c70a270d9689ad5ec0071e480ea82cc0b26daed997d8663307dc"
 LEAKGATE_GEN_PY_SHA256 = "d2df1fbfd45081aebf01261517c59eaccb9e4b93a11e372ed12f88a39207eb74"
 LEAKGATE_SOURCE_JSON_SHA256 = "8cd184c53874dea20b858dc11fdb30f0193fa8c72744901b4215e8c23718cfe3"
+LEAKGATE_VALIDATE_PY_SHA256 = "f7fb4e2101040923fd7e08e318d1294c2f9a4204c745700ffdb0eb3e5a90c425"
 LEAKGATE_GEN_TS = "20261018-230457"
 LEAKGATE_GEN_PRODUCED_AT = "2026-10-18T23:04:57-05:00"
 REPO_ROOT = APP.parents[1]
@@ -4094,7 +4095,14 @@ PACK_GUARD_FIXTURES_PACK = (
     "apps/dottie-os/tests/fixtures/leakgate_eval/packs/a/curated_pack_v2.jsonl"
 )
 LEAKGATE_TRACKED_NAMES = frozenset(
-    {"EVAL_ONLY", "MANIFEST.json", "README.md", "gen.py", "source.json"}
+    {
+        "EVAL_ONLY",
+        "MANIFEST.json",
+        "README.md",
+        "gen.py",
+        "source.json",
+        "validate.py",
+    }
 )
 SYNTHETIC_UUID_RE = re.compile(r"^synthetic-\d{3}$")
 RFC4122_UUID_RE = re.compile(
@@ -4254,6 +4262,12 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
             hashlib.sha256((LEAKGATE_EVAL_DIR / "source.json").read_bytes()).hexdigest(),
             LEAKGATE_SOURCE_JSON_SHA256,
         )
+        self.assertEqual(
+            hashlib.sha256(
+                (LEAKGATE_EVAL_DIR / "validate.py").read_bytes()
+            ).hexdigest(),
+            LEAKGATE_VALIDATE_PY_SHA256,
+        )
         self.assertTrue((LEAKGATE_EVAL_DIR / "EVAL_ONLY").is_file())
         rel = "apps/dottie-os/tests/fixtures/leakgate_eval/"
         listed = subprocess.check_output(
@@ -4354,6 +4368,23 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
         lines.append(f"Total {ok_n}/56")
         artifact.write_text("\n".join(lines) + "\n", encoding="utf-8")
         self.assertEqual(ok_n, 56)
+
+    def test_readme_validate_py_runs_green(self) -> None:
+        """README regen: python3 validate.py <out-dir> reports OK 56/56."""
+        proc = subprocess.run(
+            [sys.executable, "validate.py", str(self.fixture_root)],
+            cwd=LEAKGATE_EVAL_DIR,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"stdout={proc.stdout!r} stderr={proc.stderr!r}",
+        )
+        self.assertIn("OK 56/56", proc.stdout)
+        self.assertNotIn("MISMATCH", proc.stdout)
 
     def test_gen_sha_stable_under_c_locale(self) -> None:
         """S1: gen.py utf-8 opens keep the pinned shas when LC_ALL=C."""
