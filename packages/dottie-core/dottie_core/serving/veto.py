@@ -54,8 +54,11 @@ VETO_RULES: tuple[str, ...] = (
 )
 
 # Cap per field. Anything longer fail-closes as veto_oversize (never truncated
-# so a halt class after the cap cannot be smuggled through).
-SCAN_CAP = 16384
+# so a halt class after the cap cannot be smuggled through). HTTP bodies over
+# BODY_CAP are rejected with 413 by the serve; the matcher itself still
+# fail-closes oversize fields as halt.
+SCAN_CAP = 262144
+BODY_CAP = 262144
 _JSON_DEPTH = 6
 _DECODE_ROUNDS = 8
 _SCAN_DEADLINE_S = 2.0
@@ -116,6 +119,7 @@ class _ScanBudget:
 
 
 _BUDGET: _ScanBudget | None = None
+_MISSING: object = object()
 
 
 def _tick(n: int = 1) -> None:
@@ -293,6 +297,9 @@ def _walk_commands(value: Any, out: list[str], depth: int = 0) -> None:
     if isinstance(value, str):
         text = _cap(value)
         stripped = text.strip()
+        has_quote = '"' in text or "'" in text
+        if not has_quote:
+            return
         if stripped[:1] in "{[":
             try:
                 _walk_commands(json.loads(stripped), out, depth + 1)
@@ -300,6 +307,8 @@ def _walk_commands(value: Any, out: list[str], depth: int = 0) -> None:
                 pass
             except RecursionError:
                 raise
+        if "{" not in text:
+            return
         decoder = json.JSONDecoder()
         i = 0
         n = len(text)
@@ -825,9 +834,6 @@ def _inner_snippets(stage: list[tuple[str, str]]) -> list[str]:
                 snippets.append(value[1:-1])
         elif kind == "redir" and len(value) > 3 and value[1] == "(" and value.endswith(")"):
             snippets.append(value[2:-1])
-    script = _script_arg(_words(stage))
-    if script:
-        snippets.append(script)
     return snippets
 
 
@@ -1024,11 +1030,27 @@ def _control_plane_tokens(tokens: list[tuple[str, str]], original: str) -> bool:
     return False
 
 
-def _scan_text(command: str, env: dict[str, str] | None = None, depth: int = 0) -> str | None:
+def _scan_text(
+    command: str,
+    env: dict[str, str] | None = None,
+    depth: int = 0,
+    memo: dict[str, str | None] | None = None,
+) -> str | None:
     _tick(len(command) if command else 1)
     command = _cap(command)
     if depth > 8 or not command or not command.strip():
         return None
+    if memo is None:
+        memo = {}
+    cached = memo.get(command, _MISSING)
+    if cached is not _MISSING:
+        return cached  # type: ignore[return-value]
+    memo[command] = None
+
+    def finish(rule: str | None) -> str | None:
+        memo[command] = rule
+        return rule
+
     folded = unicodedata.normalize("NFKC", command)
     env = dict(env or {})
     env.update(_assignments(_tokenize(folded)))
@@ -1036,9 +1058,9 @@ def _scan_text(command: str, env: dict[str, str] | None = None, depth: int = 0) 
     tokens = _tokenize(expanded)
     compact = "".join(ch for ch in expanded.lower() if not ch.isspace())
     if _fork_bomb_tokens(tokens, compact):
-        return FORK_BOMB
+        return finish(FORK_BOMB)
     if _control_plane_tokens(tokens, expanded):
-        return CONTROL_PLANE
+        return finish(CONTROL_PLANE)
 
     statements = _split_statements(tokens)
     for stmt in statements:
@@ -1046,69 +1068,60 @@ def _scan_text(command: str, env: dict[str, str] | None = None, depth: int = 0) 
         if not stages:
             words = [v for k, v in stmt if k == "word"]
             if not words and stmt:
-                return VETO_ERROR
+                return finish(VETO_ERROR)
             continue
         if _is_rm_rf_words(_words(stages[0])) or _is_find_delete(_words(stages[0])):
-            return RM_RF
+            return finish(RM_RF)
         if _is_mkfs_words(_words(stages[0])) or _redirects_block_dev(stages[0]):
-            return MKFS
+            return finish(MKFS)
     if _download_then_run(statements):
-        return PIPE_DOWNLOAD_TO_SHELL
+        return finish(PIPE_DOWNLOAD_TO_SHELL)
 
     for stmt in statements:
         stages = _pipeline_stages(stmt)
         if not stages:
             continue
         if _pipe_download_stages(stages):
-            return PIPE_DOWNLOAD_TO_SHELL
+            return finish(PIPE_DOWNLOAD_TO_SHELL)
         for stage in stages:
             words = _words(stage)
             if _is_rm_rf_words(words) or _is_find_delete(words):
-                return RM_RF
+                return finish(RM_RF)
             if _is_mkfs_words(words) or _redirects_block_dev(stage):
-                return MKFS
+                return finish(MKFS)
             if _is_credential_read(words):
-                return CREDENTIAL_READ
+                return finish(CREDENTIAL_READ)
             head = _command_word(stage)
-            raw_words = _strip_wrappers(_words(stage))
-            raw0 = raw_words[0] if raw_words else ""
-            if raw0.startswith("$(") or raw0.startswith("`"):
-                for snip in _inner_snippets(stage):
-                    snip_tokens = _tokenize(snip)
-                    snip_stages = _pipeline_stages(snip_tokens) if snip_tokens else []
-                    snip_head = _command_word(snip_stages[0]) if snip_stages else ""
-                    if snip_head in _FETCHERS:
-                        return PIPE_DOWNLOAD_TO_SHELL
-            if head == "eval":
-                for snippet in _inner_snippets(stage):
+            stripped_words = _strip_wrappers(list(words))
+            raw0 = stripped_words[0] if stripped_words else ""
+            if head == "eval" and len(stripped_words) > 1:
+                inner = _scan_text(" ".join(stripped_words[1:]), env, depth + 1, memo)
+                if inner:
+                    return finish(inner)
+            if _is_shell_name(head) or head in _CODE_INTERPS:
+                script = _script_arg(words)
+                if script:
+                    inner = _scan_text(script, env, depth + 1, memo)
+                    if inner:
+                        return finish(inner)
+            for snippet in _inner_snippets(stage):
+                inner = _scan_text(snippet, env, depth + 1, memo)
+                if inner:
+                    return finish(inner)
+                if raw0.startswith("$(") or raw0.startswith("`") or head == "eval":
                     snip_tokens = _tokenize(snippet)
                     snip_stages = _pipeline_stages(snip_tokens) if snip_tokens else []
                     snip_head = _command_word(snip_stages[0]) if snip_stages else ""
                     if snip_head in _FETCHERS:
-                        return PIPE_DOWNLOAD_TO_SHELL
-                    inner = _scan_text(snippet, env, depth + 1)
-                    if inner:
-                        return inner
-            if _is_shell_name(head) or head in _CODE_INTERPS:
-                script = _script_arg(words)
-                if script:
-                    inner = _scan_text(script, env, depth + 1)
-                    if inner:
-                        return inner
-            for snippet in _inner_snippets(stage):
-                inner = _scan_text(snippet, env, depth + 1)
-                if inner:
-                    return inner
-            # xargs sh -c without a pipe still counts if a fetcher is in env expansion
-            rest = _strip_wrappers(list(words))
+                        return finish(PIPE_DOWNLOAD_TO_SHELL)
+            rest = stripped_words
             if rest and rest[0].lower() == "xargs":
                 tail = _strip_wrappers(rest[1:])
                 if tail and _is_shell_name(tail[0].lower()):
-                    # need a fetch somewhere in this statement
                     blob = " ".join(_words(stmt)).lower()
                     if any(f in blob for f in _FETCHERS):
-                        return PIPE_DOWNLOAD_TO_SHELL
-    return None
+                        return finish(PIPE_DOWNLOAD_TO_SHELL)
+    return finish(None)
 
 
 def veto_command(command: str) -> str | None:
@@ -1148,8 +1161,6 @@ def veto_from_payload(payload: Any) -> str | None:
         rule = veto_command(text)
         if rule is not None:
             return rule
-    if seen:
-        return veto_command("\n".join(seen))
     return None
 
 

@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dottie_core.model import ScoredAnswer, ScoredValue, TypedQuery
 from dottie_core.serving.server import Handler
 from dottie_core.serving.veto import (
+    BODY_CAP,
     CONTROL_PLANE,
     CREDENTIAL_READ,
     EXTRA_HALT_CASES,
@@ -300,6 +301,26 @@ class ServingHttpTests(unittest.TestCase):
                 self.assertEqual(body.get("choice"), "halt")
                 self.assertEqual(body.get("veto_rule"), VETO_ERROR)
                 self.assertEqual(model.calls, 0)
+        finally:
+            conn.close()
+            self._stop(server, thread)
+
+    def test_oversize_http_body_is_413(self) -> None:
+        server, thread = self._serve(_Peaked())
+        conn = HTTPConnection(*server.server_address[:2], timeout=2)
+        try:
+            blob = b"{" + b"a" * (BODY_CAP + 8)
+            conn.request(
+                "POST",
+                "/decide",
+                body=blob,
+                headers={"Content-Type": "application/json", "Content-Length": str(len(blob))},
+            )
+            resp = conn.getresponse()
+            self.assertEqual(resp.status, 413)
+            body = json.loads(resp.read().decode())
+            self.assertEqual(body.get("choice"), "halt")
+            self.assertEqual(body.get("veto_rule"), VETO_OVERSIZE)
         finally:
             conn.close()
             self._stop(server, thread)

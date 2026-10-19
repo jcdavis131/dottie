@@ -11,9 +11,9 @@ Endpoints:
                       -> {"best": {"value":..., "confidence":...},
                           "alternatives": [...], "model_id": ..., "calibration": ...}
                       A veto hit skips the model and returns choice=halt with
-                      veto_rule. A veto exception or oversize body fail-closes
-                      to halt (never execute). Unknown paths (including
-                      /reload) are 404.
+                      veto_rule.                       A veto exception fail-closes to halt (never execute).
+                      Request bodies larger than BODY_CAP (256 KiB) return 413.
+                      Unknown paths (including /reload) are 404.
 
 Run on nugatron:
     python3 -m dottie_core.serving.server --weights training/out/weights.json --port 8766
@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dottie_core.state import Belief, Constraints, StateRef, WorldState  # noqa: E402
 from dottie_core.model import TypedQuery  # noqa: E402
 from dottie_core.trained import TrainedModel  # noqa: E402
-from dottie_core.serving.veto import VETO_ERROR, VetoResult, halt_body, veto  # noqa: E402
+from dottie_core.serving.veto import BODY_CAP, VETO_ERROR, VETO_OVERSIZE, VetoResult, halt_body, veto  # noqa: E402
 
 
 def _state_from_dict(d: dict) -> WorldState:
@@ -123,6 +123,20 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", 0))
+            if length > BODY_CAP:
+                remaining = length
+                while remaining > 0:
+                    chunk = self.rfile.read(min(65536, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                self._send(413, {
+                    "ok": False,
+                    "error": "payload too large",
+                    "choice": "halt",
+                    "veto_rule": VETO_OVERSIZE,
+                })
+                return
             body = json.loads(self.rfile.read(length) or b"{}")
             hit = None
             try:

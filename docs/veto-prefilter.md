@@ -25,9 +25,11 @@ reorderings), `mkfs*` and other block-device wipes (`dd of=/dev/sd*`,
 `.env` / token files via `cat`/`less`/`cp`/`scp`/`base64`/`python -c open`).
 
 The in-tree dottie-core serve (`packages/dottie-core/dottie_core/serving/server.py`)
-runs the veto on the raw `/decide` body before the model. The jev-v0 fixture
-keeps its existing wrap. The in-tree serves do not implement `/reload`; unknown
-paths are 404.
+runs the veto on the raw `/decide` body before the model. Request bodies over
+256 KiB return **413** (`veto_oversize`); a per-field cap inside the matcher
+fail-closes as halt. Each snippet is scanned once, with a per-request work
+budget. The jev-v0 fixture keeps its existing wrap. The in-tree serves do not
+implement `/reload`; unknown paths are 404.
 
 ## Factory-trainer (off-tree) integration
 
