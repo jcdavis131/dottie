@@ -552,8 +552,22 @@ class T4(unittest.TestCase):
             "a_dot": "a." * 8000,
             "usr_bin": "/usr/bin/" * 1800,
             "braces": "{" * 16384,
+            "close_braces": "}" * 16384,
+            "nested_dollar_brace": "${" * 8192,
+            "brace_nest": ("{" * 8192) + ("}" * 8192),
+            "brace_quote": '{"' * 8192,
+        }
+        payloads = {
+            "multi_field": {
+                "state": {
+                    "a": "{" * 16384,
+                    "b": "${" * 8192,
+                    "c": "}" * 16384,
+                }
+            },
         }
         all_times: list[float] = []
+        worst_by: dict[str, float] = {}
         for name, blob in cases.items():
             samples: list[float] = []
             for _ in range(21):
@@ -562,10 +576,23 @@ class T4(unittest.TestCase):
                 samples.append(time.perf_counter() - t0)
             all_times.extend(samples)
             worst = max(samples)
-            self.assertLess(worst, 0.1, "%s took %.3fs" % (name, worst))
+            worst_by[name] = worst
+            self.assertLess(worst, 0.05, "%s took %.3fs (16k CI bar 50ms)" % (name, worst))
+        for name, payload in payloads.items():
+            samples = []
+            for _ in range(21):
+                t0 = time.perf_counter()
+                veto(payload)
+                samples.append(time.perf_counter() - t0)
+            all_times.extend(samples)
+            worst = max(samples)
+            worst_by[name] = worst
+            self.assertLess(worst, 0.05, "%s took %.3fs (16k CI bar 50ms)" % (name, worst))
         p99 = _p99(all_times)
-        sys.stdout.write("T4 p99=%.4fs n=%d\n" % (p99, len(all_times)))
-        self.assertLess(p99, 0.1)
+        mx = max(all_times)
+        sys.stdout.write("T4 p99=%.4fs max=%.4fs n=%d worst=%s\n" % (p99, mx, len(all_times), worst_by))
+        self.assertLess(p99, 0.05)
+        self.assertLess(mx, 0.05)
 
 
 class ControlPlaneGridTests(unittest.TestCase):

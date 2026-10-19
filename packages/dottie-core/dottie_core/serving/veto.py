@@ -206,6 +206,8 @@ def _percent_decode_once(text: str) -> str:
 
 def percent_decode(text: str) -> str:
     """Decode %XX repeatedly until stable. Linear; bounded rounds."""
+    if "%" not in text:
+        return text
     cur = text
     for _ in range(_DECODE_ROUNDS):
         nxt = _percent_decode_once(cur)
@@ -300,7 +302,7 @@ def _walk_commands(value: Any, out: list[str], depth: int = 0) -> None:
         has_quote = '"' in text or "'" in text
         if not has_quote:
             return
-        if stripped[:1] in "{[":
+        if stripped[:1] in "{[" and ":" in stripped:
             try:
                 _walk_commands(json.loads(stripped), out, depth + 1)
             except json.JSONDecodeError:
@@ -313,18 +315,25 @@ def _walk_commands(value: Any, out: list[str], depth: int = 0) -> None:
         i = 0
         n = len(text)
         attempts = 0
-        while i < n and attempts < 64:
+        fails = 0
+        while i < n and attempts < 64 and fails < 32:
             if text[i] != "{":
                 i += 1
                 continue
             look = text[i:i + 48]
             if '"' not in look and "'" not in look:
                 i += 1
+                while i < n and text[i] == "{":
+                    i += 1
                 continue
             try:
                 obj, end = decoder.raw_decode(text, i)
             except json.JSONDecodeError:
+                fails += 1
                 i += 1
+                if ":" not in look:
+                    while i < n and text[i] in "{}\"' \t":
+                        i += 1
                 continue
             attempts += 1
             _walk_commands(obj, out, depth + 1)
@@ -371,6 +380,45 @@ def extract_command(*args: Any, **kwargs: Any) -> str:
 
 
 # --- tokenizer (linear, quote-aware) ---------------------------------------
+
+def _skip_brace_run(src: str, i: int) -> int:
+    n = len(src)
+    while i < n and src[i] in "{}":
+        i += 1
+    return i
+
+
+def _skip_dollar_brace_run(src: str, i: int) -> int:
+    """One-pass collapse of nested ``${`` / brace soup. No backtracking."""
+    n = len(src)
+    while i < n:
+        if src[i] == "$" and i + 1 < n and src[i + 1] == "{":
+            i += 2
+            while i < n and src[i] in "{}":
+                i += 1
+            continue
+        if src[i] in "{}":
+            i += 1
+            continue
+        break
+    return i
+
+
+def _try_read_param(src: str, i: int) -> tuple[str, int] | None:
+    n = len(src)
+    if i + 2 >= n or src[i] != "$" or src[i + 1] != "{":
+        return None
+    j = i + 2
+    ch = src[j]
+    if not (ch.isalpha() or ch == "_"):
+        return None
+    k = j + 1
+    while k < n and (src[k].isalnum() or src[k] == "_"):
+        k += 1
+    if k >= n or src[k] != "}":
+        return None
+    return "${" + src[j:k] + "}", k + 1
+
 
 def _tokenize(src: str) -> list[tuple[str, str]]:
     """``(kind, value)`` kinds: word, op, redir, nl. Quotes stripped; ``'b''a'`` concatenates."""
@@ -429,6 +477,18 @@ def _tokenize(src: str) -> list[tuple[str, str]]:
                 i += 1
             tokens.append(("redir", raw))
             continue
+        if ch in '{}"\'':
+            j = i
+            while j < n and src[j] in '{}"\'':
+                j += 1
+            if j > i + 1 and "{" in src[i:j] and ":" not in src[i:min(n, i + 64)]:
+                tokens.append(("word", "{"))
+                i = j
+                continue
+        if ch in "{}":
+            i = _skip_brace_run(src, i)
+            tokens.append(("word", "{"))
+            continue
         word, j = _read_word(src, i)
         if word:
             tokens.append(("word", word))
@@ -463,12 +523,21 @@ def _read_word(src: str, i: int) -> tuple[str, int]:
     chunks: list[str] = []
     while i < n:
         ch = src[i]
-        if ch in " \t\r\n;|&<>(){}":
-            break
         if ch == "$" and i + 1 < n and src[i + 1] == "(":
             inner, i = _read_paren(src, i + 2)
             chunks.append("$(" + inner + ")")
             continue
+        if ch == "$" and i + 1 < n and src[i + 1] == "{":
+            param = _try_read_param(src, i)
+            if param is not None:
+                chunk, i = param
+                chunks.append(chunk)
+                continue
+            i = _skip_dollar_brace_run(src, i)
+            chunks.append("${}")
+            continue
+        if ch in " \t\r\n;|&<>(){}":
+            break
         if ch == "`":
             i += 1
             start = i
@@ -943,6 +1012,8 @@ def _fork_bomb_tokens(tokens: list[tuple[str, str]], compact: str) -> bool:
 
 
 def _control_url_in_word(word: str) -> bool:
+    if "/" not in word and "%" not in word:
+        return False
     decoded = percent_decode(word)
     lower = decoded.lower()
     # strip scheme
@@ -1001,8 +1072,6 @@ def _control_plane_tokens(tokens: list[tuple[str, str]], original: str) -> bool:
         if kind != "word":
             continue
         if _control_url_in_word(value):
-            return True
-        if _control_url_in_word(percent_decode(value)):
             return True
     # Walk decoded original for host/port/path without relying on regex backtracking.
     text = decoded_orig.replace("\\", "/")
