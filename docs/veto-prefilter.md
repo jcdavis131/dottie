@@ -26,13 +26,16 @@ reload or promote URL strings) and non-serve ports such as
 `curl localhost:3000/admin` do not match), `rm -rf` (any path, flag
 reorderings, including `./build`), `find … -delete` and `find … -exec rm`
 (any path, relative included), `mkfs*` and block-device wipes
-(`dd of=` or `dd if=` of `/dev/sd*|nvme*|xvd*|mapper/*|md*|disk*`,
-`tee`/`cp` onto those devices, `wipefs`, `shred` of any file or flags),
-fork bombs (`:(){ :|:& };:`, renamed functions, `fork while`,
-`while true; do … & done` — not a single `perl -e 'print fork'`), extra
-download-to-interp pipes (`node`/`ruby`/`php`, `curl > f; bash f`), and
-credential reads (`~/.ssh/id_*`, `~/.aws/credentials`, `.env` / token files
-via `cat`/`less`/`cp`/`scp`/`base64`/`python -c open`).
+(`dd of=` or `dd if=` of `/dev/sd*|nvme*|xvd*|mapper/*|md*|disk*|/dev/root`,
+`tee`/`cp` onto those devices, `wipefs`, `shred` of a file — not
+`shred --help`/`-h`/`--version`), fork bombs (`:(){ :|:& };:`, renamed
+functions, `fork while`, ruby `loop { fork }`, node `child_process.fork` in
+a loop, `while true|:|1; do … & done` — not `while read … & done` or a
+single `perl -e 'print fork'`), `find -execdir`/`-okdir`/`-exec sh -c rm`
+and `find | xargs rm`, extra download-to-interp pipes (`node`/`ruby`/`php`,
+`curl > f; bash f`), and credential reads (`~/.ssh/id_*`,
+`~/.aws/credentials`, `.env` / token files via
+`cat`/`less`/`cp`/`scp`/`base64`/`python -c open`).
 
 The in-tree dottie-core serve (`packages/dottie-core/dottie_core/serving/server.py`)
 runs the veto on the raw `/decide` body before the model. Request bodies over

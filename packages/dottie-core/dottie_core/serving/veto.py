@@ -108,6 +108,7 @@ _CMD_KEYS = frozenset({"command", "cmd", "argv"})
 _BLOCK_DEVS = (
     "/dev/sd", "/dev/hd", "/dev/vd", "/dev/nvme", "/dev/mmc", "/dev/loop",
     "/dev/xvd", "/dev/disk/", "/dev/mapper/", "/dev/md", "/dev/dm-",
+    "/dev/root",
 )
 _SEARCHERS = frozenset({"rg", "grep", "egrep", "fgrep", "ag", "ack", "ripgrep"})
 _HALT_WORDS = ("halt", "stop", "unsafe", "severe", "worst", "fail", "deny", "block", "danger", "reject", "poor", "loss")
@@ -975,8 +976,10 @@ def _is_mkfs_words(words: list[str]) -> bool:
     if not words:
         return False
     head = words[0].lower()
-    if head == "mkfs" or head.startswith("mkfs.") or head in {"mke2fs", "mkswap", "wipefs", "shred"}:
+    if head == "mkfs" or head.startswith("mkfs.") or head in {"mke2fs", "mkswap", "wipefs"}:
         return True
+    if head == "shred":
+        return any(not tok.startswith("-") for tok in words[1:])
     if head == "dd":
         for tok in words[1:]:
             low = tok.lower()
@@ -1007,13 +1010,19 @@ def _is_find_delete(words: list[str]) -> bool:
         return False
     if "-delete" in words:
         return True
-    if "-exec" in words:
-        try:
-            rest = words[words.index("-exec") + 1:]
-        except ValueError:
-            rest = []
-        if _is_rm_rf_words(rest) or (rest and rest[0].lower() == "rm"):
+    for flag in ("-exec", "-execdir", "-ok", "-okdir"):
+        if flag not in words:
+            continue
+        rest = _strip_wrappers(words[words.index(flag) + 1:])
+        if not rest:
+            continue
+        head = rest[0].lower()
+        if head == "rm" or _basename(head).lower() == "rm" or _is_rm_rf_words(rest):
             return True
+        if _is_shell_name(head) or head in _CODE_INTERPS:
+            script = _script_arg(rest)
+            if script and re.search(r"(^|[^A-Za-z0-9_])rm([^A-Za-z0-9_]|$)", script):
+                return True
     return False
 
 
@@ -1206,17 +1215,32 @@ def _fork_bomb_tokens(tokens: list[tuple[str, str]], compact: str) -> bool:
         low = value.lower()
         if "fork while" in low or ("while" in low and "os.fork" in low):
             return True
-    # while true; do … & done  — background spawn inside a loop
+    if "loop{fork" in blob:
+        return True
+    if "child_process" in blob and "fork" in blob and (
+        "while" in blob or "for(;" in blob or "for(;;" in blob or "loop{" in blob
+    ):
+        return True
+    # while true|:|1; do … & done — not `while read … & done`
     state = "start"
+    cond: list[str] = []
     for kind, value in tokens:
         low = value.lower() if kind == "word" else value
         if low == "while":
             state = "while"
-        elif state == "while" and low == "do":
-            state = "do"
-        elif state == "do" and kind == "op" and value == "&":
+            cond = []
+            continue
+        if state == "while":
+            if low == "do":
+                infinite = len(cond) == 1 and cond[0] in {":", "true", "1"}
+                state = "do-inf" if infinite else "do-b"
+                continue
+            if kind == "word":
+                cond.append(low)
+            continue
+        if state == "do-inf" and kind == "op" and value == "&":
             return True
-        elif state in {"while", "do"} and low == "done":
+        if low == "done":
             state = "start"
     _ = compact_ops
     return False
@@ -1412,8 +1436,10 @@ def _scan_text(
             if _is_credential_read(words):
                 return finish(CREDENTIAL_READ)
             stripped_early = _strip_wrappers(list(words))
-            if stripped_early and stripped_early[0].lower() == "xargs" and _is_rm_rf_words(stripped_early[1:]):
-                return finish(RM_RF)
+            if stripped_early and stripped_early[0].lower() == "xargs":
+                xargs_tail = _strip_wrappers(stripped_early[1:])
+                if xargs_tail and (xargs_tail[0].lower() == "rm" or _is_rm_rf_words(xargs_tail)):
+                    return finish(RM_RF)
             head = _command_word(stage)
             stripped_words = _strip_wrappers(list(words))
             raw0 = stripped_words[0] if stripped_words else ""
@@ -1771,9 +1797,14 @@ EXTRA_HALT_CASES: tuple[tuple[str, str], ...] = (
     ("find . -delete", RM_RF),
     ("find ./build -delete", RM_RF),
     ("find . -exec rm {} +", RM_RF),
+    ("find . -execdir rm {} +", RM_RF),
+    ("find . -okdir rm {} +", RM_RF),
+    ("find . -exec sh -c 'rm -rf \"$1\"' _ {} \\;", RM_RF),
+    ("find . -print | xargs rm", RM_RF),
     ("bash -c 'rm -rf /'", RM_RF),
     ("dd of=/dev/sda", MKFS),
     ("dd if=/dev/sda of=backup.img", MKFS),
+    ("dd if=/dev/root of=x", MKFS),
     ("wipefs /dev/sda", MKFS),
     ("shred /dev/sda", MKFS),
     ("shred notes.txt", MKFS),
@@ -1782,6 +1813,8 @@ EXTRA_HALT_CASES: tuple[tuple[str, str], ...] = (
     ("perl -e 'fork while 1'", FORK_BOMB),
     ("perl -e 'fork while fork'", FORK_BOMB),
     ("python -c 'while 1: os.fork()'", FORK_BOMB),
+    ("ruby -e 'loop { fork }'", FORK_BOMB),
+    ("node -e 'while(1){require(\"child_process\").fork()}'", FORK_BOMB),
     ("while true; do : & done", FORK_BOMB),
     ("tee /dev/sda", MKFS),
     ("cp file /dev/nvme0n1", MKFS),
@@ -1852,6 +1885,10 @@ NEGATIVE_CASES: tuple[str, ...] = (
     "perl -e 'print fork'",
     "perl -e 'print(fork)'",
     "perl -e 'fork'",
+    "shred --help",
+    "shred -h",
+    "shred --version",
+    "while read f; do process \"$f\" & done < list.txt",
 )
 
 
