@@ -47,6 +47,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import row_fields
+
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -100,6 +102,11 @@ SIGNED_KEYS_V2 = (
 )
 NEAR_DUP_TOKENIZER_VERSION_V1 = "v1"
 NEAR_DUP_TOKENIZER_VERSION_V2 = "v2"
+# Builder min-ref rule carried on the signed v2 pin once mill v2.2 is live.
+PINNED_NEAR_DUP_MIN_REF = {"b_ge": 16, "nchar_ge": 20}
+NEAR_DUP_FP_BUCKETS_KEY = "near_dup_fp_buckets"
+NEAR_DUP_MIN_REF_KEY = "near_dup_min_ref"
+SIGNED_KEYS_V2_FP = (NEAR_DUP_FP_BUCKETS_KEY, NEAR_DUP_MIN_REF_KEY)
 NEAR_DUP_TOKENIZER_V1_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v1.py"
 # Fail-closed v2 slot. Mill vendoring is held; do not pin a live v2 file here.
 NEAR_DUP_TOKENIZER_V2_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v2.py"
@@ -251,8 +258,17 @@ V2_PIN_ALLOWED_KEYS = frozenset(
         "run_id",
         "lease_owner",
         "source",
+        NEAR_DUP_FP_BUCKETS_KEY,
+        NEAR_DUP_MIN_REF_KEY,
     )
 )
+
+
+def signed_keys_v2() -> tuple[str, ...]:
+    """v2 signed keys. Fingerprint bucket/min-ref fields join the signature once mill v2.2 is live."""
+    if row_fields.mill_fp_pad_ready():
+        return SIGNED_KEYS_V2 + SIGNED_KEYS_V2_FP
+    return SIGNED_KEYS_V2
 
 
 class CamPinError(Exception):
@@ -333,10 +349,11 @@ def canonical_pin_bytes(fields: dict[str, Any]) -> bytes:
 
 def canonical_pin_bytes_v2(fields: dict[str, Any]) -> bytes:
     """v2 signed payload. r6 / kicks must match this byte for byte."""
-    missing = [key for key in SIGNED_KEYS_V2 if key not in fields]
+    keys = signed_keys_v2()
+    missing = [key for key in keys if key not in fields]
     if missing:
         _refuse(f"cam-pin.{missing[0]}", "present", "missing")
-    body = {key: fields[key] for key in SIGNED_KEYS_V2}
+    body = {key: fields[key] for key in keys}
     packed = json.dumps(body, separators=(",", ":"), sort_keys=True, ensure_ascii=True)
     return CANONICAL_PREFIX_V2 + packed.encode("ascii")
 
@@ -384,6 +401,35 @@ def require_git_commit(field: str, value: object) -> str:
     if type(value) is not str or len(value) != GIT_SHA_LEN or any(ch not in _HEX for ch in value):
         _refuse(field, "40-char lowercase hex", value)
     return value
+
+
+def _require_fp_buckets(value: object) -> list[int]:
+    if not isinstance(value, list) or not value:
+        _refuse(
+            f"cam-pin.{NEAR_DUP_FP_BUCKETS_KEY}",
+            "non-empty list of bucket sizes",
+            "missing" if value is None else type(value).__name__,
+        )
+    buckets: list[int] = []
+    for item in value:
+        if type(item) is not int or item < 1:
+            _refuse(f"cam-pin.{NEAR_DUP_FP_BUCKETS_KEY}", "positive int buckets", "invalid")
+        buckets.append(item)
+    return buckets
+
+
+def _require_min_ref(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        _refuse(
+            f"cam-pin.{NEAR_DUP_MIN_REF_KEY}",
+            "nchar>=20 OR |B|>=16",
+            "missing" if value is None else type(value).__name__,
+        )
+    nchar = value.get("nchar_ge")
+    b_ge = value.get("b_ge")
+    if type(nchar) is not int or type(b_ge) is not int:
+        _refuse(f"cam-pin.{NEAR_DUP_MIN_REF_KEY}", "nchar>=20 OR |B|>=16", "invalid")
+    return {"b_ge": b_ge, "nchar_ge": nchar}
 
 
 def require_code_pins(value: object) -> dict[str, str]:
@@ -571,7 +617,10 @@ def parse_v2_pin_payload(
     unknown = [key for key in payload if key not in V2_PIN_ALLOWED_KEYS]
     if unknown:
         _refuse("cam-pin", "v2 pin keys", f"unknown {unknown[0]}")
-    for key in V2_PIN_REQUIRED_KEYS:
+    required = V2_PIN_REQUIRED_KEYS
+    if row_fields.mill_fp_pad_ready():
+        required = (*V2_PIN_REQUIRED_KEYS, *SIGNED_KEYS_V2_FP)
+    for key in required:
         if key not in payload:
             _refuse(f"cam-pin.{key}", "present", "missing")
     if payload.get("format") != PIN_FORMAT_V2:
@@ -669,6 +718,31 @@ def parse_v2_pin_payload(
         _refuse("cam-pin.near_dup_tokenizer_sha256", pinned_tok, tok_sha)
     record["near_dup_tokenizer_version"] = tok_ver
     record["near_dup_tokenizer_sha256"] = tok_sha
+    if row_fields.mill_fp_pad_ready():
+        record[NEAR_DUP_FP_BUCKETS_KEY] = _require_fp_buckets(
+            payload.get(NEAR_DUP_FP_BUCKETS_KEY)
+        )
+        record[NEAR_DUP_MIN_REF_KEY] = _require_min_ref(payload.get(NEAR_DUP_MIN_REF_KEY))
+        mill_buckets = list(row_fields.mill_fp_buckets())
+        if record[NEAR_DUP_FP_BUCKETS_KEY] != mill_buckets:
+            _refuse(
+                f"cam-pin.{NEAR_DUP_FP_BUCKETS_KEY}",
+                "pinned mill bucket list",
+                "mismatch",
+            )
+        if record[NEAR_DUP_MIN_REF_KEY] != PINNED_NEAR_DUP_MIN_REF:
+            _refuse(
+                f"cam-pin.{NEAR_DUP_MIN_REF_KEY}",
+                "nchar>=20 OR |B|>=16",
+                "mismatch",
+            )
+        mill_min = row_fields.mill_min_ref()
+        if mill_min != PINNED_NEAR_DUP_MIN_REF:
+            _refuse(
+                f"cam-pin.{NEAR_DUP_MIN_REF_KEY}",
+                "nchar>=20 OR |B|>=16",
+                "mill mismatch",
+            )
     if "recordedBy" in payload:
         record["recordedBy"] = payload["recordedBy"]
     if "stampVerified" in payload:

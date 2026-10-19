@@ -55,6 +55,92 @@ def mill_v2x_ready() -> bool:
     )
 
 
+def _mill_dummy_fn(mill: Any) -> Any:
+    for name in ("dummy_tags", "derive_dummy_shingles", "dummy_shingles", "fp_dummy_tags"):
+        fn = getattr(mill, name, None)
+        if callable(fn):
+            return fn
+    return None
+
+
+def _mill_bucket_attr(mill: Any) -> Any:
+    for name in ("FP_BUCKETS", "BUCKET_SIZES", "FINGERPRINT_BUCKETS", "PAD_BUCKETS"):
+        val = getattr(mill, name, None)
+        if val is not None:
+            return val
+    return None
+
+
+def mill_fp_pad_ready() -> bool:
+    """True when mill v2.2 exports fingerprint buckets and dummy-tag derivation."""
+    mill = _pinned_mill()
+    return extract_paths_ready() and _mill_dummy_fn(mill) is not None and _mill_bucket_attr(mill) is not None
+
+
+def mill_fp_buckets() -> tuple[int, ...]:
+    mill = _require_v22()
+    raw = _mill_bucket_attr(mill)
+    if raw is None:
+        _refuse("extract_paths", "mill fingerprint bucket list is missing")
+        raise AssertionError("unreachable")
+    buckets: list[int] = []
+    for item in raw:
+        if type(item) is not int or item < 1:
+            _refuse("extract_paths", "mill fingerprint bucket list is invalid")
+            raise AssertionError("unreachable")
+        buckets.append(item)
+    if not buckets:
+        _refuse("extract_paths", "mill fingerprint bucket list is empty")
+        raise AssertionError("unreachable")
+    return tuple(buckets)
+
+
+def mill_min_ref() -> dict[str, int]:
+    mill = _require_v22()
+    nchar = getattr(mill, "MIN_REF_NCHAR", None)
+    b_min = getattr(mill, "MIN_REF_B", None)
+    if b_min is None:
+        b_min = getattr(mill, "MIN_REF_SHINGLES", None)
+    if type(nchar) is not int:
+        nchar = 20
+    if type(b_min) is not int:
+        b_min = 16
+    return {"nchar_ge": nchar, "b_ge": b_min}
+
+
+def mill_dummy_tags(key: bytes, digest: str, public: frozenset[str]) -> frozenset[str]:
+    """Recompute mill dummy tags. Never logs the key or the tags."""
+    mill = _require_v22()
+    fn = _mill_dummy_fn(mill)
+    if not callable(fn):
+        _refuse("extract_paths", "mill dummy-tag function is missing")
+        raise AssertionError("unreachable")
+    if type(key) is not bytes or not key:
+        _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher missing")
+        raise AssertionError("unreachable")
+    try:
+        tags = fn(key, digest, public)
+    except TypeError:
+        try:
+            tags = fn(key=key, digest=digest, public=public)
+        except Exception as exc:
+            _refuse_mill(exc)
+            raise AssertionError("unreachable")
+    except Exception as exc:
+        _refuse_mill(exc)
+        raise AssertionError("unreachable")
+    if tags is None:
+        _refuse("extract_paths", "mill dummy-tag function returned nothing")
+        raise AssertionError("unreachable")
+    out: set[str] = set()
+    for item in tags:
+        if type(item) is not str:
+            _refuse("extract_paths", "mill dummy tags are invalid")
+            raise AssertionError("unreachable")
+        out.add(item)
+    return frozenset(out)
+
+
 def no_text_error_types() -> tuple[type, ...]:
     mill = _require_v22()
     cls = getattr(mill, "NoTextError", None)

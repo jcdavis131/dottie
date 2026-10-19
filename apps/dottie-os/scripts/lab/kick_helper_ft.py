@@ -270,8 +270,8 @@ RESERVED_NEAR_DUP_FPS_SHA256 = (
 # Gate-config path for the HMAC shingle key. Never from the request body.
 RESERVED_NEAR_DUP_HMAC_KEY_PATH = "/run/forge-runner/reserved_near_dup_hmac.key"
 RESERVED_NEAR_DUP_HMAC_KEY_ID = "RESERVED_NEAR_DUP_HMAC_KEY_ID_PLACEHOLDER"
-# S-SHORTREF: refuse N refs with fewer than 16 unique shingles. Mill's builder
-# also enforces nchar >= 20 OR |B| >= 16 at build time; the public file has no nchar.
+# Real |B| after dummy-tag removal. Public set size is a bucket, not |B|.
+# Mill's builder enforces nchar >= 20 OR |B| >= 16 at build time.
 MIN_REF_SHINGLES = 16
 _FP_LENGTH_KEY_FOLDED = frozenset(
     {
@@ -3089,14 +3089,55 @@ def load_reserved_near_dup_fingerprints(
                 content_uuid.NEAR_DUP_TOKENIZER_VERSION,
                 tok_ver,
             )
-        shingles = frozenset(hmac_list)
-        if row_fields.extract_paths_ready() and len(shingles) < MIN_REF_SHINGLES:
-            _refuse(
-                f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
-                f"|B|>={MIN_REF_SHINGLES}",
-                "short",
-            )
-        found[digest] = (rid, shingles)
+        public = frozenset(hmac_list)
+        if row_fields.extract_paths_ready():
+            if not row_fields.mill_fp_pad_ready():
+                _refuse(
+                    "reserved_near_dup_fingerprints",
+                    "mill v2.2 bucket list and dummy tags",
+                    "missing",
+                )
+            try:
+                buckets = row_fields.mill_fp_buckets()
+            except row_fields.RowFieldsError:
+                _refuse(
+                    "reserved_near_dup_fingerprints",
+                    "mill v2.2 bucket list",
+                    "missing",
+                )
+            if len(public) not in buckets:
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
+                    "pinned bucket size",
+                    "mismatch",
+                )
+            key = _HMAC_KEY_BYTES
+            if key is None:
+                _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher", "missing")
+            try:
+                dummies = row_fields.mill_dummy_tags(key, digest, public)
+            except row_fields.RowFieldsError:
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
+                    "mill dummy tags",
+                    "mismatch",
+                )
+            if not dummies <= public:
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
+                    "dummy tags subset of public set",
+                    "mismatch",
+                )
+            real = public - dummies
+            if len(real) < MIN_REF_SHINGLES:
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
+                    f"|B|>={MIN_REF_SHINGLES}",
+                    "short",
+                )
+            found[digest] = (rid, real)
+        else:
+            found[digest] = (rid, public)
     return found
 
 
@@ -3128,6 +3169,13 @@ class _FingerprintRef:
 
     def __init__(self, tokens: frozenset[str]) -> None:
         self.tokens = tokens
+
+
+def _containment_real_b(candidate: frozenset[str], real_b: frozenset[str]) -> float:
+    """Containment vs real |B| (dummies already excluded). Dummy tags in the candidate never count."""
+    if not real_b:
+        _refuse("reserved_eval_partition.near_dup", "real |B|>=16", "empty")
+    return len(candidate & real_b) / len(real_b)
 
 
 def _collect_v2x_near_dup(
@@ -3171,7 +3219,7 @@ def _collect_v2x_near_dup(
             ref = _FingerprintRef(n_tokens)
             try:
                 mill.near_dup(row, ref, hasher=hasher)
-                matched = mill.match(row, ref, hasher=hasher)
+                mill.match(row, ref, hasher=hasher)
             except no_text_err:
                 hits.append(
                     (
@@ -3188,12 +3236,17 @@ def _collect_v2x_near_dup(
                     )
                 )
                 return hits
-            is_dup = False
-            if type(matched) is bool:
-                is_dup = matched
-            elif isinstance(matched, Mapping):
-                is_dup = bool(matched.get("near_dup"))
-            if is_dup:
+            try:
+                hashed = frozenset(hasher(tok) for tok in row_toks)
+            except TypeError:
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup",
+                        f"{rid}:tokenizer refused",
+                    )
+                )
+                return hits
+            if _containment_real_b(hashed, n_tokens) >= 0.5:
                 hits.append(
                     (
                         "reserved_eval_partition.near_dup",

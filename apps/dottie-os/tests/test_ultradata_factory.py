@@ -8493,6 +8493,7 @@ class HelperFtIntegrityGate6f4cTests(unittest.TestCase):
 
 DENIED_FIELD_N_TEXT = "the reserved eval n member hid here"
 _EXTRACT_PATHS_SKIP = "mill tokenizer v2.2 extract_paths not vendored"
+_FP_PAD_SKIP = "mill tokenizer v2.2 fingerprint buckets/dummy tags not vendored"
 
 
 def _place_denied_field(row: dict, field: str, value: object) -> dict:
@@ -8556,6 +8557,7 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
     def test_seam_refuses_extract_paths_check_denied_trainer_and_gate(self) -> None:
         self.assertFalse(row_fields.extract_paths_ready())
         self.assertFalse(row_fields.mill_v2x_ready())
+        self.assertFalse(row_fields.mill_fp_pad_ready())
         self.assertFalse((LAB / "neardup_tokens-v2.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2.1.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2_1.py").is_file())
@@ -8779,6 +8781,9 @@ def _install_fake_v22_mill() -> object:
     mill.NO_TEXT = _FAKE_NO_TEXT
     mill.NoTextError = _FakeNoTextError
     mill.ALLOW_PATHS = frozenset({"state.message", "labels", "questions"})
+    mill.FP_BUCKETS = (32, 64)
+    mill.MIN_REF_NCHAR = 20
+    mill.MIN_REF_B = 16
     mill.DENY_KEYS = frozenset(
         {
             "schema",
@@ -8906,6 +8911,21 @@ def _install_fake_v22_mill() -> object:
         dup = near_dup(cand, ref, hasher=hasher)
         return {"near_dup": dup, "containment": 1.0 if dup else 0.0}
 
+    def dummy_tags(key: object, digest: object, public: object) -> frozenset[str]:
+        if type(key) is not bytes or type(digest) is not str:
+            raise TypeError("dummy_tags")
+        public_set = frozenset(public)
+        tags: set[str] = set()
+        for idx in range(64):
+            tag = hmac.new(
+                key,
+                b"fp-dummy|" + digest.encode("ascii") + b"|" + str(idx).encode("ascii"),
+                hashlib.sha256,
+            ).hexdigest()
+            if tag in public_set:
+                tags.add(tag)
+        return frozenset(tags)
+
     mill.extract_paths = extract_paths
     mill.check_denied = check_denied
     mill.is_no_text = is_no_text
@@ -8913,8 +8933,26 @@ def _install_fake_v22_mill() -> object:
     mill.message_tokens = message_tokens
     mill.near_dup = near_dup
     mill.match = match
+    mill.dummy_tags = dummy_tags
     sys.modules["neardup_tokens_v1"] = mill
     return mill
+
+
+def _fp_dummy_tag(key: bytes, digest: str, idx: int) -> str:
+    return hmac.new(
+        key,
+        b"fp-dummy|" + digest.encode("ascii") + b"|" + str(idx).encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _padded_public(*, key: bytes, digest: str, real: list[str], bucket: int) -> list[str]:
+    dummies: list[str] = []
+    idx = 0
+    while len(real) + len(dummies) < bucket:
+        dummies.append(_fp_dummy_tag(key, digest, idx))
+        idx += 1
+    return list(real) + dummies
 
 
 class HelperFtV22SeamGateTests(unittest.TestCase):
@@ -8949,6 +8987,9 @@ class HelperFtV22SeamGateTests(unittest.TestCase):
     def test_seam_ready_with_fake_mill(self) -> None:
         self.assertTrue(row_fields.extract_paths_ready())
         self.assertTrue(row_fields.mill_v2x_ready())
+        self.assertTrue(row_fields.mill_fp_pad_ready())
+        self.assertEqual(row_fields.mill_fp_buckets(), (32, 64))
+        self.assertEqual(row_fields.mill_min_ref(), cam_pin_spec.PINNED_NEAR_DUP_MIN_REF)
 
     def test_deny_trainer_case_spacing_lookalike_keys(self) -> None:
         n_text = DENIED_FIELD_N_TEXT
@@ -9084,73 +9125,94 @@ class HelperFtV22SeamGateTests(unittest.TestCase):
                 self.assertNotIn(digest, field)
                 self.assertNotIn(digest, msg)
 
-    def test_shortref_and_nchar_leak_refused_on_load(self) -> None:
+    def _fp_line(
+        self,
+        *,
+        digest: str,
+        key_id: str,
+        public: list[str],
+        extra: dict | None = None,
+    ) -> str:
+        obj = {
+            "content_uuid": digest,
+            "id": "n1",
+            "hmac_sha256": public,
+            "key_id": key_id,
+            "tokenizer_version": "v1",
+        }
+        if extra:
+            obj.update(extra)
+        return json.dumps(obj) + "\n"
+
+    def test_wrong_bucket_size_refused(self) -> None:
         key_id = "factory-hmac-test-key"
         material = b"factory-hmac-material"
-        digest = hashlib.sha256(b"n-fp").hexdigest()
+        digest = hashlib.sha256(b"n-bucket").hexdigest()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             key_path = self._hmac_key_file(root, key_id, material)
-            short = (
-                json.dumps(
-                    {
-                        "content_uuid": digest,
-                        "id": "n1",
-                        "hmac_sha256": [f"{i:064x}" for i in range(15)],
-                        "key_id": key_id,
-                        "tokenizer_version": "v1",
-                    }
-                )
-                + "\n"
+            wrong = self._fp_line(digest=digest, key_id=key_id, public=[f"{i:064x}" for i in range(31)])
+            fps_path = root / "fps.jsonl"
+            fps_path.write_text(wrong, encoding="utf-8")
+            with patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)), patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.load_reserved_near_dup_fingerprints(
+                        fps_path, hashlib.sha256(wrong.encode()).hexdigest()
+                    )
+        self.assertEqual(ctx.exception.actual, "mismatch")
+        self.assertNotIn("31", str(ctx.exception))
+
+    def test_real_b_below_16_after_dummy_removal_refused(self) -> None:
+        key_id = "factory-hmac-test-key"
+        material = b"factory-hmac-material"
+        digest = hashlib.sha256(b"n-short-real").hexdigest()
+        real = [f"{i:064x}" for i in range(15)]
+        public = _padded_public(key=material, digest=digest, real=real, bucket=32)
+        self.assertEqual(len(public), 32)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, material)
+            line = self._fp_line(digest=digest, key_id=key_id, public=public)
+            fps_path = root / "fps.jsonl"
+            fps_path.write_text(line, encoding="utf-8")
+            with patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)), patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.load_reserved_near_dup_fingerprints(
+                        fps_path, hashlib.sha256(line.encode()).hexdigest()
+                    )
+        self.assertEqual(ctx.exception.actual, "short")
+        self.assertNotIn("15", str(ctx.exception))
+        for tag in public[15:]:
+            self.assertNotIn(tag, str(ctx.exception))
+
+    def test_containment_denominator_excludes_dummies_and_dummy_in_candidate_never_counts(
+        self,
+    ) -> None:
+        key_id = "factory-hmac-test-key"
+        material = b"factory-hmac-material"
+        digest = hashlib.sha256(b"n-contain").hexdigest()
+        real = [f"{i:064x}" for i in range(16)]
+        public = _padded_public(key=material, digest=digest, real=real, bucket=32)
+        dummy = public[-1]
+        self.assertNotIn(dummy, real)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, material)
+            leaked = self._fp_line(
+                digest=digest, key_id=key_id, public=public, extra={"nchar": 20}
             )
-            leaked = (
-                json.dumps(
-                    {
-                        "content_uuid": digest,
-                        "id": "n1",
-                        "hmac_sha256": [f"{i:064x}" for i in range(16)],
-                        "key_id": key_id,
-                        "tokenizer_version": "v1",
-                        "nchar": 20,
-                    }
-                )
-                + "\n"
+            leaked_l = self._fp_line(
+                digest=digest, key_id=key_id, public=public, extra={"L": 20}
             )
-            leaked_l = (
-                json.dumps(
-                    {
-                        "content_uuid": digest,
-                        "id": "n1",
-                        "hmac_sha256": [f"{i:064x}" for i in range(16)],
-                        "key_id": key_id,
-                        "tokenizer_version": "v1",
-                        "L": 20,
-                    }
-                )
-                + "\n"
-            )
-            ok = (
-                json.dumps(
-                    {
-                        "content_uuid": digest,
-                        "id": "n1",
-                        "hmac_sha256": [f"{i:064x}" for i in range(16)],
-                        "key_id": key_id,
-                        "tokenizer_version": "v1",
-                    }
-                )
-                + "\n"
-            )
+            ok = self._fp_line(digest=digest, key_id=key_id, public=public)
             fps_path = root / "fps.jsonl"
             with patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)), patch.object(
                 kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
             ):
-                fps_path.write_text(short, encoding="utf-8")
-                with self.assertRaises(kick_helper_ft.KickRefused) as ctx_short:
-                    kick_helper_ft.load_reserved_near_dup_fingerprints(
-                        fps_path, hashlib.sha256(short.encode()).hexdigest()
-                    )
-                self.assertIn("hmac_sha256", ctx_short.exception.field)
                 fps_path.write_text(leaked, encoding="utf-8")
                 with self.assertRaises(kick_helper_ft.KickRefused) as ctx_n:
                     kick_helper_ft.load_reserved_near_dup_fingerprints(
@@ -9164,11 +9226,131 @@ class HelperFtV22SeamGateTests(unittest.TestCase):
                     )
                 self.assertIn(".L", ctx_l.exception.field)
                 fps_path.write_text(ok, encoding="utf-8")
-                found = kick_helper_ft.load_reserved_near_dup_fingerprints(
-                    fps_path, hashlib.sha256(ok.encode()).hexdigest()
-                )
-                self.assertEqual(set(found), {digest})
-                self.assertEqual(len(found[digest][1]), 16)
+                buf = StringIO()
+                with redirect_stdout(buf):
+                    found = kick_helper_ft.load_reserved_near_dup_fingerprints(
+                        fps_path, hashlib.sha256(ok.encode()).hexdigest()
+                    )
+        stored = found[digest][1]
+        self.assertEqual(stored, frozenset(real))
+        self.assertNotIn(dummy, stored)
+        real_set = frozenset(real)
+        self.assertEqual(kick_helper_ft._containment_real_b(real_set, real_set), 1.0)
+        self.assertEqual(kick_helper_ft._containment_real_b(real_set | {dummy}, real_set), 1.0)
+        self.assertEqual(kick_helper_ft._containment_real_b(frozenset({dummy}), real_set), 0.0)
+        self.assertEqual(len(public), 32)
+        dumped = buf.getvalue()
+        self.assertNotIn(dummy, dumped)
+        self.assertNotIn("16", dumped)
+        self.assertNotIn(material.decode("ascii"), dumped)
+
+    def _v2_fp_pin_fields(self, **overrides: object) -> dict:
+        fields = {
+            "format": cam_pin_spec.PIN_FORMAT_V2,
+            "key_id": TEST_CAM_KEY_ID,
+            "binding": {
+                "pack_id": "code-pins-pack",
+                "run_id": "helper-ft-test-run",
+                "lease_owner": "lease-owner",
+            },
+            "issued_at": "2026-10-19T06:00:00Z",
+            "not_before": "2026-10-19T05:59:00Z",
+            "not_after": "2026-10-19T18:00:00Z",
+            "nonce": "cd" * 32,
+            "sha256_pack": "11" * 32,
+            "sha256_train": "22" * 32,
+            "sha256_holdout": "33" * 32,
+            "expires_at": "2026-10-19T18:00:00Z",
+            "git_commit": "ab" * 20,
+            "code_pins": {rel: "11" * 32 for rel in cam_pin_spec.CODE_PINS},
+            "head": "ab" * 20,
+            "reserved_content_uuids_sha256": kick_helper_ft.RESERVED_CONTENT_UUIDS_SHA256,
+            "reserved_content_uuids_min_rows": kick_helper_ft.RESERVED_CONTENT_UUIDS_MIN_ROWS,
+            "sha256_manifest": "44" * 32,
+            "near_dup_tokenizer_version": content_uuid.NEAR_DUP_TOKENIZER_VERSION,
+            "near_dup_tokenizer_sha256": "11" * 32,
+            "rows_total": 0,
+            "rows_train": 0,
+            "rows_holdout": 0,
+            "near_dup_fp_buckets": list(self._mill.FP_BUCKETS),
+            "near_dup_min_ref": dict(cam_pin_spec.PINNED_NEAR_DUP_MIN_REF),
+        }
+        fields.update(overrides)
+        return fields
+
+    def test_signed_min_ref_or_buckets_missing_or_mismatched_refused(self) -> None:
+        now = datetime(2026, 10, 19, 6, 30, tzinfo=timezone.utc)
+        missing = self._v2_fp_pin_fields()
+        missing.pop("near_dup_fp_buckets")
+        missing["cam_sig"] = base64.b64encode(b"\x00" * 64).decode("ascii")
+        missing["cam_key_id"] = TEST_CAM_KEY_ID
+        with self.assertRaises(cam_pin_spec.CamPinError) as ctx_bucket:
+            cam_pin_spec.parse_v2_pin_payload(missing, now=now)
+        self.assertIn("near_dup_fp_buckets", ctx_bucket.exception.field)
+
+        missing_min = self._v2_fp_pin_fields()
+        missing_min.pop("near_dup_min_ref")
+        missing_min["cam_sig"] = base64.b64encode(b"\x00" * 64).decode("ascii")
+        missing_min["cam_key_id"] = TEST_CAM_KEY_ID
+        with self.assertRaises(cam_pin_spec.CamPinError) as ctx_min:
+            cam_pin_spec.parse_v2_pin_payload(missing_min, now=now)
+        self.assertIn("near_dup_min_ref", ctx_min.exception.field)
+
+        bad_buckets = self._v2_fp_pin_fields(near_dup_fp_buckets=[99])
+        bad_buckets["cam_sig"] = cam_pin_spec.sign_pin_v2(bad_buckets, TEST_CAM_PRIVATE)
+        bad_buckets["cam_key_id"] = TEST_CAM_KEY_ID
+        with self.assertRaises(cam_pin_spec.CamPinError) as ctx_mismatch:
+            cam_pin_spec.parse_v2_pin_payload(bad_buckets, now=now)
+        self.assertEqual(ctx_mismatch.exception.actual, "mismatch")
+        self.assertIn("near_dup_fp_buckets", ctx_mismatch.exception.field)
+
+        bad_min = self._v2_fp_pin_fields(near_dup_min_ref={"nchar_ge": 1, "b_ge": 1})
+        bad_min["cam_sig"] = cam_pin_spec.sign_pin_v2(bad_min, TEST_CAM_PRIVATE)
+        bad_min["cam_key_id"] = TEST_CAM_KEY_ID
+        with self.assertRaises(cam_pin_spec.CamPinError) as ctx_min_mis:
+            cam_pin_spec.parse_v2_pin_payload(bad_min, now=now)
+        self.assertEqual(ctx_min_mis.exception.actual, "mismatch")
+        self.assertIn("near_dup_min_ref", ctx_min_mis.exception.field)
+
+        ok = self._v2_fp_pin_fields()
+        ok["cam_sig"] = cam_pin_spec.sign_pin_v2(ok, TEST_CAM_PRIVATE)
+        ok["cam_key_id"] = TEST_CAM_KEY_ID
+        test_pub = Ed25519PublicKey.from_public_bytes(
+            cam_pin_spec.raw_public_from_private(TEST_CAM_PRIVATE)
+        )
+        with patch.object(
+            cam_pin_spec,
+            "load_cam_public_key",
+            return_value=(TEST_CAM_KEY_ID, test_pub),
+        ):
+            parsed = cam_pin_spec.parse_v2_pin_payload(ok, now=now)
+        self.assertEqual(parsed["near_dup_fp_buckets"], [32, 64])
+        self.assertEqual(parsed["near_dup_min_ref"], cam_pin_spec.PINNED_NEAR_DUP_MIN_REF)
+
+
+@unittest.skipUnless(row_fields.mill_fp_pad_ready(), _FP_PAD_SKIP)
+class HelperFtMillFpPadTests(unittest.TestCase):
+    """Contract tests for mill v2.2 bucket list and dummy-tag export. Skip until vendored."""
+
+    def test_mill_exports_buckets_and_dummy_tags(self) -> None:
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        self.assertTrue(row_fields.mill_fp_pad_ready())
+        buckets = row_fields.mill_fp_buckets()
+        self.assertTrue(buckets)
+        self.assertTrue(all(type(item) is int and item >= 16 for item in buckets))
+        self.assertEqual(row_fields.mill_min_ref(), cam_pin_spec.PINNED_NEAR_DUP_MIN_REF)
+        self.assertTrue(callable(getattr(mill, "dummy_tags", None) or getattr(mill, "derive_dummy_shingles", None)))
+
+    def test_dummy_tag_in_candidate_never_counts(self) -> None:
+        key = b"factory-hmac-material-not-logged"
+        digest = "ab" * 32
+        real = frozenset(f"{i:064x}" for i in range(16))
+        public = real | row_fields.mill_dummy_tags(key, digest, real)
+        dummies = row_fields.mill_dummy_tags(key, digest, public)
+        self.assertTrue(dummies <= public)
+        dummy = next(iter(dummies), "ee" * 32)
+        self.assertEqual(kick_helper_ft._containment_real_b(real | {dummy}, real), 1.0)
+        self.assertEqual(kick_helper_ft._containment_real_b(frozenset({dummy}), real), 0.0)
 
 
 if __name__ == "__main__":
