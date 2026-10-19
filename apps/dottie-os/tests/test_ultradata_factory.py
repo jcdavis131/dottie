@@ -5350,6 +5350,25 @@ class HelperFtContentUuidTests(unittest.TestCase):
             content_uuid.content_uuid(labels_right),
         )
 
+    def test_nested_id_change_alters_uuid(self) -> None:
+        base = {
+            "id": "top-level-id",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "state": {"id": "nested-one", "timestamp": "t0", "message": "same"},
+            "questions": {"action": {"type": "choice", "id": "q1"}},
+        }
+        nested_id = json.loads(json.dumps(base))
+        nested_id["state"]["id"] = "nested-two"
+        nested_ts = json.loads(json.dumps(base))
+        nested_ts["state"]["timestamp"] = "t1"
+        top_only = json.loads(json.dumps(base))
+        top_only["id"] = "other-top-id"
+        top_only["timestamp"] = "2099-01-01T00:00:00Z"
+        digest = content_uuid.content_uuid(base)
+        self.assertNotEqual(digest, content_uuid.content_uuid(nested_id))
+        self.assertNotEqual(digest, content_uuid.content_uuid(nested_ts))
+        self.assertEqual(digest, content_uuid.content_uuid(top_only))
+
     def test_int_and_float_are_distinct(self) -> None:
         as_int = {"state": {"n": 1}, "questions": {"action": {"type": "choice"}}}
         as_float = {"state": {"n": 1.0}, "questions": {"action": {"type": "choice"}}}

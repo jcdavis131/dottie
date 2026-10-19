@@ -8,9 +8,13 @@ dataset id, never a content uuid, even when it is 64 hex. A missing
 ``source.uuid`` is allowed when a valid ``source.content_uuid`` is present
 and verifies.
 
-Included fields: ``state`` and ``questions`` only.
-Excluded: ``labels``, ids (``id``, ``uuid``, ``trajectory_id``,
-``source.uuid``), timestamps, and every other top-level key.
+Included fields: ``state`` and ``questions`` only (top-level selection).
+Nested keys inside those objects — including nested ``id`` and
+``timestamp`` — stay in the hash. Do not drop keys by name under
+``state``/``questions``.
+Excluded at the top level only: ``labels``, ids (``id``, ``uuid``,
+``trajectory_id``, ``source.uuid``), timestamps, and every other
+top-level key.
 
 Encoding, exactly:
 1. Build a JSON object with the included fields that are present (a missing
@@ -130,7 +134,10 @@ def canonical_json_bytes(value: Any) -> bytes:
 
 
 def canonical_content_object(row: Mapping[str, Any]) -> dict[str, Any]:
-    """``state`` + ``questions`` only. Labels, ids, and timestamps stay out."""
+    """Top-level ``state`` + ``questions`` only.
+
+    Nested ``id`` / ``timestamp`` keys inside those fields are kept.
+    """
     payload: dict[str, Any] = {}
     for key in CONTENT_UUID_FIELDS:
         if key in row:
