@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
       # factory/ and scripts/dag_next.py are stdlib-only, so no uv sync: the report
       # must stay cheap enough to never be the thing that gets switched off.
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.11"
       - name: Sibling checkouts the dataset registry names (public; missing ones report as such)
