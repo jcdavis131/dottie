@@ -9143,6 +9143,7 @@ def _install_fake_v22_fp_file_mill() -> object:
     mill.HasherMismatchError = _FakeHasherMismatchError
     mill.FORWARD_THRESHOLD = 0.43
     mill.FORWARD_SAMPLE_FLOOR = 64
+    mill.FORWARD_SAMPLE_MIN = 7
     mill.CAP = 1024
     mill.BUCKETS = (32, 64, 128, 256, 512, 1024)
     mill.FP_BUCKETS = mill.BUCKETS
@@ -10185,12 +10186,12 @@ class HelperFtV22FpFileTests(unittest.TestCase):
         self.assertEqual(self._mill.FORWARD_THRESHOLD, 0.43)
         self.assertEqual(row_fields.mill_forward_threshold(), row_fields.mill_forward_threshold())
 
-    def test_forward_sample_too_small_fail_closed(self) -> None:
-        self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 7))
+    def test_forward_sample_clopper_pearson_backstop(self) -> None:
+        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 7))
         self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 6))
         self.assertTrue(kick_helper_ft._forward_sample_too_small(1, 10))
-        self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 63))
-        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 64))
+        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 63))
+        self.assertGreaterEqual(kick_helper_ft.clopper_pearson_upper(1, 10), 0.5)
         row = _strict_row("cp-row", "halt")
         row["subset"] = "Agent"
         row["trajectory_id"] = "cp-row"
@@ -10202,14 +10203,38 @@ class HelperFtV22FpFileTests(unittest.TestCase):
                 kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
             ):
                 kick_helper_ft.load_reserved_near_dup_hmac_key(key_path, key_id)
-                nsha = hashlib.sha256(b"n-cp6").hexdigest()
+                nsha6 = hashlib.sha256(b"n-cp6").hexdigest()
                 content_uuid.install_kick_near_dup_fingerprints(
-                    {nsha: ("n1", frozenset(f"{i:064x}" for i in range(6)))}
+                    {nsha6: ("n1", frozenset(f"{i:064x}" for i in range(6)))}
                 )
-                hits = kick_helper_ft._collect_v2x_near_dup(row, "cp-row", {nsha})
+                hits6 = kick_helper_ft._collect_v2x_near_dup(row, "cp-row", {nsha6})
+                nsha7 = hashlib.sha256(b"n-cp7").hexdigest()
+                content_uuid.install_kick_near_dup_fingerprints(
+                    {nsha7: ("n1", frozenset(f"{i:064x}" for i in range(7)))}
+                )
+                hits7 = kick_helper_ft._collect_v2x_near_dup(row, "cp-row", {nsha7})
+                hashed = frozenset(
+                    hmac.new(material, tok.encode("utf-8"), hashlib.sha256).hexdigest()
+                    for tok in self._mill.row_tokens(row)
+                )
+                one = next(iter(hashed))
+                fillers = [f"{i:064x}" for i in range(9)]
+                nsha10 = hashlib.sha256(b"n-cp10").hexdigest()
+                content_uuid.install_kick_near_dup_fingerprints(
+                    {nsha10: ("n1", frozenset([one, *fillers]))}
+                )
+                hits10 = kick_helper_ft._collect_v2x_near_dup(row, "cp-row", {nsha10})
         self.assertTrue(
-            any("forward_sample_too_small_refused" in field for field, _msg in hits),
-            hits,
+            any("forward_sample_too_small_refused" in field for field, _msg in hits6),
+            hits6,
+        )
+        self.assertFalse(
+            any("forward_sample_too_small_refused" in field for field, _msg in hits7),
+            hits7,
+        )
+        self.assertTrue(
+            any("forward_sample_too_small_refused" in field for field, _msg in hits10),
+            hits10,
         )
 
     def test_reverse_below_floor_is_report_only(self) -> None:
@@ -10392,12 +10417,12 @@ class HelperFtMillFpFileTests(unittest.TestCase):
         self.assertEqual(row_fields.mill_forward_threshold(), 0.43)
         self.assertEqual(row_fields.mill_forward_threshold(), row_fields.mill_forward_threshold())
 
-    def test_forward_sample_too_small_fail_closed(self) -> None:
-        self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 7))
+    def test_forward_sample_clopper_pearson_backstop(self) -> None:
+        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 7))
         self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 6))
         self.assertTrue(kick_helper_ft._forward_sample_too_small(1, 10))
-        self.assertTrue(kick_helper_ft._forward_sample_too_small(0, 63))
-        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 64))
+        self.assertFalse(kick_helper_ft._forward_sample_too_small(0, 63))
+        self.assertGreaterEqual(kick_helper_ft.clopper_pearson_upper(1, 10), 0.5)
 
     def test_cap_bucket_is_1024(self) -> None:
         self.assertEqual(row_fields.mill_cap(), 1024)

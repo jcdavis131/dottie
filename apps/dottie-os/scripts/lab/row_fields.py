@@ -548,7 +548,7 @@ def mill_forward_threshold() -> float:
 
 
 def mill_forward_sample_floor() -> int:
-    """Forward fail-closed floor. Below this many effective tags refuses, not report-only."""
+    """Forward sample floor. Below this, Clopper-Pearson fail-closed applies."""
     mill = _pinned_mill()
     val = getattr(mill, "FORWARD_SAMPLE_FLOOR", None)
     if type(val) is int and val >= 1:
@@ -557,6 +557,7 @@ def mill_forward_sample_floor() -> int:
 
 
 def mill_forward_sample_min() -> int:
+    """Below this many effective tags, forward always refuses."""
     mill = _pinned_mill()
     val = getattr(mill, "FORWARD_SAMPLE_MIN", None)
     if type(val) is int and val >= 1:
