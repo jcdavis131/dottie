@@ -3034,35 +3034,145 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[1:])
             return _refresh_hashes(dest)
 
-        with tempfile.TemporaryDirectory() as tmp:
-            dest = Path(tmp) / "inbox-pack"
-            dest.mkdir()
-            manifest = _write_leaky(dest, {"meta": {"risk_hint": "halt"}})
-            self._pin(manifest)
-            with self.assertRaises(kick_helper_ft.KickRefused) as nested:
-                kick_helper_ft.kick(dest)
-        self.assertEqual(nested.exception.field, "state.leak")
-        self.assertTrue(any("state.meta.risk_hint" in str(item) for item in nested.exception.actual))
+        cases = (
+            ({"meta": {"risk_hint": "halt"}}, "state.meta.risk_hint"),
+            ({"halt_class": "x", "message": "ok"}, "state.halt_class"),
+            ({"meta": {"provenance": "lab"}}, "state.meta.provenance"),
+            ({"agent_config": "u", "message": "ok"}, "state.agent_config"),
+            ({"category": "L3", "message": "ok"}, "state.category"),
+        )
+        for state, needle in cases:
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "inbox-pack"
+                dest.mkdir()
+                manifest = _write_leaky(dest, state)
+                self._pin(manifest)
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.kick(dest)
+            self.assertEqual(ctx.exception.field, "state.leak")
+            self.assertTrue(
+                any(needle in str(item) for item in ctx.exception.actual),
+                msg=needle,
+            )
+
+    def test_185133_shaped_synthetic_l3_leaks_refused_on_all_hooks(self) -> None:
+        """Replica of 185133: 60 L3 rows with state.meta.risk_hint == gold label.
+
+        The live pack (sha256_pack a73c792f…) is not in this tree and is not
+        committed. Synthetic rows only.
+        """
+        actions = (["execute", "escalate", "halt"] * 20)
+        rows = []
+        for idx, action in enumerate(actions):
+            row = _row(rid=f"l3-{idx:03d}", action=action)
+            gold = row["labels"]["action"]["choice"]
+            self.assertEqual(gold, action)
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"risk_hint": gold},
+            }
+            rows.append(row)
+        self.assertEqual(len(rows), 60)
+        train, hold = rows[:48], rows[48:]
+
+        def kickoff(body: dict) -> dict:
+            return helper_ft_kickoff.handle_train_kickoff(
+                body,
+                launch_trainer=lambda _b: {"ok": True, "checkpoint_id": "ckpt-leak"},
+            )
 
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
-            manifest = _write_leaky(dest, {"halt_class": "x", "message": "ok"})
+            write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+            write_jsonl(dest / "curated_pack_v2_train.jsonl", train)
+            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", hold)
+            (dest / "MANIFEST.json").write_text(
+                json.dumps(
+                    {
+                        "pack_id": "curated_pack_v2-synthetic-185133-shape",
+                        "rows": 60,
+                        "train_rows": 48,
+                        "holdout_rows": 12,
+                        "champion_touched": False,
+                        "live_gate_touched": False,
+                        "ft_kicked": False,
+                        "consent_champion_false": True,
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            manifest = _refresh_hashes(dest)
+            self.assertNotEqual(
+                manifest["sha256_pack"],
+                "a73c792fb0c70373d77867002304058ef14946027ad4fa6f2121e79216d99f7d",
+            )
             self._pin(manifest)
-            with self.assertRaises(kick_helper_ft.KickRefused) as top:
-                kick_helper_ft.kick(dest)
-        self.assertEqual(top.exception.field, "state.leak")
-        self.assertTrue(any("state.halt_class" in str(item) for item in top.exception.actual))
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, kickoff=kickoff)
+            handler = helper_ft_kickoff.handle_train_kickoff(
+                _fresh_kickoff_body(dest, manifest),
+                launch_trainer=lambda _b: {"ok": True, "checkpoint_id": "ckpt-leak"},
+            )
+            loop_src = Path(__file__).resolve().parents[3] / "packages" / "dottie-loop"
+            if str(loop_src) not in sys.path:
+                sys.path.insert(0, str(loop_src))
+            runner = _load("forge_runner_state_leak", loop_src / "scripts" / "forge_runner.py")
+            runner_out = runner.handle_train_kickoff(_fresh_kickoff_body(dest, manifest))
+        listed = ctx.exception.actual
+        self.assertEqual(ctx.exception.field, "state.leak")
+        self.assertEqual(ctx.exception.expected, "absent")
+        self.assertIsInstance(listed, list)
+        self.assertLessEqual(len(listed), 10)
+        self.assertGreaterEqual(len(listed), 1)
+        for item in listed:
+            self.assertRegex(str(item), r"^l3-\d{3}:state\.meta\.risk_hint$")
+        self.assertEqual(len(listed), len(set(listed)))
+        self.assertFalse(handler.get("ok"))
+        self.assertEqual(handler["field"], "state.leak")
+        self.assertLessEqual(len(handler["actual"]), 10)
+        self.assertFalse(runner_out.get("ok"))
+        self.assertEqual(runner_out["field"], "state.leak")
 
     def test_stripped_rows_without_state_leaks_go_through(self) -> None:
+        """Stripped re-cut: L3 rows keep gold in labels only, never in state."""
+        actions = ["execute", "escalate", "halt", "execute", "halt"]
+        rows = [_row(rid=f"strip-{idx}", action=action) for idx, action in enumerate(actions)]
+        train, hold = rows[:4], rows[4:]
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
-            manifest = _write_helper_pack(dest)
+            write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+            write_jsonl(dest / "curated_pack_v2_train.jsonl", train)
+            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", hold)
+            (dest / "MANIFEST.json").write_text(
+                json.dumps(
+                    {
+                        "pack_id": "curated_pack_v2-stripped-recut",
+                        "rows": 5,
+                        "train_rows": 4,
+                        "holdout_rows": 1,
+                        "champion_touched": False,
+                        "live_gate_touched": False,
+                        "ft_kicked": False,
+                        "consent_champion_false": True,
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            manifest = _refresh_hashes(dest)
             self._pin(manifest)
             evidence = kick_helper_ft.kick(dest)
         self.assertEqual(evidence["result"], "MATCH")
         self.assertNotIn("state.leak", json.dumps(evidence))
+        dumped = json.dumps(rows)
+        self.assertNotIn("risk_hint", dumped)
+        self.assertNotIn("halt_class", dumped)
+        self.assertNotIn("agent_config", dumped)
 
     def test_inbox_latest_aliases_refused(self) -> None:
         latest = helper_ft_kickoff.handle_train_kickoff(

@@ -84,6 +84,8 @@ CHECKPOINT_UNSCORED = "unscored"
 STATE_LEAK_KEYS = frozenset(
     {"risk_hint", "halt_class", "provenance", "agent_config", "category"}
 )
+# The 20261018-185133 pack (sha256_pack a73c792f…) put gold labels in
+# state.meta.risk_hint on all 60 L3 rows. Refuse those keys at any depth.
 INBOX_LATEST_TOKENS = frozenset({"latest", "inbox_latest", "inbox-latest"})
 INBOX_LATEST_PATH_MARKERS = (
     "inbox_latest",
@@ -558,6 +560,7 @@ def _walk_state_leaks(
     path: str,
     row_id: str,
     found: list[str],
+    seen: set[str],
 ) -> None:
     if len(found) >= 10:
         return
@@ -566,17 +569,25 @@ def _walk_state_leaks(
             key_s = str(key)
             child_path = f"{path}.{key_s}"
             if key_s in STATE_LEAK_KEYS:
-                found.append(f"{row_id}:{child_path}")
-                if len(found) >= 10:
-                    return
-            _walk_state_leaks(child, path=child_path, row_id=row_id, found=found)
+                item = f"{row_id}:{child_path}"
+                if item not in seen:
+                    seen.add(item)
+                    found.append(item)
+                    if len(found) >= 10:
+                        return
+            _walk_state_leaks(
+                child, path=child_path, row_id=row_id, found=found, seen=seen
+            )
     elif isinstance(value, list):
         for idx, child in enumerate(value):
-            _walk_state_leaks(child, path=f"{path}[{idx}]", row_id=row_id, found=found)
+            _walk_state_leaks(
+                child, path=f"{path}[{idx}]", row_id=row_id, found=found, seen=seen
+            )
 
 
 def collect_state_leaks(recorded_paths: Mapping[str, str]) -> list[str]:
     found: list[str] = []
+    seen: set[str] = set()
     for key in ("pack", "train", "holdout"):
         raw = recorded_paths.get(key)
         if type(raw) is not str or not raw:
@@ -588,6 +599,7 @@ def collect_state_leaks(recorded_paths: Mapping[str, str]) -> list[str]:
                 path="state",
                 row_id=_row_id(obj),
                 found=found,
+                seen=seen,
             )
             if len(found) >= 10:
                 return found

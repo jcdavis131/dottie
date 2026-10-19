@@ -159,6 +159,65 @@ def _load_helper_ft_kickoff():
     return mod
 
 
+_STATE_LEAK_KEYS = frozenset(
+    {"risk_hint", "halt_class", "provenance", "agent_config", "category"}
+)
+
+
+def _fallback_state_leaks(body: dict[str, Any]) -> list[str]:
+    """Off-tree runner still refuses leaked state keys when jsonl paths exist."""
+    paths = body.get("paths")
+    if not isinstance(paths, dict):
+        return []
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def walk(value: object, path: str, row_id: str) -> None:
+        if len(found) >= 10:
+            return
+        if isinstance(value, dict):
+            for key, child in value.items():
+                key_s = str(key)
+                child_path = f"{path}.{key_s}"
+                if key_s in _STATE_LEAK_KEYS:
+                    item = f"{row_id}:{child_path}"
+                    if item not in seen:
+                        seen.add(item)
+                        found.append(item)
+                        if len(found) >= 10:
+                            return
+                walk(child, child_path, row_id)
+        elif isinstance(value, list):
+            for idx, child in enumerate(value):
+                walk(child, f"{path}[{idx}]", row_id)
+
+    for key in ("pack", "train", "holdout"):
+        raw = paths.get(key)
+        if not isinstance(raw, str) or not raw:
+            continue
+        path = Path(raw)
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            row_id = obj.get("id") or obj.get("trajectory_id") or "?"
+            walk(obj.get("state"), "state", str(row_id))
+            if len(found) >= 10:
+                return found
+    return found
+
+
 def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     """HELPER FT ``POST /train/kickoff``. Never accepts ``inbox: latest``.
 
@@ -183,6 +242,9 @@ def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     ):
         if body.get("smoke") is not True and body.get("mode") != "helper-ft-smoke":
             return {"ok": False, "field": "not_for_train", "expected": False, "actual": True}
+    leaks = _fallback_state_leaks(body)
+    if leaks:
+        return {"ok": False, "field": "state.leak", "expected": "absent", "actual": leaks[:10]}
     if not body.get("evidence"):
         return {"ok": False, "field": "evidence", "expected": "present", "actual": "missing"}
     return {"ok": False, "field": "handler", "expected": "helper_ft_kickoff.py", "actual": "missing"}
