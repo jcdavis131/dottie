@@ -80,11 +80,17 @@ SIGNED_KEYS_V2 = (
     "expires_at",
     "format",
     "git_commit",
+    "head",
     "issued_at",
     "key_id",
     "nonce",
     "not_after",
     "not_before",
+    "reserved_content_uuids_min_rows",
+    "reserved_content_uuids_sha256",
+    "rows_holdout",
+    "rows_total",
+    "rows_train",
     "sha256_holdout",
     "sha256_pack",
     "sha256_train",
@@ -165,9 +171,11 @@ CODE_PINS = (
     "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py",
     "apps/dottie-os/scripts/lab/content_uuid.py",
+    "apps/dottie-os/scripts/lab/near_dup_tokenizer.py",
     "apps/dottie-os/trust/cam_pin_ed25519.pub",
     "apps/dottie-os/trust/cam_pin_key_id",
     "apps/dottie-os/trust/reserved_content_uuids.jsonl",
+    "apps/dottie-os/trust/reserved_near_dup_fingerprints.jsonl",
 )
 REQUIRED_PINS = CODE_PINS
 TRUST_RELPATHS = CODE_PINS
@@ -176,6 +184,7 @@ CODE_PIN_MODULE_NAMES = {
     "helper_ft_kickoff": "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
     "cam_pin_spec": "apps/dottie-os/scripts/lab/cam_pin_spec.py",
     "content_uuid": "apps/dottie-os/scripts/lab/content_uuid.py",
+    "near_dup_tokenizer": "apps/dottie-os/scripts/lab/near_dup_tokenizer.py",
 }
 ORIGIN_MAIN_REF = "origin/main"
 # Twisted Edwards Ed25519 (RFC 8032). Cofactor and canonical checks run in
@@ -211,16 +220,10 @@ HQ_PIN_ALLOWED_KEYS = frozenset(
 V2_PIN_REQUIRED_KEYS = (
     *SIGNED_KEYS_V2,
     "cam_sig",
-    "rows_total",
-    "rows_train",
-    "rows_holdout",
 )
 V2_PIN_ALLOWED_KEYS = frozenset(
     (
         *V2_PIN_REQUIRED_KEYS,
-        "rows_total",
-        "rows_train",
-        "rows_holdout",
         "recordedBy",
         "stampVerified",
         "verified",
@@ -232,7 +235,6 @@ V2_PIN_ALLOWED_KEYS = frozenset(
         "run_id",
         "lease_owner",
         "source",
-        "reserved_content_uuids_sha256",
     )
 )
 
@@ -571,6 +573,9 @@ def parse_v2_pin_payload(
     nonce = require_nonce("cam-pin.nonce", payload.get("nonce"))
     code_pins = require_code_pins(payload.get("code_pins"))
     git_commit = require_git_commit("cam-pin.git_commit", payload.get("git_commit"))
+    head = require_git_commit("cam-pin.head", payload.get("head"))
+    if head != git_commit:
+        _refuse("cam-pin.head", git_commit, head)
     record: dict[str, Any] = {
         "format": PIN_FORMAT_V2,
         "key_id": payload["key_id"],
@@ -582,6 +587,7 @@ def parse_v2_pin_payload(
         "nonce": nonce,
         "code_pins": code_pins,
         "git_commit": git_commit,
+        "head": head,
         "sha256_pack": require_sha256_hex("cam-pin.sha256_pack", payload.get("sha256_pack")),
         "sha256_train": require_sha256_hex("cam-pin.sha256_train", payload.get("sha256_train")),
         "sha256_holdout": require_sha256_hex(
@@ -605,6 +611,20 @@ def parse_v2_pin_payload(
         if rows_field not in payload:
             _refuse(f"cam-pin.{rows_field}", "present", "missing")
         record[rows_field] = require_int(f"cam-pin.{rows_field}", payload.get(rows_field))
+    record["reserved_content_uuids_sha256"] = require_sha256_hex(
+        "cam-pin.reserved_content_uuids_sha256",
+        payload.get("reserved_content_uuids_sha256"),
+    )
+    record["reserved_content_uuids_min_rows"] = require_int(
+        "cam-pin.reserved_content_uuids_min_rows",
+        payload.get("reserved_content_uuids_min_rows"),
+    )
+    if record["reserved_content_uuids_min_rows"] < 1:
+        _refuse(
+            "cam-pin.reserved_content_uuids_min_rows",
+            ">= 1",
+            record["reserved_content_uuids_min_rows"],
+        )
     if "recordedBy" in payload:
         record["recordedBy"] = payload["recordedBy"]
     if "stampVerified" in payload:
@@ -615,11 +635,6 @@ def parse_v2_pin_payload(
         record["pack_matches"] = payload["pack_matches"]
     if "recordedAt" in payload:
         record["recordedAt"] = payload["recordedAt"]
-    if "reserved_content_uuids_sha256" in payload:
-        record["reserved_content_uuids_sha256"] = require_sha256_hex(
-            "cam-pin.reserved_content_uuids_sha256",
-            payload.get("reserved_content_uuids_sha256"),
-        )
     verify_cam_sig_v2(record)
     if run_id is not None:
         if type(run_id) is not str or not run_id:
@@ -789,13 +804,23 @@ def clear_pinned_copy_trust() -> None:
     CAM_PIN_KEY_ID_PATH = _DEFAULT_CAM_PIN_KEY_ID_PATH
 
 
+def _read_trust_file_nofollow(path: Path, field: str) -> str:
+    """Read a regular trust file with O_NOFOLLOW. Never follows a symlink."""
+    buf, _digest = sha256_file_bytes(path)
+    try:
+        return buf.decode("utf-8")
+    except UnicodeDecodeError:
+        _refuse(field, "utf-8 text", "invalid encoding")
+        raise AssertionError("unreachable")
+
+
 def load_cam_key_id() -> str:
     """Committed cam_key_id. Never env, argv, or another path."""
     path = CAM_PIN_KEY_ID_PATH
     if path.name != _KEY_ID_NAME or path.parent.name != "trust":
         _refuse("cam_pin.key_id", str(CAM_PIN_KEY_ID_PATH), str(path))
     try:
-        text = path.read_text(encoding="utf-8")
+        text = _read_trust_file_nofollow(path, "cam_pin.key_id")
     except FileNotFoundError:
         _refuse("cam_pin.key_id", "present", "missing")
     except OSError as exc:
@@ -814,7 +839,7 @@ def load_cam_public_key() -> tuple[str, Ed25519PublicKey]:
     if path.name != _PUB_NAME or path.parent.name != "trust":
         _refuse("cam_pin.pubkey", str(CAM_PIN_PUB_PATH), str(path))
     try:
-        text = path.read_text(encoding="utf-8")
+        text = _read_trust_file_nofollow(path, "cam_pin.pubkey")
     except FileNotFoundError:
         _refuse("cam_pin.pubkey", "present", "missing")
     except OSError as exc:
@@ -1216,74 +1241,6 @@ def parse_hq_pin_payload(payload: object) -> dict[str, Any]:
     return record
 
 
-def fetch_signed_pin(pack_id: str) -> dict[str, Any]:
-    """GET the pin from the pinned origin, verify Cam's Ed25519 signature."""
-    if type(pack_id) is not str or not pack_id:
-        _refuse("pack_id", "present", "missing")
-    if PINNED_COPY_ROOT is None:
-        require_committed_trust()
-    origin = pinned_origin()
-    token = os.environ.get(SWARM_HQ_AGENT_TOKEN_ENV)
-    if type(token) is not str or not token:
-        _refuse(SWARM_HQ_AGENT_TOKEN_ENV, "present", "missing")
-    url = pin_url(pack_id)
-    if not _url_is_pinned(url, origin):
-        _refuse("cam-pin", f"origin {origin}", url)
-    request = urllib.request.Request(
-        url,
-        method="GET",
-        headers={
-            "Accept": "application/json",
-            "x-agent-token": token,
-        },
-    )
-    deadline = time.monotonic() + HQ_DEADLINE_SECONDS
-    timeout = HQ_DEADLINE_SECONDS
-    try:
-        response = open_hq(request, timeout=timeout)
-        try:
-            status = getattr(response, "status", None) or response.getcode()
-            if status is not None and 300 <= int(status) < 400:
-                _refuse("cam-pin", "no redirect", f"HTTP {status}")
-            if status not in (200, None) and int(status) != 200:
-                if int(status) == 401:
-                    _refuse("cam-pin", "authorized", "HTTP 401")
-                if int(status) == 404:
-                    _refuse("cam-pin", "present", "HTTP 404")
-                _refuse("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {status}")
-            blob = _read_capped(response, deadline)
-        finally:
-            close = getattr(response, "close", None)
-            if callable(close):
-                close()
-    except CamPinError:
-        raise
-    except urllib.error.HTTPError as exc:
-        if 300 <= int(exc.code) < 400:
-            _refuse("cam-pin", "no redirect", f"HTTP {exc.code}")
-        if exc.code == 401:
-            _refuse("cam-pin", "authorized", "HTTP 401")
-        if exc.code == 404:
-            _refuse("cam-pin", "present", "HTTP 404")
-        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {exc.code}")
-    except urllib.error.URLError as exc:
-        reason = getattr(exc, "reason", None) or exc
-        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"unreachable:{reason}")
-    except OSError as exc:
-        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"OSError:{getattr(exc, 'errno', None)}")
-    try:
-        raw = blob.decode("utf-8")
-    except UnicodeDecodeError:
-        _refuse("cam-pin", "utf-8 JSON", "invalid encoding")
-    try:
-        payload = json.loads(raw, object_pairs_hook=_no_duplicate_hq_keys) if raw else None
-    except CamPinError:
-        raise
-    except ValueError:
-        _refuse("cam-pin", "JSON object", "invalid JSON")
-    return parse_hq_pin_payload(payload)
-
-
 def pin_identity(pin: dict[str, Any]) -> dict[str, Any]:
     """Fields :8765 must match against the staged (or historically fetched) pin."""
     if pin_format_of(pin) == PIN_FORMAT_V2:
@@ -1305,7 +1262,10 @@ def pin_identity(pin: dict[str, Any]) -> dict[str, Any]:
             "sha256_holdout": pin.get("sha256_holdout"),
             "code_pins": pin.get("code_pins"),
             "git_commit": pin.get("git_commit"),
+            "head": pin.get("head"),
             "expires_at": pin.get("expires_at"),
+            "reserved_content_uuids_sha256": pin.get("reserved_content_uuids_sha256"),
+            "reserved_content_uuids_min_rows": pin.get("reserved_content_uuids_min_rows"),
             "cam_sig": pin.get("cam_sig"),
         }
         for rows_field in ("rows_total", "rows_train", "rows_holdout"):

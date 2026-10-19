@@ -80,13 +80,21 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
+import os
 import re
 import sys
 import unicodedata
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+_CU_DIR = str(Path(__file__).resolve().parent) if "__file__" in globals() else ""
+if _CU_DIR and _CU_DIR not in sys.path and not _CU_DIR.startswith("/proc/"):
+    sys.path.insert(0, _CU_DIR)
+import near_dup_tokenizer as _NEAR_DUP_TOKENIZER_MODULE  # noqa: E402,F401
 
 CONTENT_UUID_FIELDS: tuple[str, ...] = ("state", "questions")
 SHA256_LEN = 64
@@ -96,7 +104,17 @@ MAX_INT_DIGITS = 4300
 _MAX_INT = 10 ** MAX_INT_DIGITS
 _FLOAT_ABS_MAX = float(2**53)
 _NEAR_DUP_INDEX_ATTR = "_dottie_os_content_uuid_near_dup_index"
-_CF_CATS = frozenset({"Cc", "Cf", "Mn", "Me"})
+_KICK_ROWS_ATTR = "_dottie_os_kick_near_dup_rows"
+_KICK_FPS_ATTR = "_dottie_os_kick_near_dup_fps"
+_NEAR_DUP_TOKENIZER_REL = "apps/dottie-os/scripts/lab/near_dup_tokenizer.py"
+# Fail-closed until Mill vendors the live file and this sha in CODE_PINS together.
+NEAR_DUP_TOKENIZER_SHA256 = (
+    "e844054070312bfaaedaf03470e1daf7a0373d6693d2d05b07cac04a7227a650"
+)
+_NEAR_DUP_TOKENIZER_PLACEHOLDER_MARKERS = (
+    "NEAR_DUP_TOKENIZER_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE",
+)
+_TEST_NEAR_DUP_TOKENIZER = None
 # Mill N membership. One formula for raw source.uuid and for uuid-less
 # content_uuid hex: int(sha256(ascii key).hexdigest(), 16) % 10 in {0, 5}.
 RESERVED_EVAL_PARTITION_N = 10
@@ -121,7 +139,10 @@ _ensure_int_str_digits()
 
 
 def _shared_near_dup_index() -> dict[str, tuple[str, frozenset[str]]]:
-    """Process-wide index so importlib copies of this file share fingerprints."""
+    """Legacy sys bucket. Kick fingerprints are per-kick, not this object.
+
+    Critic FIND_B6_hex_only still calls this; it is never the lookup path.
+    """
     bucket = getattr(sys, _NEAR_DUP_INDEX_ATTR, None)
     if not isinstance(bucket, dict):
         bucket = {}
@@ -129,68 +150,197 @@ def _shared_near_dup_index() -> dict[str, tuple[str, frozenset[str]]]:
     return bucket
 
 
-def _near_dup_norm_str(text: str) -> str:
-    text = unicodedata.normalize("NFKC", text)
-    text = "".join(ch for ch in text if unicodedata.category(ch) not in _CF_CATS)
-    text = unicodedata.normalize("NFKC", text).casefold()
-    return re.sub(r"\s+", " ", text).strip()
+def _kick_near_dup_rows() -> dict[str, Mapping[str, Any]]:
+    bucket = getattr(sys, _KICK_ROWS_ATTR, None)
+    if not isinstance(bucket, dict):
+        bucket = {}
+        setattr(sys, _KICK_ROWS_ATTR, bucket)
+    return bucket
 
 
-def _near_dup_scalar_token(value: Any) -> str | None:
-    if value is None:
-        return None
-    if type(value) is bool:
-        return "true" if value else "false"
-    if type(value) is int:
-        return str(value)
-    if type(value) is float:
-        as_int = int(value)
-        if float(as_int) == value:
-            return str(as_int)
-        return str(value)
-    if isinstance(value, str):
-        return None
-    return None
+def _kick_near_dup_fps() -> dict[str, tuple[str, frozenset[str]]]:
+    bucket = getattr(sys, _KICK_FPS_ATTR, None)
+    if not isinstance(bucket, dict):
+        bucket = {}
+        setattr(sys, _KICK_FPS_ATTR, bucket)
+    return bucket
+
+
+def reset_kick_near_dup_fingerprints() -> None:
+    """Clear per-kick fingerprint state. Call at the start of each kick/gate."""
+    _kick_near_dup_rows().clear()
+    _kick_near_dup_fps().clear()
+
+
+def install_kick_near_dup_fingerprints(
+    index: Mapping[str, tuple[str, frozenset[str]]],
+) -> None:
+    """Install sha-pinned N fingerprints for this kick only."""
+    fps = _kick_near_dup_fps()
+    fps.clear()
+    for digest, payload in index.items():
+        if type(digest) is not str or len(digest) != SHA256_LEN:
+            continue
+        if not isinstance(payload, tuple) or len(payload) != 2:
+            continue
+        fps[digest] = payload
+
+
+def kick_near_dup_fingerprints_loaded() -> bool:
+    """True after this kick installed sha-pinned N fingerprints."""
+    return bool(_kick_near_dup_fps())
+
+
+def install_test_near_dup_tokenizer(fn: Any) -> None:
+    """Test harness only. Never shipped as the Mill tokenizer."""
+    global _TEST_NEAR_DUP_TOKENIZER
+    _TEST_NEAR_DUP_TOKENIZER = fn
+
+
+def _note_kick_near_dup_row(digest: str, row: Mapping[str, Any]) -> None:
+    payload = {field: row[field] for field in CONTENT_UUID_FIELDS if field in row}
+    _kick_near_dup_rows()[digest] = payload
+
+
+def _mill_tokenizer_path() -> Path:
+    here = Path(__file__).resolve()
+    try:
+        return here.parents[4] / _NEAR_DUP_TOKENIZER_REL
+    except IndexError:
+        return here.parent / "near_dup_tokenizer.py"
+
+
+def _load_mill_near_dup_tokenizer() -> Any:
+    path = _mill_tokenizer_path()
+    flags = os.O_RDONLY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise ContentUuidError(
+            "near_dup_tokenizer",
+            "vendored Mill tokenizer",
+            f"OSError:{getattr(exc, 'errno', None)}",
+            "near-dup tokenizer missing or unreadable",
+        ) from exc
+    try:
+        chunks: list[bytes] = []
+        while True:
+            block = os.read(fd, 1 << 20)
+            if not block:
+                break
+            chunks.append(block)
+        buf = b"".join(chunks)
+    except OSError as exc:
+        raise ContentUuidError(
+            "near_dup_tokenizer",
+            "readable file",
+            f"OSError:{getattr(exc, 'errno', None)}",
+            "near-dup tokenizer unreadable",
+        ) from exc
+    finally:
+        os.close(fd)
+    digest = hashlib.sha256(buf).hexdigest()
+    if digest != NEAR_DUP_TOKENIZER_SHA256:
+        raise ContentUuidError(
+            "near_dup_tokenizer",
+            NEAR_DUP_TOKENIZER_SHA256,
+            digest,
+            "near-dup tokenizer sha256 is not the CODE_PINS value",
+        )
+    try:
+        text = buf.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ContentUuidError(
+            "near_dup_tokenizer",
+            "utf-8",
+            "invalid encoding",
+            "near-dup tokenizer is not utf-8",
+        ) from exc
+    if any(marker in text for marker in _NEAR_DUP_TOKENIZER_PLACEHOLDER_MARKERS):
+        raise ContentUuidError(
+            "near_dup_tokenizer",
+            "Mill vendored tokenizer",
+            "placeholder",
+            "near-dup tokenizer is a placeholder; Mill has not vendored the live file",
+        )
+    spec = importlib.util.spec_from_file_location("near_dup_tokenizer", path)
+    if spec is None or spec.loader is None:
+        raise ContentUuidError(
+            "near_dup_tokenizer",
+            "importable module",
+            "missing",
+            "near-dup tokenizer could not be loaded",
+        )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    if getattr(mod, "NEAR_DUP_TOKENIZER_PLACEHOLDER", False):
+        raise ContentUuidError(
+            "near_dup_tokenizer",
+            "Mill vendored tokenizer",
+            "placeholder",
+            "near-dup tokenizer is a placeholder; Mill has not vendored the live file",
+        )
+    return mod
 
 
 def near_dup_tokens(value: Any) -> frozenset[str]:
-    """NFKC, strip Cf, casefold, collapse whitespace; fold JSON scalars."""
-    tokens: set[str] = set()
+    """Message-only tokens via the Mill tokenizer (or a test-only stand-in)."""
+    if _TEST_NEAR_DUP_TOKENIZER is not None:
+        return frozenset(_TEST_NEAR_DUP_TOKENIZER(value))
+    mill = _load_mill_near_dup_tokenizer()
+    tokenize_row = getattr(mill, "tokenize_row", None)
+    if callable(tokenize_row):
+        return frozenset(tokenize_row(value))
+    tokenize_message = getattr(mill, "tokenize_message", None)
+    if not callable(tokenize_message):
+        raise ContentUuidError(
+            "near_dup_tokenizer",
+            "tokenize_row or tokenize_message",
+            "missing",
+            "Mill tokenizer has no tokenize function",
+        )
+    texts: list[str] = []
 
-    def walk(node: Any) -> None:
-        if node is None:
-            return
-        scalar = _near_dup_scalar_token(node)
-        if scalar is not None:
-            tokens.add(scalar)
-            return
-        if isinstance(node, str):
-            tokens.update(part for part in _near_dup_norm_str(node).split() if part)
-            return
+    def walk(node: Any, *, message: bool = False) -> None:
         if isinstance(node, Mapping):
             for key, child in node.items():
-                if isinstance(key, str):
-                    tokens.update(part for part in _near_dup_norm_str(key).split() if part)
-                walk(child)
+                walk(child, message=message or key == "message")
             return
         if isinstance(node, (list, tuple)):
             for child in node:
-                walk(child)
+                walk(child, message=message)
+            return
+        if isinstance(node, str) and (message or not isinstance(value, Mapping)):
+            texts.append(node)
 
     walk(value)
+    tokens: set[str] = set()
+    for text in texts:
+        tokens.update(tokenize_message(text))
     return frozenset(tokens)
 
 
 def record_near_dup_fingerprint(digest: str, row: Mapping[str, Any]) -> None:
     payload = {field: row[field] for field in CONTENT_UUID_FIELDS if field in row}
-    _shared_near_dup_index()[digest] = (row_id(row), near_dup_tokens(payload))
+    _kick_near_dup_fps()[digest] = (row_id(row), near_dup_tokens(payload))
 
 
 def lookup_near_dup_fingerprint(digest: str) -> tuple[str, frozenset[str]] | None:
-    found = _shared_near_dup_index().get(digest)
-    if not isinstance(found, tuple) or len(found) != 2:
+    fps = _kick_near_dup_fps()
+    found = fps.get(digest)
+    if isinstance(found, tuple) and len(found) == 2:
+        return found
+    row = _kick_near_dup_rows().get(digest)
+    if not isinstance(row, Mapping):
         return None
-    return found
+    tokens = near_dup_tokens(row)
+    noted = (row_id(row) if "id" in row else "n", tokens)
+    fps[digest] = noted
+    return noted
 
 
 def eval_partition_residue(key: str) -> int:
@@ -425,7 +575,9 @@ def canonical_content_object(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def canonical_content_bytes(row: Mapping[str, Any]) -> bytes:
-    return canonical_json_bytes(canonical_content_object(row))
+    blob = canonical_json_bytes(canonical_content_object(row))
+    _note_kick_near_dup_row(hashlib.sha256(blob).hexdigest(), row)
+    return blob
 
 
 def content_uuid(row: Mapping[str, Any]) -> str:
@@ -446,7 +598,6 @@ def content_uuid(row: Mapping[str, Any]) -> str:
             exc.actual,
             f"{exc} on {row_id(row)}",
         ) from exc
-    record_near_dup_fingerprint(digest, row)
     return digest
 
 
@@ -495,15 +646,18 @@ def claimed_content_uuid(row: Mapping[str, Any]) -> str | None:
 
 
 def source_uuid_text(row: Mapping[str, Any]) -> str | None:
+    """Raw ``source.uuid`` only. Whitespace is malformed. Top-level uuid is ignored."""
     source = row.get("source")
-    if isinstance(source, Mapping):
-        value = source.get("uuid")
-        if type(value) is str and value.strip():
-            return value.strip()
-    value = row.get("uuid")
-    if type(value) is str and value.strip():
-        return value.strip()
-    return None
+    if not isinstance(source, Mapping) or "uuid" not in source:
+        return None
+    value = source.get("uuid")
+    if value is None:
+        return None
+    if type(value) is not str:
+        return None
+    if value != value.strip() or not value:
+        return None
+    return value
 
 
 def verify_content_uuid(row: Mapping[str, Any]) -> str | None:

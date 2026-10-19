@@ -9,6 +9,7 @@ read env, CI secrets, or repo files for key material.
 
 ``kick_helper_ft.py`` and ``helper_ft_kickoff.py`` must not import or call
 this tool. A pin in an agent-supplied HTTP body is not provenance.
+v1 signing is removed: a non-v2 payload is refused.
 """
 from __future__ import annotations
 
@@ -50,12 +51,11 @@ def _read_private(source: str) -> bytes:
 
 
 def sign_pin(payload: dict, private: bytes) -> str:
-    """Cam-side only. v2 uses ``sign_pin_v2``; v1 stays history."""
+    """Cam-side only. v2 exclusive."""
     fmt = cam_pin_spec.pin_format_of(payload)
-    if fmt == cam_pin_spec.PIN_FORMAT_V2:
-        return cam_pin_spec.sign_pin_v2(payload, private)
-    message = cam_pin_spec.canonical_pin_bytes(payload)
-    return cam_pin_spec.sign_pin_bytes(message, private)
+    if fmt != cam_pin_spec.PIN_FORMAT_V2:
+        raise SystemExit("sign_cam_pin signs swarm-hq-pin-v2 only")
+    return cam_pin_spec.sign_pin_v2(payload, private)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         "--pin",
         type=Path,
         required=True,
-        help="JSON pin (v2 signed fields, or v1 history fields)",
+        help="JSON pin (v2 signed fields)",
     )
     args = parser.parse_args(argv)
     private = _read_private(args.private_key)
