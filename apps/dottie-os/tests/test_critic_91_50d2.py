@@ -1,5 +1,8 @@
 """Critic attack suite for dottie#91 @ 50d2e0f82e6f28a265858fc4e02f8dc262ccdfcb (B4 re-attack, S19-S21).
 
+r2 (2026-10-19, for 0ac51f7e): apps/x/uncurated_package.py left the production allowlist, so L2 no longer
+expects it to pass; L3 expects the real guard to REFUSE it. Nothing else changed.
+
 Every test asserts the SECURE behaviour; a FAIL is a finding.
 H: uniqueness parser spoofs under the CI path (dottie-os-smoke: no PyYAML -> vendored loader).
    H1 = spoofs GitHub resolves to exactly `pack-guard` (must be RED); H2 = controls.
@@ -7,7 +10,7 @@ I: GITHUB_TOKEN scope - a check run / commit status named pack-guard can be POST
 J: CODEOWNERS location, precedence, last-match-wins, coverage of the guard's test process.
 K: S19 env vectors against the real guard (step `run` under its real `shell:`).
 L: S21 path regex false negatives / false positives against the real guard.
-Run:  WT=/workspace/review/dottie-91/wt-50d2 python3 -m unittest -v test_critic_91_50d2
+Run:  WT=/workspace/review/dottie-91/wt-50d2 python3 -m unittest -v test_critic_91_50d2_r2
 Optional parity: CRITIC_PYYAML_PY=/path/to/python-with-pyyaml re-runs H under PyYAML.
 Read-only w.r.t. GitHub. Writes only temp dirs prefixed critic-91-50d2-. No sockets.
 """
@@ -262,7 +265,8 @@ S21_MUST_CATCH = ["apps/x/curatedpack.jsonl", "apps/x/CURATED_PACK_v2.jsonl", "a
                   "apps/x/\uff43urated_pack.jsonl", "apps/x/ultradata_harvest_v1.jsonl",
                   "apps/x/curated.pack.jsonl", "apps/x/curated pack.jsonl", "apps/x/curated__pack.jsonl",
                   "apps/x/ultradata_harvest.jsonl", "apps/x/ultradata-harvest.jsonl", "apps/x/curated/pack.jsonl"]
-S21_MUST_PASS = ["docs/curated-packing-notes.md", "apps/x/uncurated_package.py", "scripts/run_ultradata_harvest.py"]
+S21_MUST_PASS = ["docs/curated-packing-notes.md", "scripts/run_ultradata_harvest.py"]
+S21_TEST_ONLY_REFUSED = ["apps/x/uncurated_package.py"]  # r2: not in the production allowlist
 
 
 class L_S21Regex(unittest.TestCase):
@@ -282,6 +286,11 @@ class L_S21Regex(unittest.TestCase):
         for n in S21_MUST_PASS:
             with self.subTest(path=n):
                 self.assertEqual(self._rc(n), 0, f"{n!r} refused (legit name)")
+
+    def test_l3_test_fixture_name_refused_in_prod(self):
+        for n in S21_TEST_ONLY_REFUSED:
+            with self.subTest(path=n):
+                self.assertNotEqual(self._rc(n), 0, f"{n!r} passes: test-only name still in the production allowlist")
 
 
 if __name__ == "__main__":

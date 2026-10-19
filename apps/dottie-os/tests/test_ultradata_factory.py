@@ -4175,11 +4175,19 @@ PACK_GUARD_EXPR_RE = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
 PACK_GUARD_GITHUB_SAFE = frozenset(
     {
         "actor",
+        "api_url",
+        "base_ref",
         "event_name",
+        "job",
         "ref",
+        "ref_name",
         "repository",
+        "repository_id",
+        "repository_owner",
+        "run_attempt",
         "run_id",
         "run_number",
+        "server_url",
         "sha",
         "workflow",
         "workspace",
@@ -4254,52 +4262,143 @@ PACK_GUARD_PATH_TRANSLIT = {
 _PACK_GUARD_ALLOW_REPR = (
     "{" + ",".join(repr(p) for p in sorted(PACK_GUARD_PATH_ALLOWLIST_PROD)) + "}"
 )
-# Exact parent dirs of tracked jsonl/gz at 0b05ffc8 (32). Immediate parent
-# named fixtures/fixture is also allowed so synthetic test trees pass.
-PACK_GUARD_JSONL_OK_DIRS = frozenset(
+# Exact (path, sha256) pins for tracked jsonl/gz/sqlite/JSONL-shaped blobs.
+PACK_GUARD_BLOB_PIN = frozenset(
     {
-        ".scout/missions/slasso-analytics-trace-ops",
-        ".scout/missions/slasso-sota-20260815",
-        "apps/arxiviq-factory/sample",
-        "apps/arxiviq-factory/sources",
-        "apps/atlas-outcomes/sample",
-        "apps/atlas-outcomes/sources",
-        "apps/ava-factory/data/orchestration",
-        "apps/ava-factory/evals/probe_items",
-        "apps/ava-factory/runs/cpu_pilot/reports/agentic",
-        "apps/ava-factory/runs/cpu_pilot/reports/base",
-        "apps/ava-factory/scripts/fixtures/probe_error_analysis",
-        "apps/dottie-harness-api/bundles/ultra/runs/slasso-lattice-v2",
-        "apps/dottie-harness-api/lib",
-        "apps/jev-v0/fixtures",
-        "bundles/analytics",
-        "bundles/coordination",
-        "bundles/flags",
-        "bundles/ultra/runs/slasso-analytics-trace-ops",
-        "bundles/ultra/runs/slasso-sota-20260815",
-        "dottie/bundles/ultra/runs/slasso-analytics-trace-ops",
-        "dottie/bundles/ultra/runs/slasso-sota-20260815",
-        "examples",
-        "goals/frontend-swarm-hoops-level-everywhere/hidden_files",
-        "goals/orchestrator-scout-prime-always-on/hidden_files",
-        "hidden_files",
-        "lessons",
-        "packages/dottie-loop/dottie_loop/benchmarks",
-        "pipeline/runs/slasso-analytics-trace-ops",
-        "tasks/artifacts/corpus_proposals/gridiron_forecast_rows",
-        "tasks/artifacts/corpus_proposals/oapen_open_books",
-        "tasks/artifacts/corpus_proposals/repair_transcripts",
-        "workspace/skills/lessons",
+        ('.scout/missions/slasso-analytics-trace-ops/timeline.jsonl',
+         '9a325a18793f798ba7b99d1792c432f7796b53998a087714a52055a61c285947'),
+        ('.scout/missions/slasso-sota-20260815/timeline.jsonl',
+         '7ff5d62b75028568e461b006102679c9b0dc569695c54329558ff93d73eec81a'),
+        ('apps/arxiviq-factory/sample/pack_sample.jsonl',
+         '76b1865557ca8d0d002bca90f5901baf14dc3a3dd3581af1b93e11d12078ea32'),
+        ('apps/arxiviq-factory/sources/enrich.jsonl.gz',
+         'e94e4d7f2cc41515e21a672789417ba9e872644b81059e3bb752f755f2b9f258'),
+        ('apps/arxiviq-factory/sources/paper_skills.jsonl.gz',
+         '2d7aed11f43d2ea927ae61d1ebec5272a1ee7849ee3da70175707714cbee25f7'),
+        ('apps/arxiviq-factory/sources/papers.jsonl.gz',
+         '78c04d61dabd5128e76390f120c4a83644320361aa6dbb725791489a1064a3a3'),
+        ('apps/arxiviq-factory/sources/ror.jsonl.gz',
+         '456c8942ebbe7ac408575aacd960ae923c7f4c6719499f61c509dc753d4c6fdd'),
+        ('apps/arxiviq-factory/sources/teacher.jsonl.gz',
+         '89fe1378a8f57a8033549d260398c9f8989735e0406e748c5c9a71c6924488b1'),
+        ('apps/atlas-outcomes/sample/pack_sample.jsonl',
+         '889a230a6714cec02f30863f1254777f5edbd0b5d0e34b4d28c6efd417a4906e'),
+        ('apps/atlas-outcomes/sources/flows.jsonl.gz',
+         '6c0e7305d69e1afab7756e4bf6fc3a30c8019c187884eefc4da7029d1a152f3e'),
+        ('apps/atlas-outcomes/sources/gauges.jsonl.gz',
+         '5de5a28331aac5ed67a3c728e2e1bc9f3aee7c4c143c52aa8277323f390d26ae'),
+        ('apps/atlas-outcomes/sources/warnings.jsonl.gz',
+         'ca5d4e7756e2cc78922f36e7df0bb651012d3bba06e692915b12e92b04ce8b93'),
+        ('apps/ava-factory/data/orchestration/label_corrections.jsonl',
+         'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'),
+        ('apps/ava-factory/evals/probe_items/arithmetic.jsonl',
+         '40cea14a7187795a57591e92eee7500c6d2320390a3688b7ee240c679e519c1e'),
+        ('apps/ava-factory/evals/probe_items/code_out.jsonl',
+         'd45b230a5dbdfe87a848bdb483e5be583fd6554ebcd4b4e52c7827c0b9023447'),
+        ('apps/ava-factory/evals/probe_items/compression.jsonl',
+         '2d7e41c994922aa0759b4d94fc1ad9d81f7431566c3db3b12f5eca6d1a069a65'),
+        ('apps/ava-factory/evals/probe_items/db_mechanics.jsonl',
+         '93961f3b50ea7c69b50e16398ab0c6fe62a7a01aa6f005fc72e58e84a3d9341a'),
+        ('apps/ava-factory/evals/probe_items/facts.jsonl',
+         '57ea34817d140b4ec17f9636b7e16c840213e24e5548220f25164f3a44d456f0'),
+        ('apps/ava-factory/evals/probe_items/modus_ponens.jsonl',
+         'eb356044b1ef9531144e6693862a84f63a2a46160971e3ea76ffd880a5c00b53'),
+        ('apps/ava-factory/evals/probe_items/safety.jsonl',
+         '2cbd55400958cce7cdbb03b71dbc9cb0bdb26d349c4b0e9ec3ac274b42c4328c'),
+        ('apps/ava-factory/evals/probe_items/safety_words.jsonl',
+         'c1beb5675d891b164cac5450903d93a3b183079189559423ce130b1c681996aa'),
+        ('apps/ava-factory/evals/probe_items/tool_selection.jsonl',
+         '085cecc134e903ce0cd7378869e9d4ac1af66f83a48fd5944475750e7a38f519'),
+        ('apps/ava-factory/runs/cpu_pilot/reports/agentic/metrics_nano.jsonl',
+         'f85a63c03418254d6992d57b3dee028db40478a19f062c069afc9a295f848d1b'),
+        ('apps/ava-factory/runs/cpu_pilot/reports/agentic/train_stdout.log',
+         'fc52388204eefbe1648731b2d95966f95dca71e715e296989f30ce3b5797398e'),
+        ('apps/ava-factory/runs/cpu_pilot/reports/base/metrics_nano.jsonl',
+         'baed1fb07ae051f2bd2e66263c55b4763e3c52c7526077d2d260f669a94153a7'),
+        ('apps/ava-factory/runs/cpu_pilot/reports/base/train_stdout.log',
+         '0a9aa58ab4e85fd30dda07ae1e7e8ce7d348b56117d1cd21461953893922099e'),
+        ('apps/ava-factory/scripts/fixtures/probe_error_analysis/generations.jsonl',
+         '5d595408b7ed3c8f5cbfce2c7b27dad46783f123ebd1d5510f1efa1de8837ed5'),
+        ('apps/dottie-harness-api/bundles/ultra/runs/slasso-lattice-v2/timeline.jsonl',
+         '4c831ffc6c1477b12fdef9d2281c086a1076bd554e93022b149e088b3e812864'),
+        ('apps/dottie-harness-api/lib/analytics_store.jsonl',
+         'd147afa804d77408741e94c31ba4e1366d345bf2717bc8d6fd3a5f5ed03b1622'),
+        ('apps/dottie-harness-api/lib/flags.jsonl',
+         '5b5c7f6feb61e690dfd58463129f5caf8c79ed2ab5f96e5643a4547c3cbee868'),
+        ('apps/dottie-harness-api/lib/trace.jsonl',
+         'b13997a7fa502a9bc39e2333b59423c01c88de3f2e33c056bb99d4ad98ae60f5'),
+        ('apps/jev-v0/fixtures/synthetic_decisions.jsonl',
+         '53b3910239275e764ddbd301ea84db2fd0d12cec8fdb2ac25ce570316bce9057'),
+        ('bundles/analytics/store.jsonl',
+         'd147afa804d77408741e94c31ba4e1366d345bf2717bc8d6fd3a5f5ed03b1622'),
+        ('bundles/coordination/timeline.jsonl',
+         '6a6312c0573f7b1d1dfb51a617e387a9401a08ccc32fbb890832fce408c9835e'),
+        ('bundles/flags/flags.jsonl',
+         '5b5c7f6feb61e690dfd58463129f5caf8c79ed2ab5f96e5643a4547c3cbee868'),
+        ('bundles/ultra/runs/slasso-analytics-trace-ops/timeline.jsonl',
+         'e6dee7dd595c19767169d0019319b7043ac453a320c2630ad45290496c8e6d86'),
+        ('bundles/ultra/runs/slasso-sota-20260815/timeline.jsonl',
+         'f70acb6cfad1729de4b0b702cd9964265f56da40eac97c24eef0334730315803'),
+        ('dottie/bundles/ultra/runs/slasso-analytics-trace-ops/timeline.jsonl',
+         '9a325a18793f798ba7b99d1792c432f7796b53998a087714a52055a61c285947'),
+        ('dottie/bundles/ultra/runs/slasso-sota-20260815/timeline.jsonl',
+         '7ff5d62b75028568e461b006102679c9b0dc569695c54329558ff93d73eec81a'),
+        ('examples/goldens.jsonl',
+         'e5f9bc06179b760c5f4af47a2c418c85dc1e446e911b6a518d3b2c6edda79149'),
+        ('goals/frontend-swarm-hoops-level-everywhere/hidden_files/timeline.jsonl',
+         '5f5c7a96c9a788cf38cb610f4ab185fca2cc6dca51f0c5b428c34793cc3f8648'),
+        ('goals/orchestrator-scout-prime-always-on/hidden_files/timeline.jsonl',
+         '5f5c7a96c9a788cf38cb610f4ab185fca2cc6dca51f0c5b428c34793cc3f8648'),
+        ('hidden_files/cron_health.jsonl',
+         'cc13e680f4e5e822ce6ae53d0d3081ca11a3d7ad2eb501a01d33831be802c759'),
+        ('hidden_files/timeline.jsonl',
+         '8330896c15ef7d19cd2255578476147b47b96142c90c9edd0f366ee3f3bbe0c4'),
+        ('hidden_files/timeline_cml_research.jsonl',
+         '73938bf034d752dd530d0c7bb7a21ad35c6706b20e37f64a80c4d0504b4490b7'),
+        ('hidden_files/timeline_dottie_sota.jsonl',
+         '2c5b3d6b744599feecc264520c9aead5844c9ef9263474aa79456875a48b6ace'),
+        ('hidden_files/trace-orchestration-2026-08-17.jsonl',
+         '6d22cda61c3b7d4642ff09b12f563b661ce8a0f64fcff678e35f7f526c4779ba'),
+        ('lessons/ledger.jsonl',
+         'b880667916ce90997d5d4a58aed6e66586610dd104934e79b4e8ad86162cbfd6'),
+        ('packages/dottie-loop/dottie_loop/benchmarks/router_bench_v1.jsonl',
+         '5f21340e79c89ef9bd99efc1c1705330dee182377eb728563c7e412b59392f4e'),
+        ('pipeline/runs/slasso-analytics-trace-ops/timeline.jsonl',
+         '9a325a18793f798ba7b99d1792c432f7796b53998a087714a52055a61c285947'),
+        ('tasks/artifacts/corpus_proposals/gridiron_forecast_rows/gridiron_forecast_rows.jsonl',
+         '42504913eb5ab860bc282c65f4fdee1f827aaeb958068ef082e656dd070aa959'),
+        ('tasks/artifacts/corpus_proposals/oapen_open_books/oapen_open_books.jsonl',
+         '5f2a0c2cfb7c7bfd1fa18a72221baff4c3cece1c46e28ad6d6495996db512e40'),
+        ('tasks/artifacts/corpus_proposals/repair_transcripts/repair_transcripts.jsonl',
+         'e6cadb84f9ec048c458790641aba60013df493a8a927eb2bac49bcb5937ea556'),
+        ('tasks/artifacts/ledger_copy.sqlite3',
+         '5150bdf0c9bfc12d8a1fc277cb92d02f739847c883f0421b686ea98f10b489c4'),
+        ('workspace/skills/lessons/ledger.jsonl',
+         'f6c4b7b47d414a790f0ce7b5f757b696172cec0749b284bb805b79437603e16b'),
+    }
+)
+# KNOWN_LEGACY is separate from PACK_GUARD_BLOB_PIN and from any folder
+# exemption list. These two files wait for a move decision from Cam and Mill.
+# Allowed only at this exact path with this exact sha256; any copy, rename,
+# new path, or changed content is refused.
+PACK_GUARD_KNOWN_LEGACY = frozenset(
+    {
+        ('apps/ava-factory/data/orchestration/corpus.jsonl',
+         'bf57c470a6f3d287f06857457ca7012f1b8d1551c5c921c2aaf1f6bc1ef04127'),
+        ('tasks/artifacts/corpus_proposals/repair_transcripts/repair_sft_unified.jsonl',
+         '61a55d528b3945f4a488e0ffd077d7bff49d7344f24409d3441a6120004646be'),
+    }
+)
+
+# Synthetic critic-tree pin for vendored 0b05 M2. Exact (path, sha256)
+# only; not a folder exemption. No production path is in this set.
+PACK_GUARD_BLOB_PIN_TEST = frozenset(
+    {
+        ("apps/x/fixtures/rows.jsonl",
+         "d023f31446388bb420186f66819c5648e107b829d39aaee6352f23289a8aa999"),
     }
 )
 PACK_GUARD_BLOB_MAX = 3 * 1024 * 1024
-# Exact tracked blobs whose type would otherwise trip S26 magics (sqlite).
-# Still run always-on checks (zip/LFS/tar/size/symlink/gitlink).
-PACK_GUARD_BLOB_OK_PATHS = frozenset(
-    {
-        "tasks/artifacts/ledger_copy.sqlite3",
-    }
-)
 _PACK_GUARD_INNER = r"""
 out=G('cat-file','--batch',inp=raw).stdout
 i=0
@@ -4317,15 +4416,26 @@ while i<len(out):
   continue
  B[oid]=out[st:st+sz];i=st+sz+1
 def jl(b):
- n=0
+ n=0;sk=0
  for line in b.split(bytes([10])):
   s=line.strip()
   if not s:continue
-  if s[:1] not in b'{[':return 0
+  if s[:1] not in b'{[':
+   sk+=1
+   if sk>8:return 0
+   continue
   try:json.loads(s)
-  except Exception:return 0
+  except Exception:
+   sk+=1
+   if sk>8:return 0
+   continue
   n+=1
   if n>=2:return 1
+ return 0
+def jarr(b):
+ try:v=json.loads(b)
+ except Exception:return 0
+ if isinstance(v,list) and len(v)>=2 and all(isinstance(x,dict) and ('messages' in x) for x in v[:8]):return 1
  return 0
 def tarv7(b):
  if len(b)<512:return 0
@@ -4336,38 +4446,58 @@ def tarv7(b):
  name=b[:100].split(bytes([0]),1)[0]
  return 1 if name and all(32<=c<127 for c in name) else 0
 def b64d(b):
- s=b''.join(b.split())
+ al=bytes(list(range(65,91))+list(range(97,123))+list(range(48,58)))
+ ok=al+b'+/';ou=al+b'-_'
+ parts=[]
+ for ln in b.split(bytes([10])):
+  s=b''.join(ln.split())
+  if s and len(s)>=32 and len(s)%4==0 and all((c in ok or c in ou or c==61) for c in s):parts.append(s)
+ s=b''.join(parts)
  if len(s)<32 or len(s)%4:return b''
  try:return base64.b64decode(s,validate=True)
+ except Exception:
+  try:return base64.b64decode(s,altchars=b'-_',validate=True)
+  except Exception:return b''
+def hexd(b):
+ s=b.strip()
+ if len(s)<64 or len(s)%2:return b''
+ if not all((48<=c<=57 or 65<=c<=70 or 97<=c<=102) for c in s):return b''
+ try:return bytes.fromhex(s.decode('ascii'))
  except Exception:return b''
 PK3=b'PK'+bytes([3,4]);PK5=b'PK'+bytes([5,6]);PK7=b'PK'+bytes([7,8])
 Z7=b'7z'+bytes([0xbc,0xaf,0x27,0x1c])
+RAR=bytes([0x52,0x61,0x72,0x21,0x1a,0x07])
 LZ4=bytes([4,0x22,0x4d,0x18]);Z=bytes([0x1f,0x9d]);LZMA=bytes([0x5d,0,0,0x80,0])
-GZ=bytes([0x1f,0x8b]);XZ=bytes([0xfd])+b'7zXZ'+bytes([0]);ZST=bytes([0x28,0xb5,0x2f,0xfd])
+GZ=bytes([0x1f,0x8b]);GZ8=bytes([0x1f,0x8b,0x08])
+XZ=bytes([0xfd])+b'7zXZ'+bytes([0]);ZST=bytes([0x28,0xb5,0x2f,0xfd])
 SQL=b'SQLite format 3'+bytes([0])
+def packy(b):
+ return bad(b) or b.startswith((GZ,b'BZh',XZ,ZST,SQL,LZ4,Z,LZMA,b'PAR1')) or GZ8 in b or jl(b) or jarr(b)
 def bad(b):
  if b is None or len(b)>CAP:return 1
  if b.startswith((LFS,LFS2,LFS3)):return 1
  if PK3 in b or PK5 in b or PK7 in b:return 1
- if b.startswith((b'Rar!',Z7)):return 1
+ if RAR in b or Z7 in b:return 1
  if len(b)>261 and b[257:262]==b'ustar':return 1
- if tarv7(b):return 1
+ if tarv7(b) or (len(b)>1023 and tarv7(b[512:])):return 1
  return 0
 def s26(p):
  m,o=info.get(p,('',''))
  if m in ('120000','160000'):return 1
- d=p[:p.rfind('/')] if '/' in p else ''
- fx=d in OK or d[d.rfind('/')+1:] in ('fixtures','fixture')
  b=B.get(o,b'')
  if bad(b):return 1
- if p in OKP:return 0
+ if isinstance(b,bytes):
+  h=hashlib.sha256(b).hexdigest()
+  if (p,h) in PIN or (p,h) in LEG or (p,h) in TP:return 0
  cf=p.casefold()
  ext=any(cf.endswith(e) for e in EXT) or '.jsonl.' in cf or '.ndjson.' in cf
- mag=isinstance(b,bytes) and b.startswith((GZ,b'BZh',XZ,ZST,SQL,LZ4,Z,LZMA,b'PAR1'))
- if not fx and isinstance(b,bytes) and (ext or mag or jl(b)):return 1
- if not fx and isinstance(b,bytes):
+ mag=isinstance(b,bytes) and (b.startswith((GZ,b'BZh',XZ,ZST,SQL,LZ4,Z,LZMA,b'PAR1')) or GZ8 in b)
+ if isinstance(b,bytes) and (ext or mag or jl(b) or jarr(b)):return 1
+ if isinstance(b,bytes):
   dcd=b64d(b)
-  if dcd and (bad(dcd) or dcd.startswith((GZ,b'BZh',XZ,ZST,SQL,LZ4,Z,LZMA,b'PAR1')) or jl(dcd)):return 1
+  if dcd and packy(dcd):return 1
+  hx=hexd(b)
+  if hx and packy(hx):return 1
  return 0
 """
 _PACK_GUARD_INNER_EXEC = (
@@ -4379,7 +4509,7 @@ _PACK_GUARD_INNER_EXEC = (
     + "')"
 )
 PACK_GUARD_PATH_PY = (
-    "import sys,unicodedata,subprocess,os,json,base64;"
+    "import sys,unicodedata,subprocess,os,json,base64,hashlib;"
     f"A={_PACK_GUARD_ALLOW_REPR};"
     f"N={PACK_GUARD_PATH_NEEDLES!r};"
     "C=str.maketrans({"
@@ -4394,11 +4524,14 @@ PACK_GUARD_PATH_PY = (
     "hit=lambda s:(lambda segs:any(n in x for x in segs for n in N) or "
     "any(n in ''.join(segs) for n in N) or any(ord(c)>127 for c in s))"
     "([nrm(y) for y in s.split('/')]);"
-    "OK=frozenset("
-    f"{tuple(sorted(PACK_GUARD_JSONL_OK_DIRS))!r}"
+    "PIN=frozenset("
+    f"{tuple(sorted(PACK_GUARD_BLOB_PIN))!r}"
     ");"
-    "OKP=frozenset("
-    f"{tuple(sorted(PACK_GUARD_BLOB_OK_PATHS))!r}"
+    "LEG=frozenset("
+    f"{tuple(sorted(PACK_GUARD_KNOWN_LEGACY))!r}"
+    ");"
+    "TP=frozenset("
+    f"{tuple(sorted(PACK_GUARD_BLOB_PIN_TEST))!r}"
     ");"
     f"CAP={PACK_GUARD_BLOB_MAX};"
     "EXT=('.zip','.tar','.tgz','.7z','.rar','.gz','.bz2','.xz',"
@@ -4488,16 +4621,19 @@ CRITIC_91_AF2D_SHA256 = (
     "7f8ca3fec9e50dd45e2e53b4a86bb7ce575c5e1600d9e1f11335f57405bbb510"
 )
 CRITIC_91_50D2_SHA256 = (
-    "2ecab3264a01b2c97d2eb060a1816a723f4b2a719afe372805e2b72a12c32c91"
+    "32a310671d274481fbef2b98007e75ae7ed2205ebf82e1c4281e622508caeaa2"
 )
 CRITIC_91_CE30_SHA256 = (
-    "90a3ee41f87fd95714aab89402f151e72f4c2668e908238bc74fe4f1c80ee291"
+    "d2295e285f0babb054e3c898c7cd5816d6b32db6c865ad7eac35209e6a671fd3"
 )
 CRITIC_91_F8F1_SHA256 = (
     "4cdf999eef803bd20ee448a3c836230fcf9fe294bf2b3c11a20ffeba081986a0"
 )
 CRITIC_91_0B05_SHA256 = (
     "36130a164b5130b8404b05986308ad551396cedd02fb17abff6c8f899b4daeaf"
+)
+CRITIC_91_0AC5_SHA256 = (
+    "ba9182224c1b1f681319768a6734b3403a3ef58007fb26463205229ee43e3474"
 )
 LEAKGATE_TRACKED_NAMES = frozenset(
     {
@@ -5814,6 +5950,16 @@ def _workflow_body_has_forbidden_expr(body: str) -> bool:
     return any(_gha_expr_is_forbidden(expr) for expr in _iter_gha_exprs(body))
 
 
+def _gha_if_is_forbidden(raw: object) -> bool:
+    """`if:` is evaluated unbraced; scan the whole value as an expression."""
+    if raw is None or isinstance(raw, bool):
+        return False
+    text = raw if isinstance(raw, str) else str(raw)
+    if _gha_expr_is_forbidden(text):
+        return True
+    return _workflow_body_has_forbidden_expr(text)
+
+
 def _local_uses_norm(raw: str) -> str:
     posix = raw.replace("\\", "/").split("@", 1)[0].strip()
     if posix.startswith("./"):
@@ -6290,6 +6436,10 @@ def _assert_step_attack_surface(
     uses = str(step.get("uses") or "")
     if uses:
         _assert_one_uses(uses, rel=rel, root=root, seen=seen)
+    if _gha_if_is_forbidden(step.get("if")):
+        raise AssertionError(
+            f"{rel} job {job_id!r} if: mentions secrets or github.token"
+        )
     uses_fold = uses.casefold()
     with_ = step.get("with")
     if "checkout" in uses_fold:
@@ -6370,6 +6520,10 @@ def _assert_gha_file_surface(
             if secrets == "inherit" or secrets is True:
                 raise AssertionError(
                     f"{rel} job {job_id!r} forbids secrets: inherit"
+                )
+            if _gha_if_is_forbidden(job.get("if")):
+                raise AssertionError(
+                    f"{rel} job {job_id!r} if: mentions secrets or github.token"
                 )
             job_uses = str(job.get("uses") or "")
             if job_uses:
@@ -6826,9 +6980,13 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         self.assertNotIn("HOME=$HOME", run_text)
         self.assertIn(PACK_GUARD_PATH_RE, run_text)
         self.assertIn(PACK_GUARD_GREP_RE, run_text)
+        self.assertIn("git_scrub ls-files -z", run_text)
         self.assertIn(
             'ls-tree -r -z --full-tree --name-only "$GITHUB_SHA"', run_text
         )
+        self.assertNotIn("merge-base", run_text)
+        self.assertNotIn("git diff ", run_text)
+        self.assertNotIn("git diff-tree", run_text)
         self.assertIn('cat-file -t "$GITHUB_SHA"', run_text)
         self.assertNotIn("^{commit}", run_text)
         self.assertIn("GIT_NO_REPLACE_OBJECTS=1", run_text)
@@ -7201,6 +7359,14 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             CRITIC_91_0B05_SHA256,
         )
 
+    def test_critic_91_0ac5_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_0ac5.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_0AC5_SHA256,
+        )
+
     def test_ci_pack_guard_run_block_trips_on_tracked_packs(self) -> None:
         run = self._run_block()
         with tempfile.TemporaryDirectory() as tmp:
@@ -7265,7 +7431,7 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             )
 
     def test_this_tree_has_no_tracked_pack_artifacts(self) -> None:
-        """S26: 3 MiB cap + 32 fixture dirs must not refuse this HEAD tree."""
+        """S26: exact pins + KNOWN_LEGACY must keep this HEAD tree green."""
         blobs = _head_blob_sizes(REPO_ROOT)
         self.assertGreaterEqual(len(blobs), PACK_GUARD_LS_FILES_FLOOR)
         over = [(sz, path) for sz, path in blobs if sz > PACK_GUARD_BLOB_MAX]
@@ -7281,14 +7447,30 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             f"expected the ~2.58 MiB tracked file, got {largest_sz} {largest_path}",
         )
         self.assertLessEqual(largest_sz, PACK_GUARD_BLOB_MAX)
-        jsonl_dirs = {
-            parent
-            for path in (p for _, p in blobs)
-            if (parent := _jsonl_parent_dir(path)) is not None
-        }
-        self.assertEqual(jsonl_dirs, PACK_GUARD_JSONL_OK_DIRS)
         run = self._run_block()
         self.assertIn(f"CAP={PACK_GUARD_BLOB_MAX}", run)
+        self.assertIn("PIN=frozenset", run)
+        self.assertIn("LEG=frozenset", run)
+        self.assertNotIn("OK=frozenset", run)
+        corpus = (
+            "apps/ava-factory/data/orchestration/corpus.jsonl"
+        )
+        repair = (
+            "tasks/artifacts/corpus_proposals/repair_transcripts/"
+            "repair_sft_unified.jsonl"
+        )
+        self.assertTrue(
+            any(path == corpus for path, _digest in PACK_GUARD_KNOWN_LEGACY)
+        )
+        self.assertTrue(
+            any(path == repair for path, _digest in PACK_GUARD_KNOWN_LEGACY)
+        )
+        self.assertFalse(
+            any(path == corpus for path, _digest in PACK_GUARD_BLOB_PIN)
+        )
+        self.assertFalse(
+            any(path == repair for path, _digest in PACK_GUARD_BLOB_PIN)
+        )
         env = _pack_guard_git_env()
         proc = _run_pack_guard_script(REPO_ROOT, run, env)
         self.assertEqual(
@@ -7296,6 +7478,66 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             0,
             msg=f"stdout={proc.stdout!r} stderr={proc.stderr!r}",
         )
+
+    def test_known_legacy_pins_exact_path_and_hash(self) -> None:
+        """KNOWN_LEGACY: exact path+hash pass; copy or edit is refused."""
+        run = self._run_block()
+        pairs = sorted(PACK_GUARD_KNOWN_LEGACY)
+        self.assertEqual(len(pairs), 2)
+        blobs = {
+            path: (REPO_ROOT / path).read_bytes() for path, _digest in pairs
+        }
+        for path, digest in pairs:
+            self.assertEqual(hashlib.sha256(blobs[path]).hexdigest(), digest)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "legacy-ok"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            for path, data in blobs.items():
+                dest = repo / path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(data)
+            _commit_pack_guard_tree(repo, env, "legacy exact")
+            proc = _run_pack_guard_script(repo, run, env)
+            self.assertEqual(
+                proc.returncode,
+                0,
+                msg=f"pinned legacy must pass; stdout={proc.stdout!r}",
+            )
+
+        for path, data in blobs.items():
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "legacy-copy"
+                env = _init_pack_guard_repo(repo)
+                _seed_pack_guard_floor(repo)
+                copy = repo / "apps" / "x" / Path(path).name
+                copy.parent.mkdir(parents=True, exist_ok=True)
+                copy.write_bytes(data)
+                _commit_pack_guard_tree(repo, env, "legacy copy")
+                proc = _run_pack_guard_script(repo, run, env)
+                self.assertNotEqual(
+                    proc.returncode,
+                    0,
+                    msg=f"copy of {path} must be refused; stdout={proc.stdout!r}",
+                )
+                self.assertIn(str(copy.relative_to(repo)), proc.stdout)
+
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "legacy-edit"
+                env = _init_pack_guard_repo(repo)
+                _seed_pack_guard_floor(repo)
+                dest = repo / path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(data + b"\n")
+                _commit_pack_guard_tree(repo, env, "legacy edit")
+                proc = _run_pack_guard_script(repo, run, env)
+                self.assertNotEqual(
+                    proc.returncode,
+                    0,
+                    msg=f"edited {path} must be refused; stdout={proc.stdout!r}",
+                )
+                self.assertIn(path, proc.stdout)
 
     def test_pack_guard_refuses_blob_over_size_cap(self) -> None:
         """S26 size cap fails closed one byte over 3 MiB, neutral name."""

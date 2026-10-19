@@ -1,12 +1,16 @@
 """Critic attack suite for dottie#91 @ ce30a3f4e73950fd0f0197da631b1739267822ac (B4a/B4b re-attack, S21).
 
+r2 (2026-10-19, for 0ac51f7e): the test-fixture name apps/x/uncurated_package.py left the production
+allowlist, so P2 no longer expects it to pass; P3 expects the real guard to REFUSE it (safe false positive).
+Nothing else changed.
+
 Every test asserts the SECURE behaviour; a FAIL is a finding.
 M: token / trigger / secret surface in a NEW workflow file a PR could add (Forge's checks must go RED).
 N: B4a regression - YAML escape / alias / tag spoofs (must stay RED).
 O: every `uses:` in every workflow pinned to a 40-hex sha.
 P: S21 path pattern - false negatives must be refused, legit names must pass (real guard, real shell).
 Q: vendored loader accepts valid GitHub workflow YAML (fail-closed is safe; this measures friction).
-Run:  WT=/workspace/review/dottie-91/wt-ce30 python3 -m unittest -v test_critic_91_ce30
+Run:  WT=/workspace/review/dottie-91/wt-ce30 python3 -m unittest -v test_critic_91_ce30_r2
 Read-only w.r.t. GitHub. Temp dirs prefixed critic-91-ce30-. No sockets.
 """
 from __future__ import annotations
@@ -164,8 +168,9 @@ P_MUST_CATCH = [
     "apps/x/2curated_pack.jsonl", "apps/x/curated_packv2.jsonl", "apps/x/curatedpackrows.jsonl",
     "apps/x/curated+pack.jsonl", "apps/x/curated~pack.jsonl", "apps/x/curated,pack.jsonl", "apps/x/ultradata+harvest.jsonl",
 ]
-P_MUST_PASS = ["docs/curated-packing-notes.md", "apps/x/uncurated_package.py", "scripts/run_ultradata_harvest.py",
+P_MUST_PASS = ["docs/curated-packing-notes.md", "scripts/run_ultradata_harvest.py",
                "apps/dottie-os/scripts/lab/run_ultradata_harvest.py"]
+P_TEST_ONLY_REFUSED = ["apps/x/uncurated_package.py"]  # r2: not in the production allowlist
 
 
 class P_S21(unittest.TestCase):
@@ -185,6 +190,11 @@ class P_S21(unittest.TestCase):
         for n in P_MUST_PASS:
             with self.subTest(path=n):
                 self.assertEqual(self._rc(n), 0, f"{n!r} refused")
+
+    def test_p3_test_fixture_name_refused_in_prod(self):
+        for n in P_TEST_ONLY_REFUSED:
+            with self.subTest(path=n):
+                self.assertNotEqual(self._rc(n), 0, f"{n!r} passes: test-only name still in the production allowlist")
 
 
 class Q_LoaderFriction(unittest.TestCase):
