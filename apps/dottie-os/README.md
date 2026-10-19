@@ -42,7 +42,7 @@ plus the JSON object with **sorted keys, no whitespace** (`json.dumps(..., separ
 
 HQ origin is the hardcoded `SWARM_HQ_ORIGIN` in `cam_pin_spec.py`. There is no `SWARM_HQ_URL` env, CLI, or config override. Until Cam sets the constant by PR, it is an unset placeholder that refuses. HTTPS only, certificate verification on, no proxies, no redirects. `x-agent-token` is sent only to that origin.
 
-Cam must turn on branch protection with **required code-owner review** on `main` for `apps/dottie-os/trust/` and `scripts/lab/cam_pin_spec.py` (see `.github/CODEOWNERS`). Agents cannot set that. Runtime also refuses unless those files match the committed HEAD blob and HEAD is on, or an ancestor of, `origin/main`.
+Cam must turn on branch protection with **required code-owner review** on `main` for `apps/dottie-os/trust/`, `scripts/lab/cam_pin_spec.py` (the module that holds `SWARM_HQ_ORIGIN` and the shared pin-spec), `scripts/lab/kick_helper_ft.py`, the vector test helper, and `.github/workflows/ci.yml` (see `.github/CODEOWNERS`). Agents cannot set that. Runtime also refuses unless the trust key file, the pin-spec/`SWARM_HQ_ORIGIN` module, and `trust/cam_pin_key_id` match the committed HEAD blob (`git hash-object` vs `git ls-tree HEAD`) and HEAD is on, or an ancestor of, `origin/main`. Those blob shas and the HEAD sha are recorded in the evidence.
 
 ## Schema: strict System One records + provenance sidecar
 

@@ -191,10 +191,11 @@ def _require_sha256_hex(field: str, value: object) -> str:
 
 
 def _require_int(field: str, value: object) -> int:
-    if type(value) is not int:
-        label = "bool" if isinstance(value, bool) else type(value).__name__
-        _refuse(field, "int", label)
-    return value
+    try:
+        return cam_pin_spec.require_int(field, value)
+    except cam_pin_spec.CamPinError as exc:
+        _refuse(exc.field, exc.expected, exc.actual)
+        raise AssertionError("unreachable") from exc
 
 
 def _refuse_skip_env() -> None:

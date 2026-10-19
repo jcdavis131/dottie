@@ -27,6 +27,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import ssl
 import subprocess
 import time
@@ -68,13 +69,31 @@ HQ_DEADLINE_SECONDS = 15.0
 SHA256_LEN = 64
 _HEX = frozenset("0123456789abcdef")
 _PLACEHOLDER_ORIGIN = frozenset({"", "unset", "placeholder", "todo", "https://unset.invalid"})
-_PLACEHOLDER_KEY_ID = frozenset({"", "unset", "placeholder", "todo", "replace-me", "changeme"})
 _PUB_NAME = "cam_pin_ed25519.pub"
+_KEY_ID_NAME = "cam_pin_key_id"
 # Frozen path: apps/dottie-os/trust/cam_pin_ed25519.pub relative to this file.
 CAM_PIN_PUB_PATH = Path(__file__).resolve().parents[2] / "trust" / _PUB_NAME
+CAM_PIN_KEY_ID_PATH = Path(__file__).resolve().parents[2] / "trust" / _KEY_ID_NAME
+# Exact on-disk sentinel. Cam replaces both trust files in one PR.
+PLACEHOLDER_PUB_TEXT = (
+    "CAM-PIN-ED25519-PLACEHOLDER\n"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
+)
+PLACEHOLDER_KEY_ID_TEXT = "CAM-PIN-KEY-ID-PLACEHOLDER\n"
+# Swarm HQ vector test key. Never accepted by CLI or :8765.
+DENIED_PUBLIC_KEYS_B64 = frozenset(
+    {
+        "hgbGCZRFE4CiwVB4rLZ015a8QkWEPPAjZT5UIQKDazk=",
+    }
+)
+PACK_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+RECORDED_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
+B64_RE = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")
+INT32_MAX = 2**31
 # Repo-relative paths whose HEAD blobs must match the working tree.
 TRUST_RELPATHS = (
     "apps/dottie-os/trust/cam_pin_ed25519.pub",
+    "apps/dottie-os/trust/cam_pin_key_id",
     "apps/dottie-os/scripts/lab/cam_pin_spec.py",
 )
 ORIGIN_MAIN_REF = "origin/main"
@@ -127,10 +146,46 @@ def require_sha256_hex(field: str, value: object) -> str:
 
 
 def require_int(field: str, value: object) -> int:
-    if type(value) is not int:
+    if type(value) is bool or type(value) is not int:
         label = "bool" if isinstance(value, bool) else type(value).__name__
         _refuse(field, "int", label)
+    if value < 0 or value > INT32_MAX:
+        _refuse(field, "int 0..2^31", value)
     return value
+
+
+def require_pack_id(field: str, value: object) -> str:
+    if type(value) is not str or not value:
+        _refuse(field, "present", "missing")
+    if PACK_ID_RE.fullmatch(value) is None:
+        _refuse(field, "ASCII [A-Za-z0-9._-]{1,128}", value)
+    return value
+
+
+def require_recorded_at(field: str, value: object) -> str:
+    if type(value) is not str or not value:
+        _refuse(field, "present", "missing")
+    if RECORDED_AT_RE.fullmatch(value) is None:
+        _refuse(field, "YYYY-MM-DDTHH:MM:SS.mmmZ", value)
+    return value
+
+
+def require_b64(field: str, value: object, decoded_len: int) -> bytes:
+    """Standard alphabet, padded, round-trips, exact decoded length."""
+    if type(value) is not str or not value:
+        _refuse(field, "present", "missing")
+    if B64_RE.fullmatch(value) is None or len(value) % 4 != 0:
+        _refuse(field, "standard padded base64", value)
+    try:
+        raw = base64.b64decode(value, validate=True)
+    except (ValueError, TypeError):
+        _refuse(field, "standard padded base64", "invalid")
+    if len(raw) != decoded_len:
+        _refuse(field, f"{decoded_len} bytes", f"len {len(raw)}")
+    roundtrip = base64.b64encode(raw).decode("ascii")
+    if roundtrip != value:
+        _refuse(field, "round-trip base64", value)
+    return raw
 
 
 def canonical_pin_bytes(fields: dict[str, Any]) -> bytes:
@@ -160,22 +215,43 @@ def encode_private_raw(raw_private: bytes) -> bytes:
     return key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
 
 
+def _normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n")
+
+
 def _parse_pub_file(text: str) -> tuple[str, bytes]:
     if not text or not text.strip():
         _refuse("cam_pin.pubkey", "Ed25519 public key", "empty")
+    if _normalize_newlines(text) == PLACEHOLDER_PUB_TEXT:
+        _refuse("cam_pin.pubkey", "Ed25519 public key", "placeholder")
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) < 2:
         _refuse("cam_pin.pubkey", "key_id and base64 pubkey", "placeholder")
     key_id, b64 = lines[0], lines[1]
-    if key_id.lower() in _PLACEHOLDER_KEY_ID:
-        _refuse("cam_pin.pubkey", "Ed25519 public key", "placeholder")
-    try:
-        raw = base64.b64decode(b64, validate=True)
-    except (ValueError, TypeError):
-        _refuse("cam_pin.pubkey", "base64 Ed25519 public key", "invalid")
-    if len(raw) != 32:
-        _refuse("cam_pin.pubkey", "32-byte public key", f"len {len(raw)}")
+    raw = require_b64("cam_pin.pubkey", b64, 32)
+    encoded = base64.b64encode(raw).decode("ascii")
+    if encoded in DENIED_PUBLIC_KEYS_B64:
+        _refuse("cam_pin.pubkey", "Cam production key", "denied test key")
     return key_id, raw
+
+
+def load_cam_key_id() -> str:
+    """Committed cam_key_id. Never env, argv, or another path."""
+    path = CAM_PIN_KEY_ID_PATH
+    if path.name != _KEY_ID_NAME or path.parent.name != "trust":
+        _refuse("cam_pin.key_id", str(CAM_PIN_KEY_ID_PATH), str(path))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        _refuse("cam_pin.key_id", "present", "missing")
+    except OSError as exc:
+        _refuse("cam_pin.key_id", "readable file", f"OSError:{exc.errno}")
+    if _normalize_newlines(text) == PLACEHOLDER_KEY_ID_TEXT or not text.strip():
+        _refuse("cam_pin.key_id", "committed key id", "placeholder")
+    key_id = text.strip()
+    if not key_id:
+        _refuse("cam_pin.key_id", "committed key id", "empty")
+    return key_id
 
 
 def load_cam_public_key() -> tuple[str, Ed25519PublicKey]:
@@ -190,13 +266,19 @@ def load_cam_public_key() -> tuple[str, Ed25519PublicKey]:
     except OSError as exc:
         _refuse("cam_pin.pubkey", "readable file", f"OSError:{exc.errno}")
     key_id, raw = _parse_pub_file(text)
+    committed_id = load_cam_key_id()
+    if key_id != committed_id:
+        _refuse("cam_pin.key_id", committed_id, key_id)
     return key_id, Ed25519PublicKey.from_public_bytes(raw)
 
 
 def verify_ed25519(message: bytes, signature: bytes, public_raw: bytes) -> None:
-    """Verify Ed25519 over ``message``. Tests may pass a vector key; runtime uses trust/."""
+    """Production verify. Denies the HQ vector test key in every environment."""
     if len(public_raw) != 32:
         _refuse("cam_pin.pubkey", "32-byte public key", f"len {len(public_raw)}")
+    encoded = base64.b64encode(public_raw).decode("ascii")
+    if encoded in DENIED_PUBLIC_KEYS_B64:
+        _refuse("cam_pin.pubkey", "Cam production key", "denied test key")
     public = Ed25519PublicKey.from_public_bytes(public_raw)
     try:
         public.verify(signature, message)
@@ -211,13 +293,7 @@ def verify_cam_sig(record: dict[str, Any]) -> None:
         _refuse("cam-pin.cam_key_id", "present", "missing")
     if pin_kid != key_id:
         _refuse("cam-pin.cam_key_id", key_id, pin_kid)
-    sig_b64 = record.get("cam_sig")
-    if type(sig_b64) is not str or not sig_b64:
-        _refuse("cam-pin.cam_sig", "present", "missing")
-    try:
-        signature = base64.b64decode(sig_b64, validate=True)
-    except (ValueError, TypeError):
-        _refuse("cam-pin.cam_sig", "base64 Ed25519 signature", "invalid")
+    signature = require_b64("cam-pin.cam_sig", record.get("cam_sig"), 64)
     message = canonical_pin_bytes(record)
     public_raw = public.public_bytes(Encoding.Raw, PublicFormat.Raw)
     verify_ed25519(message, signature, public_raw)
@@ -402,9 +478,7 @@ def parse_hq_pin_payload(payload: object) -> dict[str, Any]:
     for key in HQ_PIN_REQUIRED_KEYS:
         if key not in payload:
             _refuse(f"cam-pin.{key}", "present", "missing")
-    recorded_at = payload.get("recordedAt")
-    if type(recorded_at) is not str or not recorded_at:
-        _refuse("cam-pin.recordedAt", "present", "missing")
+    recorded_at = require_recorded_at("cam-pin.recordedAt", payload.get("recordedAt"))
     kid = payload.get("kid")
     if type(kid) is not str or not kid:
         _refuse("cam-pin.kid", "present", "missing")
@@ -414,10 +488,9 @@ def parse_hq_pin_payload(payload: object) -> dict[str, Any]:
     cam_sig = payload.get("cam_sig")
     if type(cam_sig) is not str or not cam_sig:
         _refuse("cam-pin.cam_sig", "present", "missing")
+    require_b64("cam-pin.cam_sig", cam_sig, 64)
     record: dict[str, Any] = {key: payload[key] for key in HQ_PIN_REQUIRED_KEYS}
-    record["pack_id"] = payload["pack_id"]
-    if type(record["pack_id"]) is not str or not record["pack_id"]:
-        _refuse("cam-pin.pack_id", "present", "missing")
+    record["pack_id"] = require_pack_id("cam-pin.pack_id", payload["pack_id"])
     record["sha256_pack"] = require_sha256_hex("cam-pin.sha256_pack", payload.get("sha256_pack"))
     record["sha256_train"] = require_sha256_hex("cam-pin.sha256_train", payload.get("sha256_train"))
     record["sha256_holdout"] = require_sha256_hex("cam-pin.sha256_holdout", payload.get("sha256_holdout"))

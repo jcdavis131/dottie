@@ -107,10 +107,10 @@ def _require_sha(field: str, value: object) -> str | dict[str, Any]:
 
 
 def _require_int(field: str, value: object) -> int | dict[str, Any]:
-    if type(value) is not int:
-        label = "bool" if isinstance(value, bool) else type(value).__name__
-        return _bad(field, "int", label)
-    return value
+    try:
+        return cam_pin_spec.require_int(field, value)
+    except cam_pin_spec.CamPinError as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
 
 
 def _count_rows(path: Path) -> int | dict[str, Any]:
@@ -259,6 +259,10 @@ def handle_train_kickoff(
     """
     if not isinstance(body, dict):
         return _bad("body", "object", type(body).__name__)
+    try:
+        blobs = cam_pin_spec.require_committed_trust()
+    except cam_pin_spec.CamPinError as exc:
+        return _bad(exc.field, exc.expected, exc.actual)
     inbox = body.get("inbox")
     mode = body.get("mode")
     if isinstance(inbox, str) and inbox.strip().lower() == "latest":
@@ -397,6 +401,8 @@ def handle_train_kickoff(
             return _bad(sha_field, hq_pin[sha_field], actual)
         post[sha_field] = actual
     evidence["post_train_shas"] = post
+    evidence["trust_blobs"] = blobs
+    evidence["head_sha"] = blobs.get("HEAD")
     result = {
         "ok": True,
         "pack_id": pack_id,
@@ -404,6 +410,8 @@ def handle_train_kickoff(
         "launched": True,
         "post_train_shas": post,
         "kickoff_pin_fetch": fetched_pin,
+        "trust_blobs": blobs,
+        "head_sha": blobs.get("HEAD"),
     }
     if launched.get("checkpoint_id"):
         result["checkpoint_id"] = launched["checkpoint_id"]

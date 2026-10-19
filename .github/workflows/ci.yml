@@ -639,6 +639,8 @@ jobs:
             echo "FAIL: unittest did not report OK"
             exit 1
           fi
+      - name: Tests must not write apps/dottie-os/trust/
+        run: git diff --exit-code apps/dottie-os/trust/
       - name: Refuse tracked pack artifacts
         run: |
           set -euo pipefail

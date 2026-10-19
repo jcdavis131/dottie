@@ -2,4 +2,8 @@
 # required code-owner review; agents cannot set that from a PR.
 apps/dottie-os/trust/ @jcdavis131
 apps/dottie-os/trust/cam_pin_ed25519.pub @jcdavis131
+apps/dottie-os/trust/cam_pin_key_id @jcdavis131
 apps/dottie-os/scripts/lab/cam_pin_spec.py @jcdavis131
+apps/dottie-os/scripts/lab/kick_helper_ft.py @jcdavis131
+apps/dottie-os/tests/cam_pin_vector_helper.py @jcdavis131
+.github/workflows/ci.yml @jcdavis131
