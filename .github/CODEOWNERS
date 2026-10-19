@@ -10,3 +10,4 @@ apps/dottie-os/tests/cam_pin_vector_helper.py @jcdavis131
 .github/workflows/ci.yml @jcdavis131
 apps/dottie-os/tests/test_ultradata_factory.py @jcdavis131
 apps/dottie-os/tests/test_critic_91_*.py @jcdavis131
+/apps/dottie-os/tests/ @jcdavis131
