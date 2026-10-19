@@ -28,7 +28,6 @@ from dottie_core.serving.veto import (
     PIPE_DOWNLOAD_TO_SHELL,
     POSITIVE_CASES,
     RM_RF,
-    VETO_ERROR,
     VETO_RULES,
     strengthen_choice,
     veto,
@@ -156,9 +155,9 @@ class HaltOnlyTests(unittest.TestCase):
 class DecideVetoTests(unittest.TestCase):
     def test_veto_response_is_choice_halt(self) -> None:
         body = decide(_payload("rm -rf /"), model="m", mode="pointer-lora", predictor=_BoomPredictor())
-        self.assertEqual(body["mode"], "veto")
-        self.assertEqual(body["veto_rule"], RM_RF)
-        self.assertEqual(body["choice"], "halt")
+        self.assertEqual(body["mode"], "untrained")
+        self.assertNotIn("veto_rule", body)
+        self.assertEqual(set(body), {"schema", "model", "mode", "answers"})
         self.assertEqual(body["answers"]["action"]["choice"], "halt")
         self.assertNotEqual(body["answers"]["action"]["choice"], "execute")
 
@@ -185,8 +184,8 @@ class DecideVetoTests(unittest.TestCase):
         finally:
             sys.stderr = old
         self.assertEqual(predictor.calls, 0)
-        self.assertEqual(body.get("choice"), "halt")
-        self.assertEqual(body.get("veto_rule"), VETO_ERROR)
+        self.assertEqual(body["answers"]["action"]["choice"], "halt")
+        self.assertEqual(body["mode"], "untrained")
         self.assertIn("veto_error", buf.getvalue())
         self.assertIn("RuntimeError", buf.getvalue())
 
@@ -202,7 +201,9 @@ class DecideVetoTests(unittest.TestCase):
             resp = conn.getresponse()
             self.assertEqual(resp.status, 200)
             body = json.loads(resp.read().decode())
-            self.assertEqual(body["veto_rule"], FORK_BOMB)
+            self.assertNotIn("veto_rule", body)
+            self.assertEqual(body["mode"], "untrained")
+            self.assertEqual(set(body), {"schema", "model", "mode", "answers"})
             self.assertEqual(body["answers"]["action"]["choice"], "halt")
             self.assertEqual(predictor.calls, 0)
         finally:
@@ -224,7 +225,10 @@ class DecideVetoTests(unittest.TestCase):
                 resp = conn.getresponse()
                 self.assertNotEqual(resp.status, 500)
                 self.assertEqual(resp.status, 200)
-                resp.read()
+                body = json.loads(resp.read().decode())
+                self.assertEqual(body["mode"], "untrained")
+                self.assertNotIn("veto_rule", body)
+                self.assertEqual(body["answers"]["action"]["choice"], "halt")
         finally:
             conn.close()
             server.shutdown()

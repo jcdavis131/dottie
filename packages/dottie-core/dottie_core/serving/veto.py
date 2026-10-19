@@ -11,11 +11,13 @@ factory-trainer HELPER.
 
 ``veto(command)`` returns a ``VetoResult`` on a halt-class match, else None.
 ``wrap_decide(decide_fn)`` wraps a /decide *handler* (the function that
-receives the request payload), not ``model.decide``. A hit skips the model
-and returns a jev-schema halt body when the payload has ``questions``.
-The matcher is fail-closed: any exception, deadline, parse failure, oversize
-field, or unknown construct returns halt (``veto_error`` / ``veto_oversize``)
-and never execute. The wrapper never turns a model halt into execute.
+receives the request payload), not ``model.decide``. A hit skips the model.
+Jev payloads (those with ``questions``) return a frozen ``decideResponse``:
+``mode`` stays on ``{untrained, pointer-lora}``, no ``veto_rule``. Non-jev
+payloads still carry ``veto_rule``. The matcher is fail-closed: any
+exception, deadline, parse failure, oversize field, or unknown construct
+returns halt (``veto_error`` / ``veto_oversize``) and never execute. The
+wrapper never turns a model halt into execute.
 
 Run the variant set against any build:
 
@@ -102,8 +104,8 @@ _CONTROL_PORTS = frozenset({"8770", "8765", "8769"})
 _ADMIN_PATHS = frozenset({"/reload", "/admin", "/admin/reload", "/swap", "/train/kickoff"})
 _CMD_KEYS = frozenset({"command", "cmd", "argv"})
 _BLOCK_DEVS = ("/dev/sd", "/dev/hd", "/dev/vd", "/dev/nvme", "/dev/mmc", "/dev/loop")
-_HALT_WORDS = ("halt", "stop", "unsafe", "severe", "worst", "fail", "deny", "block", "danger", "reject")
-_GO_WORDS = ("safe", "good", "quality", "best", "ok", "execute", "allow", "pass", "proceed")
+_HALT_WORDS = ("halt", "stop", "unsafe", "severe", "worst", "fail", "deny", "block", "danger", "reject", "poor", "loss")
+_GO_WORDS = ("safe", "good", "quality", "best", "ok", "execute", "allow", "pass", "proceed", "excellent")
 
 _HEX = frozenset("0123456789abcdefABCDEF")
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -1423,9 +1425,7 @@ def _scale_halt_index(labels: list[str]) -> int:
         return halt_n - go_n
     if score(high) > score(low):
         return len(labels) - 1
-    if score(low) > score(high):
-        return 0
-    return len(labels) - 1
+    return 0
 
 
 def _noul_halt_value(question: dict[str, Any]) -> float:
@@ -1438,9 +1438,9 @@ def _noul_halt_value(question: dict[str, Any]) -> float:
     text = " ".join(parts).lower()
     halt_n = sum(1 for w in _HALT_WORDS if w in text)
     go_n = sum(1 for w in _GO_WORDS if w in text)
-    if halt_n > go_n:
-        return 1.0
-    return 0.0
+    if go_n > halt_n:
+        return 0.0
+    return 1.0
 
 
 def halt_answer(question: dict[str, Any], rule: str) -> dict[str, Any]:
@@ -1452,7 +1452,8 @@ def halt_answer(question: dict[str, Any], rule: str) -> dict[str, Any]:
         if "halt" in keys:
             pick = "halt"
         else:
-            pick = next((key for key in keys if key != "execute"), keys[0] if keys else "halt")
+            unsafe = [key for key in keys if any(w in str(key).lower() for w in _HALT_WORDS)]
+            pick = unsafe[0] if unsafe else next((key for key in keys if key != "execute" and not any(w in str(key).lower() for w in _GO_WORDS)), keys[0] if keys else "halt")
         probs = {key: (1.0 if key == pick else 0.0) for key in keys} or {"halt": 1.0, "execute": 0.0}
         return {
             "type": "choice",
@@ -1478,20 +1479,27 @@ def halt_answer(question: dict[str, Any], rule: str) -> dict[str, Any]:
     return {"type": "choice", "choice": "halt", "probabilities": {"halt": 1.0, "execute": 0.0}, "shape_concentration": 1.0}
 
 
-def halt_body(payload: Any, rule: str, *, model: str = "veto") -> dict[str, Any]:
-    """Halt response. Jev payloads get ``answers.<qid>.*``; otherwise ``best``/``choice``."""
+def halt_body(payload: Any, rule: str, *, model: str = "veto", mode: str = "untrained") -> dict[str, Any]:
+    """Halt response. Jev payloads match frozen ``decideResponse`` (no extra keys).
+
+    Chosen approach: ``mode`` stays ``untrained`` (or the caller's mode if it is
+    already ``untrained`` / ``pointer-lora``). The frozen schema forbids a
+    ``veto`` mode and ``additionalProperties``, so ``veto_rule`` is not added
+    on this path. Cam's alternative is a versioned ``veto`` mode plus a
+    ``veto_rule`` field. Non-jev payloads still carry ``veto_rule``.
+    """
     if isinstance(payload, dict) and isinstance(payload.get("questions"), dict):
         answers = {
             qid: halt_answer(question, rule)
             for qid, question in payload["questions"].items()
             if isinstance(question, dict)
         }
+        if mode not in ("untrained", "pointer-lora"):
+            mode = "untrained"
         body: dict[str, Any] = {
             "schema": payload.get("schema") or "jev-decision-schema-1.0.0",
-            "model": model,
-            "mode": "veto",
-            "veto_rule": rule,
-            "choice": "halt",
+            "model": str(payload.get("model") or model or "veto"),
+            "mode": mode,
             "answers": answers,
         }
         return body

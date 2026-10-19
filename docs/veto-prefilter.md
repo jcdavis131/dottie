@@ -8,10 +8,12 @@ dependency-free module any serve can import:
 
 `veto(command) -> VetoResult | None`. Wrap the **/decide handler** (the
 function that receives the request payload), not `model.decide`. A hit skips
-the model and returns a jev-schema body (`answers.<qid>.choice` / `.score` /
-`.noul`) plus `veto_rule`. The matcher is **fail-closed**: any exception,
-deadline, parse failure, oversize field, or unknown construct returns halt
-(`veto_error` / `veto_oversize`) and never execute. Failures are logged as
+the model. Jev payloads return a frozen `decideResponse` (`schema`, `model`,
+`mode` in `{untrained, pointer-lora}`, `answers`) with no extra keys — not a
+`veto` mode and not `veto_rule`. Non-jev payloads still carry `veto_rule`.
+The matcher is **fail-closed**: any exception, deadline, parse failure,
+oversize field, or unknown construct returns halt (`veto_error` /
+`veto_oversize`) and never execute. Failures are logged as
 `veto_error: Type: msg` on stderr. The wrapper only ever adds a halt. There
 is no env kill-switch.
 
@@ -47,7 +49,8 @@ return decide(payload)
 
 `handle_decide` is the function that already returns a jev decision body
 (`schema`, `model`, `mode`, `answers`). A veto returns the same `answers`
-shape plus `veto_rule`.
+shape. `mode` stays on the frozen enum; Cam's alternative is a versioned
+`veto` mode plus `veto_rule`.
 
 ## Open question (Cam)
 

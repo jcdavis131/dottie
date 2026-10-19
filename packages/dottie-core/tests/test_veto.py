@@ -787,10 +787,14 @@ class SchemaShapeTests(unittest.TestCase):
         self.assertEqual(set(veto_out["answers"]), set(model_out["answers"]))
         for qid, mans in model_out["answers"].items():
             vans = veto_out["answers"][qid]
-            self.assertTrue(set(mans).issubset(set(vans) | {"veto_rule"}))
+            self.assertEqual(set(mans), set(vans))
             self.assertEqual(vans["type"], mans["type"])
+            self.assertNotIn("veto_rule", vans)
         self.assertEqual(veto_out["answers"]["action"]["choice"], "halt")
-        self.assertEqual(veto_out["veto_rule"], RM_RF)
+        self.assertEqual(veto_out["mode"], "untrained")
+        self.assertNotIn("veto_rule", veto_out)
+        self.assertNotIn("choice", veto_out)
+        self.assertEqual(set(veto_out), {"schema", "model", "mode", "answers"})
         self.assertNotEqual(veto_out["answers"]["action"]["choice"], "execute")
 
     def test_score_and_noul_follow_schema_scale(self) -> None:
@@ -808,6 +812,40 @@ class SchemaShapeTests(unittest.TestCase):
         self.assertEqual(go["noul"], 0.0)
         stop = halt_answer({"type": "noul", "instructions": "Should we halt this as unsafe?"}, RM_RF)
         self.assertEqual(stop["noul"], 1.0)
+        quality = halt_answer({"type": "score", "criteria": ["poor", "fair", "excellent"]}, RM_RF)
+        self.assertEqual(quality["score"], 0.0)
+        safety = halt_answer({"type": "choice", "criteria": {"safe": "go", "unsafe": "no"}}, RM_RF)
+        self.assertEqual(safety["choice"], "unsafe")
+        loss = halt_answer({"type": "noul", "instructions": "Would this cause data loss?"}, RM_RF)
+        self.assertEqual(loss["noul"], 1.0)
+
+    def test_halt_body_matches_frozen_decide_response(self) -> None:
+        schema_path = (
+            Path(__file__).resolve().parents[3] / "apps" / "jev-v0" / "schema" / "decision_schema.json"
+        )
+        frozen = json.loads(schema_path.read_text(encoding="utf-8"))
+        self.assertEqual(frozen["$id"], "jev-decision-schema-1.0.0")
+        mode_enum = frozen["$defs"]["decideResponse"]["properties"]["mode"]["enum"]
+        extra = frozen["$defs"]["decideResponse"]["additionalProperties"]
+        self.assertEqual(mode_enum, ["untrained", "pointer-lora"])
+        self.assertIs(extra, False)
+        payload = {
+            "schema": "jev-decision-schema-1.0.0",
+            "state": {"goal_text": "rm -rf /"},
+            "questions": {
+                "action": {
+                    "type": "choice",
+                    "instructions": "What should the harness do?",
+                    "criteria": {"execute": "go", "halt": "stop"},
+                }
+            },
+        }
+        body = wrap_decide(lambda *_a, **_k: {"schema": "x"})(payload)
+        self.assertEqual(set(body), {"schema", "model", "mode", "answers"})
+        self.assertIn(body["mode"], mode_enum)
+        ans = body["answers"]["action"]
+        self.assertEqual(set(ans), {"type", "choice", "probabilities", "shape_concentration"})
+        self.assertEqual(ans["choice"], "halt")
 
 
 if __name__ == "__main__":

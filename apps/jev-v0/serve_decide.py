@@ -18,10 +18,11 @@ checkpoint's identity hash and its ``eval_summary.json`` gate in ``/health``.
 
 A fixed veto pre-filter (``dottie_core.serving.veto``) runs on every
 ``/decide`` before the model. It is a pure function (no network, no config,
-no env kill-switch). Matching input returns Choice=halt with ``veto_rule``
-and does not call the model. A veto parse exception, deadline, oversize
-field or unknown construct fail-closes to halt and does not call the model.
-The veto can only add a halt.
+no env kill-switch). Matching input returns a frozen ``decideResponse``
+(``mode`` stays ``untrained`` / ``pointer-lora``, no extra keys) with
+``answers.<qid>.choice=halt`` and does not call the model. A veto parse
+exception, deadline, oversize field or unknown construct fail-closes to
+halt and does not call the model. The veto can only add a halt.
 
 Implemented paths: GET ``/``, GET ``/health``, POST ``/decide``. Every other
 path, including POST ``/reload``, is 404 for every method. There is no
@@ -66,54 +67,6 @@ SIDECAR_PORT = 8770
 MAX_BODY = 64 * 1024
 
 
-def _halt_answer(question: dict[str, Any], rule: str) -> dict[str, Any]:
-    """Schema-shaped answer. Never picks ``execute`` when another option exists."""
-    qtype = question["type"]
-    if qtype == "choice":
-        keys = list(question["criteria"])
-        if "halt" in question["criteria"]:
-            pick = "halt"
-        else:
-            pick = next((key for key in keys if key != "execute"), keys[0])
-        probs = {key: (1.0 if key == pick else 0.0) for key in keys}
-        return {
-            "type": "choice",
-            "choice": pick,
-            "probabilities": probs,
-            "shape_concentration": 1.0,
-            "veto_rule": rule,
-        }
-    if qtype == "score":
-        n = len(question["criteria"])
-        keys = [str(i) for i in range(n)]
-        last = keys[-1]
-        probs = {key: (1.0 if key == last else 0.0) for key in keys}
-        return {
-            "type": "score",
-            "score": float(n - 1),
-            "legend": {str(i): label for i, label in enumerate(question["criteria"])},
-            "probabilities": probs,
-            "shape_concentration": 1.0,
-            "veto_rule": rule,
-        }
-    if qtype == "noul":
-        return {"type": "noul", "noul": 0.0, "veto_rule": rule}
-    raise ValueError(f"unhandled question type {qtype!r}")
-
-
-def _veto_body(request: dict[str, Any], *, model: str, rule: str) -> dict[str, Any]:
-    """A /decide response that is Choice=halt. Does not call a model."""
-    answers = {qid: _halt_answer(question, rule) for qid, question in request["questions"].items()}
-    return {
-        "schema": request["schema"],
-        "model": model,
-        "mode": "veto",
-        "veto_rule": rule,
-        "choice": "halt",
-        "answers": answers,
-    }
-
-
 def _model_decide(
     request: dict[str, Any], *, model: str, mode: str, predictor: Any
 ) -> dict[str, Any]:
@@ -147,10 +100,7 @@ def decide(payload: Any, *, model: str, mode: str, predictor: Any = None) -> dic
     def inner(req: dict[str, Any]) -> dict[str, Any]:
         return _model_decide(req, model=model, mode=mode, predictor=predictor)
 
-    result = wrap_decide(inner)(request)
-    if isinstance(result, dict) and result.get("veto_rule"):
-        return _veto_body(request, model=model, rule=str(result["veto_rule"]))
-    return result
+    return wrap_decide(inner)(request)
 
 
 class DecideHandler(BaseHTTPRequestHandler):
