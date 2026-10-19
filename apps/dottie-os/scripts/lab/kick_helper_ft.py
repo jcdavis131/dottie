@@ -9,9 +9,10 @@ record as created with Cam's stamp token (``recordedBy=cam``,
 never read. If HQ is unreachable, refuse.
 
 The pin must be present, match ``MANIFEST.json``, and match the computed hashes
-of the run-private copies. Rewriting the pack and the MANIFEST together still
-fails. After the gate passes, this script POSTs ``/train/kickoff`` with the
-same pin; ``inbox: latest`` is never sent.
+of the run-private copies. ``--cam-pin``, a pin env var, and a local pin file
+are refused before hashing or kickoff. Rewriting the pack and the MANIFEST
+together still fails. After the gate passes, this script POSTs
+``/train/kickoff`` with the same pin; ``inbox: latest`` is never sent.
 
 There is no skip flag or skip env var. Does not promote, does not touch serve,
 :8770, champion files, or the LIVE gate.
@@ -62,6 +63,17 @@ _FORBIDDEN_SKIP_ENV = (
     "DOTTIE_SKIP_HELPER_FT_GATE",
     "HELPER_FT_SKIP_INTEGRITY",
     "SKIP_INTEGRITY",
+)
+_FORBIDDEN_PIN_ENV = (
+    "CAM_PIN",
+    "HELPER_FT_CAM_PIN",
+    "DOTTIE_CAM_PIN",
+    "SWARM_HQ_PIN",
+)
+_FORBIDDEN_PIN_FILES = (
+    "cam-pin.json",
+    "cam_pin.json",
+    "pin.json",
 )
 
 StartTraining = Callable[[Path, dict[str, Any], Path], Any]
@@ -180,6 +192,25 @@ def _refuse_skip_env() -> None:
         value = os.environ.get(name)
         if value:
             _refuse(name, "unset", value)
+
+
+def _refuse_pin_env() -> None:
+    """A pin env var is a paste path. Refuse before hashing or kickoff."""
+    for name in _FORBIDDEN_PIN_ENV:
+        if os.environ.get(name):
+            _refuse(name, "unset", "set")
+
+
+def _refuse_local_pin_files(pack_root: Path) -> None:
+    """A local pin file is a paste path. Refuse before hashing or kickoff."""
+    for filename in _FORBIDDEN_PIN_FILES:
+        path = pack_root / filename
+        try:
+            present = os.path.lexists(path)
+        except OSError as exc:
+            _refuse(filename, "absent", f"OSError:{exc.errno}")
+        if present:
+            _refuse(filename, "absent", "local pin file")
 
 
 def _resolve_pack_dir(pack_dir: Path) -> Path:
@@ -418,7 +449,9 @@ def verify_and_stage(
     start training or POST kickoff. No MANIFEST-only or ticket fallback.
     """
     _refuse_skip_env()
+    _refuse_pin_env()
     pack_root = _resolve_pack_dir(Path(pack_dir))
+    _refuse_local_pin_files(pack_root)
     run_private = Path(run_private)
     run_private.mkdir(parents=True, exist_ok=True)
     try:
@@ -593,6 +626,8 @@ def kick(
     ``start_training`` / ``kickoff`` are test injection hooks and still run only
     after the gate. CLI and env cannot supply them. There is no skip/override.
     """
+    _refuse_skip_env()
+    _refuse_pin_env()
     pack_dir = Path(pack_dir)
     run_id = _new_run_id()
     if log_path is not None:
@@ -705,8 +740,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args, unknown = parser.parse_known_args(argv)
     try:
+        if unknown:
+            _refuse("argv", "known arguments only", unknown[0])
         evidence = kick(
             args.pack,
             log_path=args.log,

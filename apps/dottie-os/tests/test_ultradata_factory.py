@@ -421,13 +421,64 @@ def _cli_args(dest: Path, log_path: Path | None = None) -> list[str]:
     return argv
 
 
+def _start_hq_http_mock(owner: unittest.TestCase) -> None:
+    owner.hq_pins = {}
+    owner.hq_error = None
+    owner.hq_requests = []
+    os.environ["SWARM_HQ_URL"] = "https://swarm-hq.test"
+
+    def fake_urlopen(request: object, timeout: object = None) -> _FakeHqHttpResponse:
+        url = getattr(request, "full_url", None) or str(request)
+        method = request.get_method() if hasattr(request, "get_method") else "GET"
+        owner.hq_requests.append(url)
+        owner.assertEqual(method, "GET")
+        owner.assertTrue(str(url).startswith("https://"), url)
+        owner.assertIn("/api/packs/", str(url))
+        owner.assertTrue(str(url).endswith("/pin"), url)
+        if owner.hq_error is not None:
+            raise urllib.error.URLError(owner.hq_error)
+        pack_id = _pack_id_from_pin_url(str(url))
+        pin = owner.hq_pins.get(pack_id)
+        if pin is None:
+            return _FakeHqHttpResponse(b"{}")
+        return _FakeHqHttpResponse(json.dumps({"pin": pin}).encode("utf-8"))
+
+    owner._urlopen_patcher = patch("urllib.request.urlopen", side_effect=fake_urlopen)
+    owner._urlopen_patcher.start()
+
+
+def _stop_hq_http_mock(owner: unittest.TestCase) -> None:
+    owner._urlopen_patcher.stop()
+    os.environ.pop("SWARM_HQ_URL", None)
+
+
+def _wrap_hash_fns(*targets: tuple[object, str]) -> tuple[list[str], list[tuple[object, str, object]]]:
+    calls: list[str] = []
+    originals: list[tuple[object, str, object]] = []
+    for obj, name in targets:
+        orig = getattr(obj, name)
+        originals.append((obj, name, orig))
+
+        def _make(label: str, fn: object) -> object:
+            def wrapped(*args: object, **kwargs: object) -> object:
+                calls.append(label)
+                return fn(*args, **kwargs)
+
+            return wrapped
+
+        setattr(obj, name, _make(name, orig))
+    return calls, originals
+
+
+def _restore_hash_fns(originals: list[tuple[object, str, object]]) -> None:
+    for obj, name, orig in originals:
+        setattr(obj, name, orig)
+
+
 class HelperFtIntegrityTests(unittest.TestCase):
     def setUp(self) -> None:
         self.kickoff_calls: list[dict] = []
-        self.hq_pins: dict[str, dict] = {}
-        self.hq_error: str | None = None
-        self.hq_requests: list[str] = []
-        os.environ["SWARM_HQ_URL"] = "https://swarm-hq.test"
+        _start_hq_http_mock(self)
 
         def fake_post(body: dict, url: str | None = None) -> dict:
             self.kickoff_calls.append(body)
@@ -436,31 +487,14 @@ class HelperFtIntegrityTests(unittest.TestCase):
             self.assertEqual(body.get("pin", {}).get("recordedBy"), "cam")
             return {"ok": True, "checkpoint_id": "ckpt-test"}
 
-        def fake_urlopen(request: object, timeout: object = None) -> _FakeHqHttpResponse:
-            url = getattr(request, "full_url", None) or str(request)
-            method = request.get_method() if hasattr(request, "get_method") else "GET"
-            self.hq_requests.append(url)
-            self.assertEqual(method, "GET")
-            self.assertTrue(str(url).startswith("https://"), url)
-            self.assertIn("/api/packs/", str(url))
-            self.assertTrue(str(url).endswith("/pin"), url)
-            if self.hq_error is not None:
-                raise urllib.error.URLError(self.hq_error)
-            pack_id = _pack_id_from_pin_url(str(url))
-            pin = self.hq_pins.get(pack_id)
-            if pin is None:
-                return _FakeHqHttpResponse(b"{}")
-            return _FakeHqHttpResponse(json.dumps({"pin": pin}).encode("utf-8"))
-
         self._orig_post = kick_helper_ft.post_kickoff
         kick_helper_ft.post_kickoff = fake_post
-        self._urlopen_patcher = patch("urllib.request.urlopen", side_effect=fake_urlopen)
-        self._urlopen_patcher.start()
 
     def tearDown(self) -> None:
         kick_helper_ft.post_kickoff = self._orig_post
-        self._urlopen_patcher.stop()
-        os.environ.pop("SWARM_HQ_URL", None)
+        _stop_hq_http_mock(self)
+        for name in kick_helper_ft._FORBIDDEN_PIN_ENV:
+            os.environ.pop(name, None)
 
     def _pin(self, manifest: dict, **overrides: object) -> dict:
         pin = _cam_pin(manifest, **overrides)
@@ -797,6 +831,80 @@ class HelperFtIntegrityTests(unittest.TestCase):
         self.assertEqual(self.hq_requests, before)
         self.assertEqual(ctx.exception.field, "SWARM_HQ_URL")
         self.assertEqual(ctx.exception.expected, "https URL")
+
+    def test_cam_pin_cli_is_unknown_argument_before_hash_or_kickoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            argv = _cli_args(dest) + ["--cam-pin", json.dumps(_cam_pin(manifest))]
+            _args, unknown = kick_helper_ft.build_parser().parse_known_args(argv)
+            hash_calls, originals = _wrap_hash_fns(
+                (kick_helper_ft, "_copy_and_hash"),
+                (kick_helper_ft, "sha256_file"),
+            )
+            try:
+                rc = kick_helper_ft.main(argv)
+            finally:
+                _restore_hash_fns(originals)
+        self.assertEqual(unknown[0], "--cam-pin")
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(hash_calls, [])
+        self.assertEqual(self.hq_requests, [])
+
+    def test_pin_env_var_refuses_before_hash_or_kickoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            os.environ["CAM_PIN"] = json.dumps(_cam_pin(manifest))
+            hash_calls, originals = _wrap_hash_fns(
+                (kick_helper_ft, "_copy_and_hash"),
+                (kick_helper_ft, "sha256_file"),
+            )
+            try:
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.kick(dest)
+                rc = kick_helper_ft.main(_cli_args(dest))
+            finally:
+                os.environ.pop("CAM_PIN", None)
+                _restore_hash_fns(originals)
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(hash_calls, [])
+        self.assertEqual(self.hq_requests, [])
+        self.assertEqual(ctx.exception.field, "CAM_PIN")
+        self.assertEqual(ctx.exception.expected, "unset")
+        self.assertEqual(ctx.exception.actual, "set")
+
+    def test_local_pin_file_refuses_before_hash_or_kickoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            (dest / "cam-pin.json").write_text(
+                json.dumps(_cam_pin(manifest)), encoding="utf-8"
+            )
+            hash_calls, originals = _wrap_hash_fns(
+                (kick_helper_ft, "_copy_and_hash"),
+                (kick_helper_ft, "sha256_file"),
+            )
+            try:
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.kick(dest)
+                rc = kick_helper_ft.main(_cli_args(dest))
+            finally:
+                _restore_hash_fns(originals)
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(hash_calls, [])
+        self.assertEqual(ctx.exception.field, "cam-pin.json")
+        self.assertEqual(ctx.exception.expected, "absent")
+        self.assertEqual(ctx.exception.actual, "local pin file")
 
     def test_train_hook_direct_call_refuses(self) -> None:
         with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
@@ -1249,12 +1357,21 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.launches: list[dict] = []
+        _start_hq_http_mock(self)
 
         def stub_trainer(body: dict) -> dict:
             self.launches.append(body)
             return {"ok": True, "checkpoint_id": "stub-ckpt"}
 
         self.client = helper_ft_kickoff.TestClient(launch_trainer=stub_trainer)
+
+    def tearDown(self) -> None:
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
 
     def test_http_no_evidence_refuses_before_trainer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1305,6 +1422,7 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
+            self._pin(manifest)
             body = _fresh_kickoff_body(dest, manifest)
             _flip_one_ascii_byte(dest / "curated_pack_v2.jsonl")
             response = self.client.post("/train/kickoff", json=body)
@@ -1320,6 +1438,7 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
+            self._pin(manifest)
             body = _fresh_kickoff_body(dest, manifest)
             self.assertTrue(body["evidence"]["ok"])
             (dest / "curated_pack_v2_train.jsonl").write_bytes(
@@ -1363,6 +1482,7 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
+            self._pin(manifest)
             body = _fresh_kickoff_body(dest, manifest)
             response = self.client.post("/train/kickoff", json=body)
         payload = response.json()
@@ -1373,6 +1493,8 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
         self.assertEqual(len(self.launches), 1)
         self.assertEqual(self.launches[0]["pack_id"], manifest["pack_id"])
         self.assertEqual(self.launches[0]["pin"]["recordedBy"], "cam")
+        self.assertTrue(self.hq_requests)
+        self.assertTrue(self.hq_requests[0].endswith("/pin"))
 
     def test_http_missing_pin_refuses_before_trainer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1393,6 +1515,7 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_helper_pack(dest)
+            self._pin(manifest)
             body = _fresh_kickoff_body(dest, manifest)
             body["pin"]["sha256_pack"] = "a" * 64
             body["sha256_pack"] = "a" * 64
@@ -1403,6 +1526,29 @@ class HelperFtKickoffHttpTests(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["field"], "sha256_pack")
         self.assertEqual(self.launches, [])
+
+    def test_http_body_pin_without_hq_provenance_refuses_before_trainer(self) -> None:
+        hash_calls, originals = _wrap_hash_fns((helper_ft_kickoff, "_sha256_file"))
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "inbox-pack"
+                dest.mkdir()
+                manifest = _write_helper_pack(dest)
+                body = _fresh_kickoff_body(dest, manifest)
+                self.assertEqual(body["pin"]["recordedBy"], "cam")
+                self.assertTrue(body["pin"]["stampVerified"])
+                response = self.client.post("/train/kickoff", json=body)
+        finally:
+            _restore_hash_fns(originals)
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["field"], "cam-pin")
+        self.assertEqual(payload["expected"], "present")
+        self.assertEqual(payload["actual"], "missing")
+        self.assertEqual(self.launches, [])
+        self.assertEqual(hash_calls, [])
+        self.assertTrue(self.hq_requests)
 
 
 if __name__ == "__main__":

@@ -54,7 +54,7 @@ console app). Do not swap those trees.
 | `scripts/lab/run_ultradata_harvest.py` | Lean harvest (agent 40 / code 40 / math 30) |
 | `scripts/lab/finalize_manifest.py` | Rewrite `MANIFEST.json` to the pack-hop schema |
 | `scripts/lab/kick_helper_ft.py` | Stage-5 HELPER FT kick: fetch Cam-stamped Swarm HQ pin (`SWARM_HQ_URL`), re-hash pack/train/holdout vs that pin and MANIFEST, copy into a 0700 run dir, write evidence, POST `:8765/train/kickoff` (never `inbox:latest`). No override, no paste path. |
-| `scripts/lab/helper_ft_kickoff.py` | `:8765` HELPER FT kickoff handler: re-hash run-private files vs the Cam pin in the request; refuse `inbox:latest` and every other HELPER FT start route. |
+| `scripts/lab/helper_ft_kickoff.py` | `:8765` HELPER FT kickoff handler: re-fetch the Cam pin from Swarm HQ, re-hash run-private files vs that pin; a body-only pin is not provenance. Refuse `inbox:latest` and every other HELPER FT start route. |
 | `scripts/lab/stage-hop.ps1` | Zip jcd-pc outbox pack |
 | `scripts/lab/receive-hop.ps1` | Unpack zip into nugatron trainer inbox |
 | `docs/` | Pack v2 handoff, hop interface, local-exec notes |

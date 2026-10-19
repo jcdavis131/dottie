@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Forge-runner HELPER FT ``POST /train/kickoff`` handler (:8765).
 
-Re-hashes run-private pack/train/holdout itself and compares those digests
-with the request shas and with the Cam Swarm HQ pin carried in the request.
+Re-fetches the Cam-stamped pack-pin from Swarm HQ over HTTPS, then re-hashes
+run-private pack/train/holdout and compares those digests with the request shas
+and that HQ pin. A pin carried only in the request body is not provenance.
 An evidence blob that exists or says ``ok: true`` is not enough.
 
 ``inbox: latest`` and every other HELPER FT start route are refused. Stdlib
@@ -14,6 +15,9 @@ import hashlib
 import json
 import os
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -26,6 +30,9 @@ _HEX = frozenset("0123456789abcdef")
 MAX_EVIDENCE_AGE_SECONDS = 15 * 60
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+SWARM_HQ_URL_ENV = "SWARM_HQ_URL"
+CAM_RECORDED_BY = "cam"
+PIN_SOURCE = "swarm-hq-cam-pin"
 SHA_FIELDS = (
     ("sha256_pack", "pack"),
     ("sha256_train", "train"),
@@ -109,13 +116,86 @@ def default_launch_trainer(body: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "checkpoint_id": None, "launched": True}
 
 
+def fetch_cam_pin(pack_id: str) -> dict[str, Any]:
+    """GET ``{SWARM_HQ_URL}/api/packs/<pack_id>/pin`` over HTTPS. Never Redis."""
+    if not isinstance(pack_id, str) or not pack_id.strip():
+        return _bad("pack_id", "present", "missing")
+    base = os.environ.get(SWARM_HQ_URL_ENV)
+    if not isinstance(base, str) or not base.strip():
+        return _bad(SWARM_HQ_URL_ENV, "present", "missing")
+    base = base.strip()
+    if not base.lower().startswith("https://"):
+        return _bad(SWARM_HQ_URL_ENV, "https URL", base)
+    url = base.rstrip("/") + "/api/packs/" + urllib.parse.quote(pack_id.strip(), safe="") + "/pin"
+    request = urllib.request.Request(
+        url, method="GET", headers={"Accept": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            blob = response.read()
+            status = getattr(response, "status", None) or response.getcode()
+    except urllib.error.HTTPError as exc:
+        return _bad("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {exc.code}")
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", None) or exc
+        return _bad("cam-pin", "HTTPS Swarm HQ pin", f"unreachable:{reason}")
+    except OSError as exc:
+        return _bad("cam-pin", "HTTPS Swarm HQ pin", f"OSError:{getattr(exc, 'errno', None)}")
+    if status not in (200, None) and int(status) != 200:
+        return _bad("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {status}")
+    try:
+        raw = blob.decode("utf-8")
+    except UnicodeDecodeError:
+        return _bad("cam-pin", "utf-8 JSON", "invalid encoding")
+    try:
+        payload = json.loads(raw) if raw else None
+    except ValueError:
+        return _bad("cam-pin", "JSON object", "invalid JSON")
+    if not isinstance(payload, dict) or not payload:
+        return _bad("cam-pin", "present", "missing")
+    record = payload.get("pin") if isinstance(payload.get("pin"), dict) else payload
+    return {"ok": True, "pin": record}
+
+
+def require_hq_cam_pin(pack_id: str) -> dict[str, Any]:
+    """Re-fetch the Cam pin. A request-body pin is not provenance."""
+    fetched = fetch_cam_pin(pack_id)
+    if fetched.get("ok") is not True:
+        return fetched
+    record = fetched.get("pin")
+    if not isinstance(record, dict) or not record:
+        return _bad("cam-pin", "present", "missing")
+    if record.get("recordedBy") != CAM_RECORDED_BY:
+        return _bad("cam-pin.recordedBy", CAM_RECORDED_BY, record.get("recordedBy"))
+    if record.get("stampVerified") is not True:
+        return _bad("cam-pin.stampVerified", True, record.get("stampVerified"))
+    pin_pack = record.get("pack_id")
+    if not isinstance(pin_pack, str) or not pin_pack.strip():
+        return _bad("cam-pin.pack_id", "present", "missing")
+    if pin_pack.strip() != pack_id:
+        return _bad("cam-pin.pack_id", pack_id, pin_pack)
+    pin: dict[str, Any] = {
+        "pack_id": pack_id,
+        "recordedBy": CAM_RECORDED_BY,
+        "stampVerified": True,
+        "source": PIN_SOURCE,
+    }
+    for sha_field, _path_key in SHA_FIELDS:
+        required = _require_sha(f"cam-pin.{sha_field}", record.get(sha_field))
+        if isinstance(required, dict):
+            return required
+        pin[sha_field] = required
+    return {"ok": True, "pin": pin}
+
+
 def handle_train_kickoff(
     body: dict[str, Any] | None,
     *,
     launch_trainer: LaunchTrainer | None = None,
 ) -> dict[str, Any]:
-    """Refuse HELPER FT kickoff unless re-hashed files match request + anchor.
+    """Refuse HELPER FT kickoff unless HQ pin matches re-hashed files.
 
+    Re-fetches the Cam pin from Swarm HQ. A body-only pin is refused.
     ``inbox: latest`` is never accepted. Evidence ``ok: true`` is not trust.
     """
     if not isinstance(body, dict):
@@ -168,16 +248,19 @@ def handle_train_kickoff(
     pin = body.get("pin")
     if not isinstance(pin, dict) or not pin:
         return _bad("pin", "present", "missing")
-    if pin.get("recordedBy") != "cam":
-        return _bad("pin.recordedBy", "cam", pin.get("recordedBy"))
+    if pin.get("recordedBy") != CAM_RECORDED_BY:
+        return _bad("pin.recordedBy", CAM_RECORDED_BY, pin.get("recordedBy"))
     if pin.get("stampVerified") is not True:
         return _bad("pin.stampVerified", True, pin.get("stampVerified"))
     if pin.get("pack_id") != pack_id:
         return _bad("pin.pack_id", pack_id, pin.get("pack_id"))
+    hq = require_hq_cam_pin(pack_id)
+    if hq.get("ok") is not True:
+        return hq
+    hq_pin = hq["pin"]
     paths = body.get("paths")
     if not isinstance(paths, dict) or not paths:
         return _bad("paths", "present", "missing")
-    body_anchor = pin
     ev_anchor = evidence.get("pin") if isinstance(evidence.get("pin"), dict) else evidence.get("expected_shas")
     if not isinstance(ev_anchor, dict) or not ev_anchor:
         return _bad("evidence.pin", "present", "missing")
@@ -186,16 +269,20 @@ def handle_train_kickoff(
         req = _require_sha(sha_field, body.get(sha_field))
         if isinstance(req, dict):
             return req
-        anchor = _require_sha(f"pin.{sha_field}", body_anchor.get(sha_field))
-        if isinstance(anchor, dict):
-            return anchor
+        hq_sha = hq_pin[sha_field]
+        body_sha = _require_sha(f"pin.{sha_field}", pin.get(sha_field))
+        if isinstance(body_sha, dict):
+            return body_sha
+        if body_sha != hq_sha:
+            return _bad(sha_field, hq_sha, body_sha)
         ev_expected = _require_sha(f"evidence.pin.{sha_field}", ev_anchor.get(sha_field))
         if isinstance(ev_expected, dict):
             return ev_expected
-        if req != anchor:
-            return _bad(sha_field, anchor, req)
-        if ev_expected != anchor:
-            return _bad(sha_field, anchor, ev_expected)
+        if req != hq_sha:
+            return _bad(sha_field, hq_sha, req)
+        if ev_expected != hq_sha:
+            return _bad(sha_field, hq_sha, ev_expected)
+        anchor = hq_sha
         named = paths.get(path_key)
         if not isinstance(named, str) or not named:
             return _bad(f"paths.{path_key}", "present", "missing")
