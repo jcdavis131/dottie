@@ -12,9 +12,10 @@ factory-trainer HELPER.
 ``veto(command)`` returns a ``VetoResult`` on a halt-class match, else None.
 ``wrap_decide(decide_fn)`` wraps a /decide *handler* (the function that
 receives the request payload), not ``model.decide``. A hit skips the model
-and returns a jev-schema halt body when the payload has ``questions``;
-a parse exception is logged and the model still answers. The wrapper never
-turns a model halt into execute.
+and returns a jev-schema halt body when the payload has ``questions``.
+The matcher is fail-closed: any exception, deadline, parse failure, oversize
+field, or unknown construct returns halt (``veto_error`` / ``veto_oversize``)
+and never execute. The wrapper never turns a model halt into execute.
 
 Run the variant set against any build:
 
@@ -27,6 +28,7 @@ import argparse
 import json
 import re
 import sys
+import time
 import unicodedata
 from dataclasses import dataclass
 from functools import wraps
@@ -38,6 +40,8 @@ FORK_BOMB = "fork_bomb"
 CONTROL_PLANE = "control_plane"
 RM_RF = "rm_rf"
 MKFS = "mkfs"
+VETO_ERROR = "veto_error"
+VETO_OVERSIZE = "veto_oversize"
 
 VETO_RULES: tuple[str, ...] = (
     PIPE_DOWNLOAD_TO_SHELL,
@@ -47,11 +51,13 @@ VETO_RULES: tuple[str, ...] = (
     MKFS,
 )
 
-# Cap per field so a 64 KB body cannot hang /decide. 16 KB adversarial
-# inputs still scan in full; anything longer is truncated.
+# Cap per field. Anything longer fail-closes as veto_oversize (never truncated
+# so a halt class after the cap cannot be smuggled through).
 SCAN_CAP = 16384
 _JSON_DEPTH = 6
 _DECODE_ROUNDS = 8
+_SCAN_DEADLINE_S = 2.0
+_WORK_LIMIT = 5_000_000
 
 _FETCHERS = frozenset({"curl", "wget", "fetch", "aria2c"})
 _SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "ash", "csh", "tcsh"})
@@ -74,7 +80,34 @@ _GO_WORDS = ("safe", "good", "quality", "best", "ok", "execute", "allow", "pass"
 _HEX = frozenset("0123456789abcdefABCDEF")
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SIMPLE_ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
-# Bounded, no nested quantifiers. Used only as a cheap prefilter.
+
+
+class _BudgetExceeded(Exception):
+    """Per-request work or wall deadline exceeded."""
+
+
+class _ScanBudget:
+    __slots__ = ("ticks", "deadline")
+
+    def __init__(self) -> None:
+        self.ticks = 0
+        self.deadline = time.perf_counter() + _SCAN_DEADLINE_S
+
+    def tick(self, n: int = 1) -> None:
+        self.ticks += n
+        if self.ticks > _WORK_LIMIT or time.perf_counter() > self.deadline:
+            raise _BudgetExceeded()
+
+
+_BUDGET: _ScanBudget | None = None
+
+
+def _tick(n: int = 1) -> None:
+    budget = _BUDGET
+    if budget is not None:
+        budget.tick(n)
+
+
 @dataclass(frozen=True)
 class VetoResult:
     """Halt-only. ``choice`` is always ``halt``; never ``execute``."""
@@ -98,9 +131,22 @@ class VetoResult:
 
 
 def _cap(text: str) -> str:
+    """Truncate only after an oversize field has already fail-closed."""
     if len(text) > SCAN_CAP:
         return text[:SCAN_CAP]
     return text
+
+
+def _is_oversize(value: Any, depth: int = 0) -> bool:
+    if depth > _JSON_DEPTH:
+        return False
+    if isinstance(value, str):
+        return len(value) > SCAN_CAP
+    if isinstance(value, dict):
+        return any(_is_oversize(item, depth + 1) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_is_oversize(item, depth + 1) for item in value)
+    return False
 
 
 _BIN_PREFIXES = (
@@ -236,6 +282,8 @@ def _walk_commands(value: Any, out: list[str], depth: int = 0) -> None:
                 _walk_commands(json.loads(stripped), out, depth + 1)
             except json.JSONDecodeError:
                 pass
+            except RecursionError:
+                raise
         decoder = json.JSONDecoder()
         i = 0
         n = len(text)
@@ -311,6 +359,7 @@ def _tokenize(src: str) -> list[tuple[str, str]]:
         return src[j] if j < n else ""
 
     while i < n:
+        _tick()
         ch = src[i]
         if ch in " \t\r":
             i += 1
@@ -736,15 +785,13 @@ def _pipe_download_stages(stages: list[list[tuple[str, str]]]) -> bool:
 def _download_then_run(statements: list[list[tuple[str, str]]]) -> bool:
     outputs: set[str] = set()
     for stmt in statements:
-        for stage in _pipeline_stages(stmt):
-            outputs |= _fetch_outputs(stage)
-        words = _strip_wrappers(_words(stmt) if len(_pipeline_stages(stmt)) == 1 else _words(_pipeline_stages(stmt)[0]))
-        # also collect from first stage of pipelines
-        for stage in _pipeline_stages(stmt):
-            outputs |= _fetch_outputs(stage)
         stages = _pipeline_stages(stmt)
-        head = _command_word(stages[0]) if stages else ""
-        run_words = _strip_wrappers(_words(stages[0])) if stages else []
+        for stage in stages:
+            outputs |= _fetch_outputs(stage)
+        if not stages:
+            continue
+        head = _command_word(stages[0])
+        run_words = _strip_wrappers(_words(stages[0]))
         if _is_shell_name(head) and len(run_words) >= 2:
             target = run_words[1]
             if target in outputs or _basename(target) in {_basename(x) for x in outputs}:
@@ -882,6 +929,7 @@ def _control_plane_tokens(tokens: list[tuple[str, str]], original: str) -> bool:
 
 
 def _scan_text(command: str, env: dict[str, str] | None = None, depth: int = 0) -> str | None:
+    _tick(len(command) if command else 1)
     command = _cap(command)
     if depth > 8 or not command or not command.strip():
         return None
@@ -897,11 +945,24 @@ def _scan_text(command: str, env: dict[str, str] | None = None, depth: int = 0) 
         return CONTROL_PLANE
 
     statements = _split_statements(tokens)
+    for stmt in statements:
+        stages = _pipeline_stages(stmt)
+        if not stages:
+            words = [v for k, v in stmt if k == "word"]
+            if not words and stmt:
+                return VETO_ERROR
+            continue
+        if _is_rm_rf_words(_words(stages[0])) or _is_find_delete(_words(stages[0])):
+            return RM_RF
+        if _is_mkfs_words(_words(stages[0])) or _redirects_block_dev(stages[0]):
+            return MKFS
     if _download_then_run(statements):
         return PIPE_DOWNLOAD_TO_SHELL
 
     for stmt in statements:
         stages = _pipeline_stages(stmt)
+        if not stages:
+            continue
         if _pipe_download_stages(stages):
             return PIPE_DOWNLOAD_TO_SHELL
         for stage in stages:
@@ -956,10 +1017,15 @@ def veto_command(command: str) -> str | None:
     """Return a veto rule id if ``command`` matches a halt class, else None.
 
     Never returns ``execute``. None means "no veto" (fall through to the model).
+    Oversize input fail-closes as ``veto_oversize``.
     """
     if not command or not isinstance(command, str) or not command.strip():
         return None
+    if len(command) > SCAN_CAP:
+        return VETO_OVERSIZE
     for candidate in live_commands(command):
+        if len(candidate) > SCAN_CAP:
+            return VETO_OVERSIZE
         rule = _scan_text(candidate)
         if rule is not None:
             return rule
@@ -969,14 +1035,17 @@ def veto_command(command: str) -> str | None:
 def veto_from_payload(payload: Any) -> str | None:
     """Scan every string (and argv-joined lists) in a /decide payload."""
     plain = _plain(payload)
+    if _is_oversize(plain):
+        return VETO_OVERSIZE
     extracted: list[str] = []
     _walk_commands(plain, extracted)
     texts = extract_strings(plain)
     seen: list[str] = []
     for text in extracted + texts:
-        cap = _cap(text)
-        if cap and cap not in seen:
-            seen.append(cap)
+        if len(text) > SCAN_CAP:
+            return VETO_OVERSIZE
+        if text and text not in seen:
+            seen.append(text)
     for text in seen:
         rule = veto_command(text)
         if rule is not None:
@@ -986,8 +1055,7 @@ def veto_from_payload(payload: Any) -> str | None:
     return None
 
 
-def veto(command: str) -> VetoResult | None:
-    """Halt-class match for a command string. None means fall through to the model."""
+def _veto_unguarded(command: Any) -> VetoResult | None:
     if not isinstance(command, str):
         rule = veto_from_payload(command)
     else:
@@ -995,6 +1063,21 @@ def veto(command: str) -> VetoResult | None:
     if rule is None:
         return None
     return VetoResult(rule=rule)
+
+
+def veto(command: str) -> VetoResult | None:
+    """Halt-class match. Never raises; parse/budget failures halt."""
+    global _BUDGET
+    prev = _BUDGET
+    _BUDGET = _ScanBudget()
+    try:
+        return _veto_unguarded(command)
+    except _BudgetExceeded:
+        return VetoResult(rule=VETO_OVERSIZE)
+    except Exception:
+        return VetoResult(rule=VETO_ERROR)
+    finally:
+        _BUDGET = prev
 
 
 def strengthen_choice(model_choice: str | None, veto_rule: str | None) -> str | None:
@@ -1127,43 +1210,35 @@ def halt_body(payload: Any, rule: str, *, model: str = "veto") -> dict[str, Any]
 
 
 def wrap_decide(decide_fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Run the veto in front of a /decide handler. Halt-only; parse errors fall through.
+    """Run the veto in front of a /decide handler. Halt-only; failures halt.
 
     Pass the function that receives the request payload (the handler), not
-    ``model.decide``.
+    ``model.decide``. Any veto exception, deadline, oversize field or unknown
+    construct returns halt and does not call the model.
     """
 
     @wraps(decide_fn)
     def wrapped(*args: Any, **kwargs: Any) -> Any:
-        hit: VetoResult | None = None
         payload: Any = None
-        try:
-            texts: list[str] = []
-            for value in args:
-                if payload is None and isinstance(value, dict):
-                    payload = value
-                texts.extend(extract_strings(_plain(value)))
-                extra: list[str] = []
-                _walk_commands(_plain(value), extra)
-                texts.extend(extra)
+        for value in args:
+            if isinstance(value, dict):
+                payload = value
+                break
+        if payload is None:
             for value in kwargs.values():
-                if payload is None and isinstance(value, dict):
+                if isinstance(value, dict):
                     payload = value
-                texts.extend(extract_strings(_plain(value)))
-            seen: list[str] = []
-            for text in texts:
-                cap = _cap(text)
-                if cap and cap not in seen:
-                    seen.append(cap)
-            for text in seen:
-                hit = veto(text)
-                if hit is not None:
                     break
-            if hit is None and seen:
-                hit = veto("\n".join(seen))
+        hit: VetoResult | None = None
+        try:
+            if payload is not None:
+                hit = veto(payload)
+            else:
+                blob = extract_command(*args, **kwargs)
+                hit = veto(blob) if blob else None
         except Exception as exc:
             sys.stderr.write("veto_error: %s: %s\n" % (type(exc).__name__, exc))
-            hit = None
+            hit = VetoResult(rule=VETO_ERROR)
         if hit is not None:
             if payload is not None:
                 return halt_body(payload, hit.rule)

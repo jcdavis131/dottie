@@ -27,6 +27,7 @@ from dottie_core.serving.veto import (
     PIPE_DOWNLOAD_TO_SHELL,
     POSITIVE_CASES,
     RM_RF,
+    VETO_ERROR,
     VETO_RULES,
     strengthen_choice,
     veto,
@@ -172,7 +173,7 @@ class DecideVetoTests(unittest.TestCase):
         self.assertNotEqual(body.get("mode"), "veto")
         self.assertNotIn("veto_rule", body)
 
-    def test_veto_parse_exception_falls_through_no_500(self) -> None:
+    def test_veto_parse_exception_halts_fail_closed(self) -> None:
         predictor = _Peaked()
         buf = io.StringIO()
         old = sys.stderr
@@ -182,8 +183,9 @@ class DecideVetoTests(unittest.TestCase):
                 body = decide(_payload("rm file.txt"), model="m", mode="pointer-lora", predictor=predictor)
         finally:
             sys.stderr = old
-        self.assertGreater(predictor.calls, 0)
-        self.assertNotEqual(body.get("mode"), "veto")
+        self.assertEqual(predictor.calls, 0)
+        self.assertEqual(body.get("choice"), "halt")
+        self.assertEqual(body.get("veto_rule"), VETO_ERROR)
         self.assertIn("veto_error", buf.getvalue())
         self.assertIn("RuntimeError", buf.getvalue())
 

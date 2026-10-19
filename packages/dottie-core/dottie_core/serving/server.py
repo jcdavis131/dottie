@@ -11,7 +11,9 @@ Endpoints:
                       -> {"best": {"value":..., "confidence":...},
                           "alternatives": [...], "model_id": ..., "calibration": ...}
                       A veto hit skips the model and returns choice=halt with
-                      veto_rule. Unknown paths (including /reload) are 404.
+                      veto_rule. A veto exception or oversize body fail-closes
+                      to halt (never execute). Unknown paths (including
+                      /reload) are 404.
 
 Run on nugatron:
     python3 -m dottie_core.serving.server --weights training/out/weights.json --port 8766
@@ -35,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dottie_core.state import Belief, Constraints, StateRef, WorldState  # noqa: E402
 from dottie_core.model import TypedQuery  # noqa: E402
 from dottie_core.trained import TrainedModel  # noqa: E402
-from dottie_core.serving.veto import halt_body, veto  # noqa: E402
+from dottie_core.serving.veto import VETO_ERROR, VetoResult, halt_body, veto  # noqa: E402
 
 
 def _state_from_dict(d: dict) -> WorldState:
@@ -127,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
                 hit = veto(body)
             except Exception as exc:
                 sys.stderr.write("veto_error: %s: %s\n" % (type(exc).__name__, exc))
-                hit = None
+                hit = VetoResult(rule=VETO_ERROR)
             if hit is not None:
                 self._send(200, {"ok": True, **halt_body(body, hit.rule)})
                 return

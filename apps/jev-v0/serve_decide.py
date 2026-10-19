@@ -19,8 +19,9 @@ checkpoint's identity hash and its ``eval_summary.json`` gate in ``/health``.
 A fixed veto pre-filter (``dottie_core.serving.veto``) runs on every
 ``/decide`` before the model. It is a pure function (no network, no config,
 no env kill-switch). Matching input returns Choice=halt with ``veto_rule``
-and does not call the model. A veto parse exception is logged and the model
-still answers. The veto can only add a halt.
+and does not call the model. A veto parse exception, deadline, oversize
+field or unknown construct fail-closes to halt and does not call the model.
+The veto can only add a halt.
 
 Implemented paths: GET ``/``, GET ``/health``, POST ``/decide``. Every other
 path, including POST ``/reload``, is 404 for every method. There is no

@@ -9,9 +9,11 @@ dependency-free module any serve can import:
 `veto(command) -> VetoResult | None`. Wrap the **/decide handler** (the
 function that receives the request payload), not `model.decide`. A hit skips
 the model and returns a jev-schema body (`answers.<qid>.choice` / `.score` /
-`.noul`) plus `veto_rule`. A parse exception is logged
-(`veto_error: Type: msg` on stderr) and the model still answers. The wrapper
-only ever adds a halt. There is no env kill-switch.
+`.noul`) plus `veto_rule`. The matcher is **fail-closed**: any exception,
+deadline, parse failure, oversize field, or unknown construct returns halt
+(`veto_error` / `veto_oversize`) and never execute. Failures are logged as
+`veto_error: Type: msg` on stderr. The wrapper only ever adds a halt. There
+is no env kill-switch.
 
 Halt classes: pipe a download into a shell interpreter, fork bomb, serve
 control-plane URL (`/reload` and other admin paths on `:8770`/`:8765`/`:8769`,
@@ -34,7 +36,7 @@ that reads the request, not `model.decide`:
 from dottie_core.serving.veto import wrap_decide
 
 decide = wrap_decide(handle_decide)
-# POST /decide — parse errors fall through to the model
+# POST /decide — parse errors, timeouts and unknown constructs halt
 return decide(payload)
 ```
 
