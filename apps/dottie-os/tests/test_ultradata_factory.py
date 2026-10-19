@@ -7484,16 +7484,33 @@ class HelperFtGroupKeyTests(unittest.TestCase):
         return ctx.exception
 
     def test_math_requires_record_id_and_bans_trajectory_id(self) -> None:
-        missing = _math_uuidless(rid="math-miss-rid")
+        missing = _math_outside_n(rid="math-miss-rid", record_id="rec-miss")
         missing["source"].pop("record_id", None)
         miss_hit = kick_helper_ft._group_key_mismatch(missing)
         self.assertIsNotNone(miss_hit)
         self.assertEqual(miss_hit[0], "row.group_key")
-        both = _math_uuidless(rid="math-both")
+        ok = _row(rid="math-miss-ok", action="halt")
+        miss_exc = self._refuse_rows([missing, ok], pack_id="gk-math-miss-rid")
+        self.assertIn(
+            miss_exc.field,
+            ("row.group_key", "reserved_eval_partition.uuid_missing.shape_mismatch"),
+        )
+        both = _math_outside_n(rid="math-both", record_id="rec-both")
         both["trajectory_id"] = "traj-math"
         both_hit = kick_helper_ft._group_key_mismatch(both)
         self.assertIsNotNone(both_hit)
         self.assertEqual(both_hit[0], "row.group_key")
+        both_ok = _row(rid="math-both-ok", action="halt")
+        both_exc = self._refuse_rows([both, both_ok], pack_id="gk-math-both")
+        self.assertIn(
+            both_exc.field,
+            ("row.group_key", "reserved_eval_partition.uuid_missing.shape_mismatch"),
+        )
+        alias = _math_uuidless(rid="math-tid-alias")
+        alias["trajectoryid"] = "traj-alias"
+        alias_hit = kick_helper_ft._group_key_mismatch(alias)
+        self.assertIsNotNone(alias_hit)
+        self.assertEqual(alias_hit[0], "row.group_key")
 
     def test_agent_missing_trajectory_id_refused(self) -> None:
         bad = _row(rid="agent-miss-tid", action="execute")
@@ -7544,6 +7561,21 @@ class HelperFtGroupKeyTests(unittest.TestCase):
         ok = _row(rid="case-ok", action="halt")
         exc = self._refuse_rows([bad, ok], pack_id="gk-case-subset")
         self.assertEqual(exc.field, "row.subset")
+
+    def test_cross_split_trajectory_id_leak_refused(self) -> None:
+        train = _row(rid="tid-leak-t", action="execute")
+        hold = _row(rid="tid-leak-h", action="halt")
+        train["trajectory_id"] = "shared-traj"
+        hold["trajectory_id"] = "shared-traj"
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_split_pack(dest, [train], [hold], pack_id="gk-tid-leak")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "split")
+        self.assertIn("trajectory_id leak", str(ctx.exception.actual))
 
     def test_cross_split_record_id_leak_refused(self) -> None:
         train = _math_outside_n(rid="math-leak-t", record_id="rec-shared")

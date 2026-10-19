@@ -2949,6 +2949,10 @@ def _row_subset(row: Mapping[str, Any]) -> str | tuple[str, str]:
     return ("row.subset", f"unknown {hf!r}")
 
 
+def _nonempty_str(value: object) -> bool:
+    return type(value) is str and bool(value)
+
+
 def _group_key_mismatch(row: Mapping[str, Any]) -> tuple[str, str] | None:
     """Exactly one group key per row, chosen by subset. No 'only when present'."""
     resolved = _row_subset(row)
@@ -2956,26 +2960,26 @@ def _group_key_mismatch(row: Mapping[str, Any]) -> tuple[str, str] | None:
         return resolved
     subset = resolved
     source = row.get("source") if isinstance(row.get("source"), Mapping) else {}
-    record_id = source.get("record_id") if isinstance(source, Mapping) else None
-    if record_id is None:
-        record_id = row.get("record_id")
-    trajectory_id = row.get("trajectory_id")
-    trajectoryid = row.get("trajectoryid")
-    has_tid = type(trajectory_id) is str and bool(trajectory_id)
-    has_tid_alias = type(trajectoryid) is str and bool(trajectoryid)
-    has_rid = type(record_id) is str and bool(record_id)
+    has_source_rid = isinstance(source, Mapping) and "record_id" in source
+    has_top_rid = "record_id" in row
+    has_tid_key = "trajectory_id" in row
+    has_tid_alias = "trajectoryid" in row
+    source_rid_ok = _nonempty_str(source.get("record_id")) if has_source_rid else False
+    tid_ok = _nonempty_str(row.get("trajectory_id")) if has_tid_key else False
     if subset == "Math":
-        if has_tid or has_tid_alias:
+        if has_tid_key or has_tid_alias:
             return ("row.group_key", "Math row must not have trajectory_id")
-        if not has_rid:
+        if has_top_rid:
+            return ("row.group_key", "Math row requires source.record_id, not top-level record_id")
+        if not source_rid_ok:
             return ("row.group_key", "Math row requires non-empty source.record_id")
         return None
     if subset == "Agent" or subset == "Code":
-        if has_rid:
+        if has_source_rid or has_top_rid:
             return ("row.group_key", f"{subset} row must not have record_id")
-        if has_tid_alias and not has_tid:
+        if has_tid_alias and not tid_ok:
             return ("row.group_key", f"{subset} row requires trajectory_id, not trajectoryid")
-        if not has_tid:
+        if not tid_ok:
             return ("row.group_key", f"{subset} row requires non-empty trajectory_id")
         return None
     _unhandled_subset(subset)
