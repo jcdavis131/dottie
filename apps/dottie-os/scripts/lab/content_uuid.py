@@ -107,29 +107,25 @@ _FLOAT_ABS_MAX = float(2**53)
 _NEAR_DUP_INDEX_ATTR = "_dottie_os_content_uuid_near_dup_index"
 _KICK_ROWS_ATTR = "_dottie_os_kick_near_dup_rows"
 _KICK_FPS_ATTR = "_dottie_os_kick_near_dup_fps"
-_NEAR_DUP_TOKENIZER_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v2.py"
-_NEAR_DUP_GOLDEN_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v2.golden.json"
+_NEAR_DUP_TOKENIZER_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v1.py"
+_NEAR_DUP_GOLDEN_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json"
 # Live Mill tokenizer. CODE_PINS / REQUIRED_PINS pin this sha together with the file.
-NEAR_DUP_TOKENIZER_VERSION = "v2"
+NEAR_DUP_TOKENIZER_VERSION = "v1"
 NEAR_DUP_TOKENIZER_SHA256 = (
-    "a2349dc432d0ccc4e9af1843f8fc731452078a59ba07dee8d4bbe1a6388119a8"
-)
-NEAR_DUP_GOLDEN_SHA256 = (
-    "cbec79ee2e88f573a2abef845cf2c6354d42bd34ca8e7290d74a33c2483b4576"
-)
-# v1 remains on disk, unpinned. Hashes are the byte-identical vendor pins.
-_NEAR_DUP_TOKENIZER_V1_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v1.py"
-_NEAR_DUP_GOLDEN_V1_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json"
-NEAR_DUP_TOKENIZER_V1_SHA256 = (
     "50d5015a051832608391208b7fc3f48259d6e94443213bb46143a06aa2a4f173"
 )
-NEAR_DUP_GOLDEN_V1_SHA256 = (
+NEAR_DUP_GOLDEN_SHA256 = (
     "69609b85cb779a57f071aabc4a94af300f106ea04617d956135d267454d4b7bc"
 )
-_NEAR_DUP_TOKENIZER_V2_REL = _NEAR_DUP_TOKENIZER_REL
-_NEAR_DUP_GOLDEN_V2_REL = _NEAR_DUP_GOLDEN_REL
-NEAR_DUP_TOKENIZER_V2_SHA256 = NEAR_DUP_TOKENIZER_SHA256
-NEAR_DUP_GOLDEN_V2_SHA256 = NEAR_DUP_GOLDEN_SHA256
+# Fail-closed v2 slot. Mill vendoring is held pending Critic; do not load or pin v2.
+_NEAR_DUP_TOKENIZER_V2_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v2.py"
+_NEAR_DUP_GOLDEN_V2_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v2.golden.json"
+NEAR_DUP_TOKENIZER_V2_SHA256 = (
+    "NEAR_DUP_TOKENIZER_V2_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
+)
+NEAR_DUP_GOLDEN_V2_SHA256 = (
+    "NEAR_DUP_TOKENIZER_V2_GOLDEN_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
+)
 _NEAR_DUP_TOKENIZER_PLACEHOLDER_MARKERS = (
     "NEAR_DUP_TOKENIZER_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE",
     "NEAR_DUP_TOKENIZER_PLACEHOLDER",
@@ -212,7 +208,7 @@ def kick_near_dup_fingerprints_loaded() -> bool:
 
 
 def _note_kick_near_dup_row(digest: str, row: Mapping[str, Any]) -> None:
-    payload = dict(row) if isinstance(row, Mapping) else row
+    payload = {field: row[field] for field in CONTENT_UUID_FIELDS if field in row}
     _kick_near_dup_rows()[digest] = payload
 
 
@@ -225,17 +221,17 @@ def _is_sealed_load() -> bool:
 def _mill_tokenizer_path() -> Path:
     here = Path(__file__).resolve()
     if _CU_DIR and not _CU_DIR.startswith("/proc/") and not _is_sealed_load():
-        sibling = Path(_CU_DIR) / "neardup_tokens-v2.py"
+        sibling = Path(_CU_DIR) / "neardup_tokens-v1.py"
         if sibling.is_file():
             return sibling
     try:
         return here.parents[4] / _NEAR_DUP_TOKENIZER_REL
     except IndexError:
-        return here.parent / "neardup_tokens-v2.py"
+        return here.parent / "neardup_tokens-v1.py"
 
 
 def _mill_golden_path() -> Path:
-    return _mill_tokenizer_path().with_name("neardup_tokens-v2.golden.json")
+    return _mill_tokenizer_path().with_name("neardup_tokens-v1.golden.json")
 
 
 def _require_near_dup_golden() -> None:
@@ -297,12 +293,12 @@ def _read_tokenizer_bytes(path: Path) -> bytes:
 
 def _sealed_tokenizer_origin() -> Path | None:
     """Resolve mill only from a sealed ``/proc/`` fd. Disk misses fail closed."""
-    existing = sys.modules.get("neardup_tokens_v2")
+    existing = sys.modules.get("neardup_tokens_v1")
     existing_file = getattr(existing, "__file__", None)
     if isinstance(existing_file, str) and existing_file.startswith("/proc/"):
         return Path(existing_file)
     try:
-        spec = importlib.util.find_spec("neardup_tokens_v2")
+        spec = importlib.util.find_spec("neardup_tokens_v1")
     except (ValueError, ModuleNotFoundError):
         spec = None
     found = Path(spec.origin) if spec is not None and spec.origin else None
@@ -312,7 +308,7 @@ def _sealed_tokenizer_origin() -> Path | None:
 
 
 def require_near_dup_tokenizer_version(version: object) -> str:
-    """Bind the gate to Mill tokenizer v2. Any other version is a refusal."""
+    """Bind the gate to v1. The v2 slot is a fail-closed placeholder until Mill vendors it."""
     if type(version) is not str or not version:
         raise ContentUuidError(
             "near_dup_tokenizer.version",
@@ -320,22 +316,32 @@ def require_near_dup_tokenizer_version(version: object) -> str:
             "missing",
             "near-dup tokenizer version missing",
         )
+    if version == "v2":
+        raise ContentUuidError(
+            "near_dup_tokenizer.version",
+            NEAR_DUP_TOKENIZER_SHA256,
+            NEAR_DUP_TOKENIZER_V2_SHA256,
+            "near-dup tokenizer v2 is a fail-closed placeholder",
+        )
     if version != NEAR_DUP_TOKENIZER_VERSION:
         raise ContentUuidError(
             "near_dup_tokenizer.version",
             NEAR_DUP_TOKENIZER_VERSION,
             version,
-            "near-dup tokenizer version is not the pinned v2",
+            "near-dup tokenizer version is not the pinned v1",
         )
     return version
 
 
-def _is_no_text(value: object, mill: Any | None = None) -> bool:
-    """True iff ``value is mill.NO_TEXT``. Never bool()/len()/iter() the value."""
-    loaded = mill
-    if loaded is None:
-        loaded = sys.modules.get("neardup_tokens_v2") or _NEAR_DUP_TOKENIZER_MODULE
-    sentinel = getattr(loaded, "NO_TEXT", None) if loaded is not None else None
+def _is_no_text(value: object) -> bool:
+    """True for Mill v2's NO_TEXT sentinel. Never bool()/len()/iter() the value."""
+    if value is None:
+        return False
+    name = type(value).__name__
+    if name in {"NoText", "NO_TEXT"}:
+        return True
+    mill = sys.modules.get("neardup_tokens_v1") or sys.modules.get("neardup_tokens_v2")
+    sentinel = getattr(mill, "NO_TEXT", None) if mill is not None else None
     return sentinel is not None and value is sentinel
 
 
@@ -365,13 +371,6 @@ def _load_mill_near_dup_tokenizer(*, version: str | None = None) -> Any:
             digest,
             "near-dup tokenizer sha256 is not the CODE_PINS value",
         )
-    existing = sys.modules.get("neardup_tokens_v2")
-    if (
-        existing is not None
-        and getattr(existing, "_dottie_os_tokenizer_sha256", None) == digest
-        and callable(getattr(existing, "row_tokens", None))
-    ):
-        return existing
     _require_near_dup_golden()
     try:
         text = buf.decode("utf-8")
@@ -398,7 +397,7 @@ def _load_mill_near_dup_tokenizer(*, version: str | None = None) -> Any:
             "syntax",
             "near-dup tokenizer could not be loaded",
         ) from exc
-    mod = types.ModuleType("neardup_tokens_v2")
+    mod = types.ModuleType("neardup_tokens_v1")
     mod.__file__ = str(origin)
     exec(code, mod.__dict__)
     if getattr(mod, "NEAR_DUP_TOKENIZER_PLACEHOLDER", False):
@@ -408,27 +407,19 @@ def _load_mill_near_dup_tokenizer(*, version: str | None = None) -> Any:
             "placeholder",
             "near-dup tokenizer is a placeholder; Mill has not vendored the live file",
         )
-    if not callable(getattr(mod, "row_tokens", None)):
+    if not callable(getattr(mod, "message_tokens", None)):
         raise ContentUuidError(
             "near_dup_tokenizer",
-            "row_tokens",
+            "message_tokens",
             "missing",
-            "Mill tokenizer has no row_tokens function",
+            "Mill tokenizer has no message_tokens function",
         )
-    if getattr(mod, "NO_TEXT", None) is None:
-        raise ContentUuidError(
-            "near_dup_tokenizer",
-            "NO_TEXT",
-            "missing",
-            "Mill tokenizer has no NO_TEXT sentinel",
-        )
-    mod._dottie_os_tokenizer_sha256 = digest
-    sys.modules["neardup_tokens_v2"] = mod
+    sys.modules["neardup_tokens_v1"] = mod
     return mod
 
 
 def _row_state_message(value: Any) -> str | None:
-    """Legacy helper. Gate tokenization uses ``row_tokens`` on the full row."""
+    """Mill tokenizes only a ``state.message`` string. Anything else is untokenized."""
     if type(value) is str:
         return value
     if isinstance(value, Mapping):
@@ -441,55 +432,50 @@ def _row_state_message(value: Any) -> str | None:
 
 
 def near_dup_tokens(value: Any) -> frozenset[str]:
-    """Row tokens via the vendored Mill v2 tokenizer. No Forge tokenize logic.
+    """Message-only tokens via the vendored Mill v1 tokenizer. No Forge tokenize logic.
 
-    Call ``row_tokens`` on the full row. ``NO_TEXT`` is an explicit refusal.
-    Never truthiness-skip: bool/len/iter on ``NO_TEXT`` raise ``NoTextError``.
+    Rows with no tokenizable ``state.message`` string are refused (v1). A v2
+    ``NO_TEXT`` sentinel is also refused. Callers must not truthiness-skip.
     """
     mill = _load_mill_near_dup_tokenizer(version=NEAR_DUP_TOKENIZER_VERSION)
-    no_text_err = getattr(mill, "NoTextError", type(None))
-    try:
-        toks = mill.row_tokens(value)
-    except no_text_err as exc:
+    message = _row_state_message(value)
+    if message is None:
         raise ContentUuidError(
             "near_dup_tokens",
-            "tokenizable row text",
-            "NO_TEXT",
-            "row has no tokenizable text",
-        ) from exc
-    except Exception as exc:
-        raise ContentUuidError(
-            "near_dup_tokens",
-            "tokenizable row text",
-            type(exc).__name__,
-            "Mill tokenizer refused the row",
-        ) from exc
-    if toks is mill.NO_TEXT:
-        raise ContentUuidError(
-            "near_dup_tokens",
-            "tokenizable row text",
-            "NO_TEXT",
-            "row has no tokenizable text; Mill returned NO_TEXT",
+            "tokenizable state.message str",
+            "missing",
+            "row has no tokenizable state.message",
         )
-    if not isinstance(toks, frozenset):
+    try:
+        extracted = mill.message_tokens(message)
+    except TypeError as exc:
+        raise ContentUuidError(
+            "near_dup_tokenizer",
+            "state.message str",
+            type(value).__name__,
+            "Mill tokenizer refused the message",
+        ) from exc
+    if _is_no_text(extracted):
+        raise ContentUuidError(
+            "near_dup_tokens",
+            "tokenizable state.message str",
+            "NO_TEXT",
+            "Mill tokenizer returned NO_TEXT",
+        )
+    try:
+        tokens = frozenset(extracted)
+    except TypeError as exc:
         raise ContentUuidError(
             "near_dup_tokens",
             "token set",
-            type(toks).__name__,
+            type(extracted).__name__,
             "Mill tokenizer did not return a token set",
-        )
-    if len(toks) == 0:
-        raise ContentUuidError(
-            "near_dup_tokens",
-            "non-empty token set",
-            "empty",
-            "Mill tokenizer returned an empty token set",
-        )
-    return toks
+        ) from exc
+    return tokens
 
 
 def record_near_dup_fingerprint(digest: str, row: Mapping[str, Any]) -> None:
-    payload = dict(row) if isinstance(row, Mapping) else row
+    payload = {field: row[field] for field in CONTENT_UUID_FIELDS if field in row}
     _kick_near_dup_fps()[digest] = (row_id(row), near_dup_tokens(payload))
 
 
