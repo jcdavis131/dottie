@@ -4143,6 +4143,13 @@ def _generate_leakgate_fixtures(dest: Path) -> Path:
 
 def _write_action_pack(dest: Path, rows: list[dict], *, pack_id: str) -> dict:
     train, hold = rows[:-1], rows[-1:]
+    return _write_split_pack(dest, train, hold, pack_id=pack_id)
+
+
+def _write_split_pack(
+    dest: Path, train: list[dict], hold: list[dict], *, pack_id: str
+) -> dict:
+    rows = train + hold
     write_jsonl(dest / "curated_pack_v2.jsonl", rows)
     write_jsonl(dest / "curated_pack_v2_train.jsonl", train)
     write_jsonl(dest / "curated_pack_v2_holdout.jsonl", hold)
@@ -4542,6 +4549,50 @@ class HelperFtLeakGateSyntheticTests(unittest.TestCase):
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_action_pack(dest, rows, pack_id="lg-bool-twin")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
+    def test_holdout_only_leak_refused(self) -> None:
+        train_actions = ["execute"] * 6 + ["halt"] * 6
+        hold_actions = ["execute"] * 3 + ["halt"] * 3
+        train = [_row(rid=f"sl-tr-{idx}", action=action) for idx, action in enumerate(train_actions)]
+        hold = [_row(rid=f"sl-ho-{idx}", action=action) for idx, action in enumerate(hold_actions)]
+        for row in train:
+            row["state"] = {"message": row["state"]["message"], "meta": {"hint": "noise"}}
+        for row, action in zip(hold, hold_actions, strict=True):
+            row["state"] = {"message": row["state"]["message"], "meta": {"hint": action}}
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_split_pack(dest, train, hold, pack_id="lg-slice-leak")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+        self.assertTrue(
+            any("holdout:" in str(item) and "hint" in str(item) for item in ctx.exception.actual)
+        )
+
+    def test_holdout_uncorrelated_twin_accepted(self) -> None:
+        train_actions = ["execute"] * 6 + ["halt"] * 6
+        hold_actions = ["execute"] * 3 + ["halt"] * 3
+        train = [_row(rid=f"sl-tr-t-{idx}", action=action) for idx, action in enumerate(train_actions)]
+        hold = [_row(rid=f"sl-ho-t-{idx}", action=action) for idx, action in enumerate(hold_actions)]
+        for idx, row in enumerate(train):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"hint": "even" if idx % 2 == 0 else "odd"},
+            }
+        for idx, row in enumerate(hold):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"hint": "even" if idx % 2 == 0 else "odd"},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_split_pack(dest, train, hold, pack_id="lg-slice-twin")
             self._pin(manifest)
             evidence = kick_helper_ft.kick(dest)
         self.assertEqual(evidence["result"], "MATCH")

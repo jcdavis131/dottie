@@ -992,54 +992,21 @@ def _fields_from_sidecar(path: Path) -> dict[str, dict[str, object]]:
     return by_id
 
 
-def collect_state_leaks(
-    recorded_paths: Mapping[str, str],
-    pack_dir: Path | str | None = None,
+def _load_jsonl_rows(raw: object) -> list[dict[str, Any]]:
+    if type(raw) is not str or not raw:
+        return []
+    path = Path(raw)
+    if not path.is_file():
+        return []
+    return list(_iter_jsonl_objects(path, path.name))
+
+
+def _leak_hits_for_rows(
+    rows: list[dict[str, Any]],
+    sidecar_by_id: Mapping[str, Mapping[str, object]],
 ) -> list[str]:
-    """Pack-level gold-label leak detector.
-
-    A non-``message`` field leaks when its *repeated* values predict the row
-    gold — ``labels.action.choice`` (L3) or ``labels.domain.choice`` (L2),
-    and independently ``labels.safe.noul`` for numeric fields — across the
-    pack. Key names are not a refuse rule: ``risk_hint`` with a constant
-    placeholder must pass; a brand-new key whose values track gold must
-    refuse. JSON objects inside strings (including a JSON tail on
-    ``message``), base64-encoded labels, top-level extra keys, nested
-    state, and ``*.jsonl`` sidecars in ``pack_dir`` are unwrapped and
-    scored the same way. JSON ``null`` is the ``__null__`` category;
-    a field missing from a row is ``__absent__`` (distinct from null).
-    Every column also yields a ``.__present__`` feature, and every
-    mapping yields a ``.__key_count__`` feature, so presence-only and
-    key-count leaks are scored, not dropped.
-
-    Measure. Let U = Theil's uncertainty coefficient
-    ``MI(field; gold) / H(gold)``. Conditional accuracy is the empirical
-    per-value majority classifier, restricted to values with support
-    ``LEAK_MIN_SUPPORT`` (2). Majority baseline is the most common gold
-    among those supported rows.
-
-    Thresholds (statistical defaults, not per-fixture tunings):
-    - Constants (1 distinct value) and unique-per-row fields (cardinality
-      == n) always pass. Unique fields can memorize any labeling; constants
-      cannot separate classes.
-    - A constant gold (one class among the rows that have the field) always
-      passes: any co-occurring field would look perfect otherwise.
-    - Fail closed at small n: accuracy >= ``LEAK_NEAR_PERFECT_ACC`` (0.999)
-      on supported rows refuses even a 3-row A,A,B copy. A 2-row A,B copy
-      is unique-per-row and passes.
-    - Partial leaks: U >= ``LEAK_U_THRESHOLD`` (0.50) and accuracy at least
-      ``LEAK_LIFT_MARGIN`` (0.20) above the majority baseline. Half of gold
-      entropy plus 20pp lift is "matches on most rows" without flagging a
-      mixed ``status`` cycle (~chance) or ordinary ``meta.tool`` / ``lang``.
-    """
-    rows = _unique_pack_rows(recorded_paths)
     if not rows:
         return []
-    sidecar_by_id: dict[str, dict[str, object]] = {}
-    for sidecar in _sidecar_jsonl_paths(pack_dir):
-        for rid, fields in _fields_from_sidecar(sidecar).items():
-            sidecar_by_id.setdefault(rid, {}).update(fields)
-
     columns: dict[str, list[object | None]] = defaultdict(lambda: [None] * len(rows))
     choices: list[str | None] = []
     nouls: list[float | None] = []
@@ -1076,10 +1043,9 @@ def collect_state_leaks(
         if choice_pairs:
             values, golds = [pair[0] for pair in choice_pairs], [pair[1] for pair in choice_pairs]
             if _field_predicts_gold(values, golds):
-                item = path
-                if item not in seen:
-                    seen.add(item)
-                    found.append(item)
+                if path not in seen:
+                    seen.add(path)
+                    found.append(path)
                     if len(found) >= 10:
                         return found
         if synthetic:
@@ -1094,12 +1060,75 @@ def collect_state_leaks(
         if noul_pairs:
             values, golds = [pair[0] for pair in noul_pairs], [pair[1] for pair in noul_pairs]
             if _field_predicts_gold(values, golds):
-                item = path
-                if item not in seen:
-                    seen.add(item)
-                    found.append(item)
+                if path not in seen:
+                    seen.add(path)
+                    found.append(path)
                     if len(found) >= 10:
                         return found
+    return found
+
+
+def collect_state_leaks(
+    recorded_paths: Mapping[str, str],
+    pack_dir: Path | str | None = None,
+) -> list[str]:
+    """Pack-level gold-label leak detector.
+
+    A non-``message`` field leaks when its *repeated* values predict the row
+    gold — ``labels.action.choice`` (L3) or ``labels.domain.choice`` (L2),
+    and independently ``labels.safe.noul`` for numeric fields — across the
+    pack. Key names are not a refuse rule: ``risk_hint`` with a constant
+    placeholder must pass; a brand-new key whose values track gold must
+    refuse. JSON objects inside strings (including a JSON tail on
+    ``message``), base64-encoded labels, top-level extra keys, nested
+    state, and ``*.jsonl`` sidecars in ``pack_dir`` are unwrapped and
+    scored the same way. JSON ``null`` is the ``__null__`` category;
+    a field missing from a row is ``__absent__`` (distinct from null).
+    Every column also yields a ``.__present__`` feature, and every
+    mapping yields a ``.__key_count__`` feature, so presence-only and
+    key-count leaks are scored, not dropped. Train, holdout, and the
+    pooled pack are scored separately; a leak on any slice refuses.
+
+    Measure. Let U = Theil's uncertainty coefficient
+    ``MI(field; gold) / H(gold)``. Conditional accuracy is the empirical
+    per-value majority classifier, restricted to values with support
+    ``LEAK_MIN_SUPPORT`` (2). Majority baseline is the most common gold
+    among those supported rows.
+
+    Thresholds (statistical defaults, not per-fixture tunings):
+    - Constants (1 distinct value) and unique-per-row fields (cardinality
+      == n) always pass. Unique fields can memorize any labeling; constants
+      cannot separate classes.
+    - A constant gold (one class among the rows that have the field) always
+      passes: any co-occurring field would look perfect otherwise.
+    - Fail closed at small n: accuracy >= ``LEAK_NEAR_PERFECT_ACC`` (0.999)
+      on supported rows refuses even a 3-row A,A,B copy. A 2-row A,B copy
+      is unique-per-row and passes.
+    - Partial leaks: U >= ``LEAK_U_THRESHOLD`` (0.50) and accuracy at least
+      ``LEAK_LIFT_MARGIN`` (0.20) above the majority baseline. Half of gold
+      entropy plus 20pp lift is "matches on most rows" without flagging a
+      mixed ``status`` cycle (~chance) or ordinary ``meta.tool`` / ``lang``.
+    """
+    sidecar_by_id: dict[str, dict[str, object]] = {}
+    for sidecar in _sidecar_jsonl_paths(pack_dir):
+        for rid, fields in _fields_from_sidecar(sidecar).items():
+            sidecar_by_id.setdefault(rid, {}).update(fields)
+
+    slices: list[tuple[str, list[dict[str, Any]]]] = [
+        ("", _unique_pack_rows(recorded_paths)),
+        ("train:", _load_jsonl_rows(recorded_paths.get("train"))),
+        ("holdout:", _load_jsonl_rows(recorded_paths.get("holdout"))),
+    ]
+    found: list[str] = []
+    seen: set[str] = set()
+    for prefix, rows in slices:
+        for path in _leak_hits_for_rows(rows, sidecar_by_id):
+            item = f"{prefix}{path}" if prefix else path
+            if item not in seen:
+                seen.add(item)
+                found.append(item)
+                if len(found) >= 10:
+                    return found
     return found
 
 
