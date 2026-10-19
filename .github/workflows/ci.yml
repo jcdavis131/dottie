@@ -645,7 +645,19 @@ jobs:
       - name: Refuse tracked pack artifacts
         run: |
           set -euo pipefail
-          if git ls-files | grep -E 'curated_pack_.*\.(jsonl|json)$|ultradata_harvest_'; then
+          toplevel=$(git rev-parse --show-toplevel) || {
+            echo "FAIL: git rev-parse --show-toplevel failed"
+            exit 1
+          }
+          cd "$toplevel" || {
+            echo "FAIL: cannot cd to git toplevel"
+            exit 1
+          }
+          files=$(git ls-files) || {
+            echo "FAIL: git ls-files failed"
+            exit 1
+          }
+          if printf '%s\n' "$files" | grep -E 'curated_pack_.*\.(jsonl|json)$|ultradata_harvest_'; then
             echo "Pack / harvest artifacts must not be tracked"
             exit 1
           fi
