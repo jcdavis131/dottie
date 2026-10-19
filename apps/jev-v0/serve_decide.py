@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Typed System One ``POST /decide`` dev server (default 127.0.0.1:8771).
+"""Typed System One ``POST /decide`` parked fixture (default 127.0.0.1:8771).
+
+This is not the live :8770 HELPER. The live serve runs off-tree in nugatron's
+factory-trainer Docker image. This fixture stays for schema wiring and tests.
 
 Port ownership: dottie-os, the local sidecar that serves System One on your
 machine or tailnet, owns ``:8770``. This jev-v0 dev server defaults to
@@ -13,17 +16,15 @@ signal. With ``--checkpoint <dir>`` (a ``train_pointer_lora.py --go`` output)
 it lazy-imports torch, answers in ``mode=pointer-lora``, and reports the
 checkpoint's identity hash and its ``eval_summary.json`` gate in ``/health``.
 
-A fixed veto pre-filter runs on every ``/decide`` before the model. It is a
-pure function (no network, no config, no env kill-switch). Matching input
-returns Choice=halt with ``veto_rule`` and does not call the model. A veto
-parse exception is logged and the model still answers; the handler never
-turns that into HTTP 500. The veto can only add a halt.
+A fixed veto pre-filter (``dottie_core.serving.veto``) runs on every
+``/decide`` before the model. It is a pure function (no network, no config,
+no env kill-switch). Matching input returns Choice=halt with ``veto_rule``
+and does not call the model. A veto parse exception is logged and the model
+still answers. The veto can only add a halt.
 
-``/reload`` (any method) is the control plane. It is localhost-bound by
-default (``DEFAULT_HOST``) and requires a constant-time compare against
-``DOTTIE_OS_ADMIN_TOKEN``. Unauthenticated callers get 401; a bad token
-gets 403. Reload refreshes checkpoint identity metadata only — it does not
-read CURRENT.json, champion weights, or trust/.
+Implemented paths: GET ``/``, GET ``/health``, POST ``/decide``. Every other
+path, including POST ``/reload``, is 404 for every method. There is no
+control-plane route.
 
 This is NOT TypeSafe ``/v1/systemone`` parity and it does not call
 TypeSafe. Bind stays loopback unless ``--host`` is set.
@@ -40,15 +41,13 @@ from typing import Any
 from urllib.parse import urlparse
 
 _APP = Path(__file__).resolve().parent
+_ROOT = _APP.parents[1]  # apps/jev-v0 -> repo
+_CORE = _ROOT / "packages" / "dottie-core"
 if str(_APP) not in sys.path:
     sys.path.insert(0, str(_APP))
+if str(_CORE) not in sys.path:
+    sys.path.insert(0, str(_CORE))
 
-from admin_auth import (
-    authorize_admin,
-    bearer_from_headers,
-    configured_secret,
-    is_admin_path,
-)
 from decision_io import (
     SCHEMA_ID,
     SchemaError,
@@ -58,7 +57,7 @@ from decision_io import (
     untrained_answer,
     validate_request,
 )
-from veto import strengthen_choice, veto_body, veto_from_payload
+from dottie_core.serving.veto import wrap_decide
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8771  # dottie-os owns 8770; see the module docstring
@@ -66,27 +65,62 @@ SIDECAR_PORT = 8770
 MAX_BODY = 64 * 1024
 
 
-def _log_veto_exception(exc: BaseException) -> None:
-    sys.stderr.write("veto_error: %s: %s\n" % (type(exc).__name__, exc))
+def _halt_answer(question: dict[str, Any], rule: str) -> dict[str, Any]:
+    """Schema-shaped answer. Never picks ``execute`` when another option exists."""
+    qtype = question["type"]
+    if qtype == "choice":
+        keys = list(question["criteria"])
+        if "halt" in question["criteria"]:
+            pick = "halt"
+        else:
+            pick = next((key for key in keys if key != "execute"), keys[0])
+        probs = {key: (1.0 if key == pick else 0.0) for key in keys}
+        return {
+            "type": "choice",
+            "choice": pick,
+            "probabilities": probs,
+            "shape_concentration": 1.0,
+            "veto_rule": rule,
+        }
+    if qtype == "score":
+        n = len(question["criteria"])
+        keys = [str(i) for i in range(n)]
+        last = keys[-1]
+        probs = {key: (1.0 if key == last else 0.0) for key in keys}
+        return {
+            "type": "score",
+            "score": float(n - 1),
+            "legend": {str(i): label for i, label in enumerate(question["criteria"])},
+            "probabilities": probs,
+            "shape_concentration": 1.0,
+            "veto_rule": rule,
+        }
+    if qtype == "noul":
+        return {"type": "noul", "noul": 0.0, "veto_rule": rule}
+    raise ValueError(f"unhandled question type {qtype!r}")
 
 
-def decide(payload: Any, *, model: str, mode: str, predictor: Any = None) -> dict[str, Any]:
-    """Answer every question. Veto runs first and, on a hit, skips ``predictor``."""
-    request = validate_request(payload)
-    rule: str | None = None
-    try:
-        rule = veto_from_payload(request)
-    except Exception as exc:
-        _log_veto_exception(exc)
-        rule = None
-    if rule:
-        return veto_body(request, model=model, rule=rule)
+def _veto_body(request: dict[str, Any], *, model: str, rule: str) -> dict[str, Any]:
+    """A /decide response that is Choice=halt. Does not call a model."""
+    answers = {qid: _halt_answer(question, rule) for qid, question in request["questions"].items()}
+    return {
+        "schema": request["schema"],
+        "model": model,
+        "mode": "veto",
+        "veto_rule": rule,
+        "choice": "halt",
+        "answers": answers,
+    }
+
+
+def _model_decide(
+    request: dict[str, Any], *, model: str, mode: str, predictor: Any
+) -> dict[str, Any]:
     if predictor is None:
         answers = {
             qid: untrained_answer(question) for qid, question in request["questions"].items()
         }
     elif hasattr(predictor, "probabilities_many"):
-        # one pass over the shared state prefix for every question (pointer_infer.SharedPrefixScorer)
         probs = predictor.probabilities_many(request["state"], request["questions"])
         answers = {
             qid: answer_from_probabilities(question, probs[qid])
@@ -97,15 +131,25 @@ def decide(payload: Any, *, model: str, mode: str, predictor: Any = None) -> dic
             qid: answer_from_probabilities(question, predictor.probabilities(request["state"], question))
             for qid, question in request["questions"].items()
         }
-    action = answers.get("action")
-    if isinstance(action, dict) and "choice" in action:
-        action["choice"] = strengthen_choice(action.get("choice"), None)
     return {
         "schema": SCHEMA_ID,
         "model": model,
         "mode": mode,
         "answers": answers,
     }
+
+
+def decide(payload: Any, *, model: str, mode: str, predictor: Any = None) -> dict[str, Any]:
+    """Answer every question. Veto runs first and, on a hit, skips ``predictor``."""
+    request = validate_request(payload)
+
+    def inner(req: dict[str, Any]) -> dict[str, Any]:
+        return _model_decide(req, model=model, mode=mode, predictor=predictor)
+
+    result = wrap_decide(inner)(request)
+    if isinstance(result, dict) and result.get("veto_rule"):
+        return _veto_body(request, model=model, rule=str(result["veto_rule"]))
+    return result
 
 
 class DecideHandler(BaseHTTPRequestHandler):
@@ -131,52 +175,13 @@ class DecideHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def _consume_body(self) -> bytes | None:
-        length_raw = self.headers.get("Content-Length", "")
-        if length_raw == "":
-            return b""
-        try:
-            length = int(length_raw)
-        except ValueError:
-            self.close_connection = True
-            self._send(400, {"ok": False, "error": "Content-Length required"})
-            return None
-        if length < 0 or length > MAX_BODY:
-            self.close_connection = True
-            self._send(413, {"ok": False, "error": f"body exceeds {MAX_BODY} bytes"})
-            return None
-        return self.rfile.read(length)
-
-    def _admin(self, method: str) -> None:
-        raw = self._consume_body()
-        if raw is None:
-            return
-        peer = self.client_address[0] if self.client_address else ""
-        token = bearer_from_headers(
-            self.headers.get("Authorization"),
-            self.headers.get("X-Admin-Token"),
-        )
-        status, error = authorize_admin(peer=peer, token=token, secret=configured_secret())
-        if status != 200:
-            self._send(status, {"ok": False, "error": error})
-            return
-        info = self.server.reload_identity()
-        self._send(
-            200,
-            {
-                "ok": True,
-                "method": method,
-                "path": urlparse(self.path).path,
-                "reloaded": bool(info.get("reloaded")),
-                **{k: v for k, v in info.items() if k != "reloaded"},
-            },
-        )
+    def _not_found(self) -> None:
+        # Unread bodies on keep-alive sockets must not become the next request.
+        self.close_connection = True
+        self._send(404, {"ok": False, "error": "not found"})
 
     def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
         path = urlparse(self.path).path
-        if is_admin_path(path):
-            self._admin("GET")
-            return
         if path in {"/", "/health"}:
             self._send(
                 200,
@@ -191,24 +196,25 @@ class DecideHandler(BaseHTTPRequestHandler):
                 },
             )
             return
-        self._send(404, {"ok": False, "error": "not found"})
+        self._not_found()
 
     def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
         path = urlparse(self.path).path
-        if is_admin_path(path):
-            self._admin("POST")
-            return
         if path != "/decide":
-            self.close_connection = True  # the unread body must not become the next request
-            self._send(404, {"ok": False, "error": "not found"})
+            self._not_found()
             return
-        raw = self._consume_body()
-        if raw is None:
-            return
-        if raw == b"" and self.headers.get("Content-Length", "") == "":
+        length_raw = self.headers.get("Content-Length", "")
+        try:
+            length = int(length_raw)
+        except ValueError:
             self.close_connection = True
             self._send(400, {"ok": False, "error": "Content-Length required"})
             return
+        if length < 0 or length > MAX_BODY:
+            self.close_connection = True
+            self._send(413, {"ok": False, "error": f"body exceeds {MAX_BODY} bytes"})
+            return
+        raw = self.rfile.read(length)
         try:
             payload = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -224,40 +230,22 @@ class DecideHandler(BaseHTTPRequestHandler):
         except SchemaError as exc:
             self._send(422, {"ok": False, "error": str(exc)})
             return
-        except Exception as exc:
-            # Veto parse errors are swallowed inside decide(). Anything else
-            # still must not become an uncaught 500 from the veto path.
-            _log_veto_exception(exc)
-            self._send(400, {"ok": False, "error": f"{type(exc).__name__}: {exc}"})
-            return
         self._send(200, body)
 
     def do_PUT(self) -> None:  # noqa: N802
-        self._admin_or_404("PUT")
+        self._not_found()
 
     def do_DELETE(self) -> None:  # noqa: N802
-        self._admin_or_404("DELETE")
+        self._not_found()
 
     def do_PATCH(self) -> None:  # noqa: N802
-        self._admin_or_404("PATCH")
+        self._not_found()
 
     def do_HEAD(self) -> None:  # noqa: N802
-        path = urlparse(self.path).path
-        if is_admin_path(path):
-            self._admin("HEAD")
-            return
-        if path in {"/", "/health"}:
-            self.do_GET()
-            return
-        self._send(404, {"ok": False, "error": "not found"})
+        self._not_found()
 
-    def _admin_or_404(self, method: str) -> None:
-        path = urlparse(self.path).path
-        if is_admin_path(path):
-            self._admin(method)
-            return
-        self.close_connection = True
-        self._send(404, {"ok": False, "error": "not found"})
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self._not_found()
 
 
 class DecideServer(ThreadingHTTPServer):
@@ -270,22 +258,12 @@ class DecideServer(ThreadingHTTPServer):
         mode: str,
         predictor: Any = None,
         checkpoint_info: dict[str, Any] | None = None,
-        checkpoint_path: Path | None = None,
     ) -> None:
         super().__init__((host, port), DecideHandler)
         self.decide_model = model
         self.decide_mode = mode
         self.predictor = predictor
         self.checkpoint_info = checkpoint_info or {}
-        self.checkpoint_path = checkpoint_path
-
-    def reload_identity(self) -> dict[str, Any]:
-        """Refresh /health identity from the boot checkpoint path. No weight swap."""
-        path = self.checkpoint_path
-        if path is None:
-            return {**self.checkpoint_info, "reloaded": False, "reason": "untrained"}
-        self.checkpoint_info = checkpoint_info(path)
-        return {**self.checkpoint_info, "reloaded": True}
 
 
 def checkpoint_info(checkpoint: Path) -> dict[str, Any]:
@@ -332,7 +310,6 @@ def main(argv: list[str] | None = None) -> int:
     info: dict[str, Any] = {}
     mode = "untrained"
     model = args.model or "jev-v0-untrained"
-    checkpoint_path = args.checkpoint
     if args.checkpoint is not None:
         from pointer_infer import load_checkpoint  # lazy: torch only on this path
 
@@ -342,15 +319,7 @@ def main(argv: list[str] | None = None) -> int:
         model = args.model or args.checkpoint.name
     if args.port == SIDECAR_PORT:
         sys.stderr.write(f"port {SIDECAR_PORT} is the dottie-os sidecar's; serving there as the sidecar\n")
-    server = DecideServer(
-        args.host,
-        args.port,
-        model=model,
-        mode=mode,
-        predictor=predictor,
-        checkpoint_info=info,
-        checkpoint_path=checkpoint_path,
-    )
+    server = DecideServer(args.host, args.port, model=model, mode=mode, predictor=predictor, checkpoint_info=info)
     sys.stderr.write(
         f"jev-v0 /decide on http://{args.host}:{args.port}/decide "
         f"schema={SCHEMA_ID} mode={mode} (NOT train_1b, NOT TypeSafe parity)\n"

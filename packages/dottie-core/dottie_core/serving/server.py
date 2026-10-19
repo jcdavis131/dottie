@@ -10,6 +10,8 @@ Endpoints:
     POST /decide   -> {"state": {...}, "query": {...}}
                       -> {"best": {"value":..., "confidence":...},
                           "alternatives": [...], "model_id": ..., "calibration": ...}
+                      A veto hit skips the model and returns choice=halt with
+                      veto_rule. Unknown paths (including /reload) are 404.
 
 Run on nugatron:
     python3 -m dottie_core.serving.server --weights training/out/weights.json --port 8766
@@ -33,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dottie_core.state import Belief, Constraints, StateRef, WorldState  # noqa: E402
 from dottie_core.model import TypedQuery  # noqa: E402
 from dottie_core.trained import TrainedModel  # noqa: E402
+from dottie_core.serving.veto import wrap_decide  # noqa: E402
 
 
 def _state_from_dict(d: dict) -> WorldState:
@@ -101,28 +104,50 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):  # quiet
         pass
 
+    def _not_found(self) -> None:
+        self._send(404, {"ok": False, "error": "not found"})
+
     def do_GET(self):
         if urlparse(self.path).path == "/health":
             m = self.model
             self._send(200, {"ok": True, "model_id": m.model_id if m else None,
                              "calibration": m.calibration if m else None})
         else:
-            self._send(404, {"ok": False, "error": "not found"})
+            self._not_found()
 
     def do_POST(self):
         if urlparse(self.path).path != "/decide":
-            self._send(404, {"ok": False, "error": "not found"})
+            self._not_found()
             return
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length) or b"{}")
             state = _state_from_dict(body["state"])
             query = _query_from_dict(body["query"])
-            ans = self.model.decide(state, query)  # type: ignore[union-attr]
-            self._send(200, {"ok": True, **_answer_to_dict(ans)})
+            decide_fn = wrap_decide(self.model.decide)  # type: ignore[union-attr]
+            ans = decide_fn(state, query)
+            if isinstance(ans, dict) and ans.get("veto_rule"):
+                self._send(200, {"ok": True, **ans})
+            else:
+                self._send(200, {"ok": True, **_answer_to_dict(ans)})
         except Exception as e:
             traceback.print_exc()
             self._send(400, {"ok": False, "error": f"{type(e).__name__}: {e}"})
+
+    def do_PUT(self):
+        self._not_found()
+
+    def do_DELETE(self):
+        self._not_found()
+
+    def do_PATCH(self):
+        self._not_found()
+
+    def do_HEAD(self):
+        self._not_found()
+
+    def do_OPTIONS(self):
+        self._not_found()
 
 
 def serve(weights: str, port: int = 8766) -> None:
