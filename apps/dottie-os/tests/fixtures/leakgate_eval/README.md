@@ -7,6 +7,26 @@ Packs are **not tracked**. `gen.py` rebuilds them into a temp dir at test time
 from `source.json` (16 BASE rows). Timestamp pins: `--ts 20261018-230457`
 and `--produced-at 2026-10-18T23:04:57-05:00` (Mill's production clock).
 
+## Generator provenance
+
+`gen.py` is Mill's generator, vendored from upstream sha `5d7244a6…58a8`.
+It is not byte-identical: a 24-line patch adds CLI args
+`--src` / `--out` / `--ts` / `--produced-at` and replaces `datetime.now()`
+with those pinned timestamps. No generation logic changed.
+
+Every `open()` uses `encoding='utf-8'`; every write also uses `newline='\n'`
+so the SHA is stable under `LC_ALL=C` and on Windows.
+
+Mill can rebuild independently and re-pin the fixtures / MANIFEST shas:
+
+```
+python3 apps/dottie-os/tests/fixtures/leakgate_eval/gen.py \
+  --src apps/dottie-os/tests/fixtures/leakgate_eval/source.json \
+  --out "$OUT" \
+  --ts 20261018-230457 \
+  --produced-at 2026-10-18T23:04:57-05:00
+```
+
 Each generated mini-pack under packs/<case_id>/ is a runnable curated_pack_v2 (pack/train/holdout[/sidecar]).
 A leak = a NON-message field whose VALUE predicts the gold label (action for L3, domain for L2) across the whole pack.
 Detection must be VALUE-based and PACK-level: refuse when a field's values predict gold across rows; accept when the
