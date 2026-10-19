@@ -270,6 +270,31 @@ RESERVED_NEAR_DUP_FPS_SHA256 = (
 # Gate-config path for the HMAC shingle key. Never from the request body.
 RESERVED_NEAR_DUP_HMAC_KEY_PATH = "/run/forge-runner/reserved_near_dup_hmac.key"
 RESERVED_NEAR_DUP_HMAC_KEY_ID = "RESERVED_NEAR_DUP_HMAC_KEY_ID_PLACEHOLDER"
+# S-SHORTREF: refuse N refs with fewer than 16 unique shingles. Mill's builder
+# also enforces nchar >= 20 OR |B| >= 16 at build time; the public file has no nchar.
+MIN_REF_SHINGLES = 16
+_FP_LENGTH_KEY_FOLDED = frozenset(
+    {
+        "nchar",
+        "l",
+        "length",
+        "nchars",
+        "n_char",
+        "n_chars",
+        "nlen",
+        "n_len",
+        "nbytes",
+        "n_bytes",
+        "token_count",
+        "tokencount",
+        "shingle_count",
+        "shinglecount",
+        "ref_len",
+        "reflen",
+        "b_size",
+        "bsize",
+    }
+)
 _PLACEHOLDER_MARKERS = (
     "PLACEHOLDER",
     "NOT_A_LIVE_ROW",
@@ -2840,6 +2865,37 @@ def _looks_like_unkeyed_digest(value: object) -> bool:
     return type(value) is str and len(value) == SHA256_LEN and all(ch in _HEX for ch in value)
 
 
+def _fingerprint_length_field(obj: Mapping[str, Any]) -> str | None:
+    """S-NCHAR-LEAK: public fingerprint objects must not carry nchar/L or a length field."""
+    for key, value in obj.items():
+        if type(key) is not str:
+            continue
+        folded = key.casefold()
+        compact = folded.replace("_", "").replace("-", "")
+        if folded in _FP_LENGTH_KEY_FOLDED or compact in _FP_LENGTH_KEY_FOLDED:
+            return key
+        if key in {"L", "l"}:
+            return key
+        if compact in {"ntokens", "size", "b"} and type(value) is int:
+            return key
+    return None
+
+
+def _require_keyed_hasher() -> Callable[[str], str]:
+    """Same keyed HMAC-SHA256 hasher for candidates and references. Never logs the key."""
+    key = _HMAC_KEY_BYTES
+    if key is None:
+        _refuse("reserved_near_dup_hmac.hasher", "loaded keyed hasher", "missing")
+    material = key
+
+    def hasher(shingle: str) -> str:
+        if type(shingle) is not str:
+            _refuse("reserved_near_dup_hmac.hasher", "str shingle", type(shingle).__name__)
+        return hmac.new(material, shingle.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    return hasher
+
+
 def load_reserved_near_dup_hmac_key(path: object, expected_key_id: object) -> bytes:
     """Read the HMAC key at kick time. Never logs key bytes; never from the request body."""
     global _HMAC_KEY_BYTES, _HMAC_KEY_ID_LOADED
@@ -2938,6 +2994,14 @@ def load_reserved_near_dup_fingerprints(
                 "JSON object",
                 type(obj).__name__,
             )
+        if row_fields.extract_paths_ready():
+            leak = _fingerprint_length_field(obj)
+            if leak is not None:
+                _refuse(
+                    f"reserved_near_dup_fingerprints[{idx}].{leak}",
+                    "absent length field",
+                    leak,
+                )
         digest = obj.get("content_uuid") or obj.get("sha256")
         rid = obj.get("id") if type(obj.get("id")) is str else "n"
         if type(digest) is not str or len(digest) != SHA256_LEN:
@@ -3025,7 +3089,14 @@ def load_reserved_near_dup_fingerprints(
                 content_uuid.NEAR_DUP_TOKENIZER_VERSION,
                 tok_ver,
             )
-        found[digest] = (rid, frozenset(hmac_list))
+        shingles = frozenset(hmac_list)
+        if row_fields.extract_paths_ready() and len(shingles) < MIN_REF_SHINGLES:
+            _refuse(
+                f"reserved_near_dup_fingerprints[{idx}].hmac_sha256",
+                f"|B|>={MIN_REF_SHINGLES}",
+                "short",
+            )
+        found[digest] = (rid, shingles)
     return found
 
 
@@ -3043,16 +3114,100 @@ def _candidate_tokens_for_fingerprint(
     n_tokens: frozenset[str],
 ) -> frozenset[str]:
     """HMAC candidate shingles when N fingerprints are keyed HMAC digests."""
-    if not _fingerprint_tokens_are_hmac(n_tokens):
+    keyed = _fingerprint_tokens_are_hmac(n_tokens) or row_fields.mill_v2x_ready()
+    if not keyed:
         return cand_tokens
-    key = _HMAC_KEY_BYTES
-    if key is None:
-        _refuse(
-            "reserved_near_dup_hmac.key",
-            "loaded HMAC key",
-            "missing",
-        )
-    return frozenset(_hmac_digest_hex(key, tok) for tok in cand_tokens)
+    hasher = _require_keyed_hasher()
+    return frozenset(hasher(tok) for tok in cand_tokens)
+
+
+class _FingerprintRef:
+    """Minimal mill reference: hashed token set only. No nchar/L."""
+
+    __slots__ = ("tokens",)
+
+    def __init__(self, tokens: frozenset[str]) -> None:
+        self.tokens = tokens
+
+
+def _collect_v2x_near_dup(
+    row: Mapping[str, Any],
+    rid: str,
+    reserved: set[str],
+) -> list[tuple[str, str]]:
+    """v2.x near_dup/match: NO_TEXT refuse, keyed hasher both sides, never pass on error."""
+    mill = row_fields._pinned_mill()
+    no_text_err = row_fields.no_text_error_types()
+    hits: list[tuple[str, str]] = []
+    try:
+        hasher = _require_keyed_hasher()
+    except KickRefused as exc:
+        return [(exc.field, f"{rid}:hasher missing")]
+    try:
+        row_toks = mill.row_tokens(row) if callable(getattr(mill, "row_tokens", None)) else None
+        if mill.is_no_text(row_toks):
+            return [("reserved_eval_partition.near_dup_no_text", f"{rid}:NO_TEXT")]
+        for reserved_sha in reserved:
+            indexed = content_uuid.lookup_near_dup_fingerprint(reserved_sha)
+            if indexed is None:
+                if content_uuid.kick_near_dup_fingerprints_loaded():
+                    hits.append(
+                        (
+                            "reserved_eval_partition.near_dup_fingerprint_missing",
+                            f"{rid}:no fingerprint for {reserved_sha}",
+                        )
+                    )
+                    break
+                continue
+            n_id, n_tokens = indexed
+            if not isinstance(n_tokens, frozenset) or not n_tokens:
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup_empty_tokens",
+                        f"{rid}:empty fingerprint for {n_id}",
+                    )
+                )
+                continue
+            ref = _FingerprintRef(n_tokens)
+            try:
+                mill.near_dup(row, ref, hasher=hasher)
+                matched = mill.match(row, ref, hasher=hasher)
+            except no_text_err:
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup_no_text",
+                        f"{rid}:NO_TEXT",
+                    )
+                )
+                return hits
+            except Exception:
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup",
+                        f"{rid}:tokenizer refused",
+                    )
+                )
+                return hits
+            is_dup = False
+            if type(matched) is bool:
+                is_dup = matched
+            elif isinstance(matched, Mapping):
+                is_dup = bool(matched.get("near_dup"))
+            if is_dup:
+                hits.append(
+                    (
+                        "reserved_eval_partition.near_dup",
+                        f"{rid}:near_dup of {n_id}",
+                    )
+                )
+                break
+    except no_text_err:
+        return [("reserved_eval_partition.near_dup_no_text", f"{rid}:NO_TEXT")]
+    except KickRefused as exc:
+        return [(exc.field, f"{rid}:hasher missing")]
+    except Exception:
+        return [("reserved_eval_partition.near_dup", f"{rid}:tokenizer refused")]
+    return hits
 
 
 def load_reserved_content_uuids(path: object, expected_sha256: object) -> set[str]:
@@ -3845,6 +4000,11 @@ def collect_reserved_partition(
                     f"{rid}:reserved content sha {content_sha}",
                 )
             )
+        if row_fields.mill_v2x_ready():
+            hits.extend(_collect_v2x_near_dup(row, rid, reserved))
+            if len(hits) >= 10:
+                return hits
+            continue
         try:
             cand_tokens = content_uuid.near_dup_tokens(row)
         except content_uuid.ContentUuidError as exc:

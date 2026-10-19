@@ -44,6 +44,34 @@ def extract_paths_ready() -> bool:
     )
 
 
+def mill_v2x_ready() -> bool:
+    """True when mill v2.x near_dup/match/is_no_text are live on the pinned module."""
+    mill = _pinned_mill()
+    return (
+        extract_paths_ready()
+        and callable(getattr(mill, "near_dup", None))
+        and callable(getattr(mill, "match", None))
+        and callable(getattr(mill, "is_no_text", None))
+    )
+
+
+def no_text_error_types() -> tuple[type, ...]:
+    mill = _require_v22()
+    cls = getattr(mill, "NoTextError", None)
+    if isinstance(cls, type) and issubclass(cls, BaseException):
+        return (cls,)
+    return ()
+
+
+def _mill_trainer_allowlist(mill: Any) -> frozenset[str]:
+    for name in ("ALLOW_PATHS", "TRAIN_PATHS", "READABLE_PATHS"):
+        val = getattr(mill, name, None)
+        if val is not None:
+            return frozenset(str(item) for item in val)
+    _refuse("extract_paths", "mill trainer allowlist is missing")
+    raise AssertionError("unreachable")
+
+
 def _require_v22() -> Any:
     mill = _pinned_mill()
     if mill is None or not extract_paths_ready():
@@ -136,8 +164,15 @@ def gate_tokens(row: object) -> frozenset[str]:
 
 
 def trainer_input_from_row(row: Mapping[str, Any]) -> Sequence[Any]:
-    """Same extract_paths pairs, untouched. Fail-closed until v2.2."""
-    return extract_paths(row)
+    """extract_paths pairs on the mill allowlist, after schema check. Fail-closed until v2.2.
+
+    Allowlist is mill's, separate from DENY_KEYS. Paths not on the exact
+    allowlist are not trainer input (no free text through case/spacing/lookalike keys).
+    """
+    mill = _require_v22()
+    pairs = extract_paths(row)
+    allow = _mill_trainer_allowlist(mill)
+    return [item for item in pairs if _pair_path(item) in allow]
 
 
 def scanned_field_paths(row: object) -> tuple[str, ...]:

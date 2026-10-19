@@ -24,6 +24,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import types
 import threading
 import time
 import unittest
@@ -8554,8 +8555,10 @@ class HelperFtExtractPathsSeamPlaceholderTests(unittest.TestCase):
 
     def test_seam_refuses_extract_paths_check_denied_trainer_and_gate(self) -> None:
         self.assertFalse(row_fields.extract_paths_ready())
+        self.assertFalse(row_fields.mill_v2x_ready())
         self.assertFalse((LAB / "neardup_tokens-v2.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2.1.py").is_file())
+        self.assertFalse((LAB / "neardup_tokens-v2_1.py").is_file())
         self.assertFalse((LAB / "neardup_tokens-v2.2.py").is_file())
         row = _strict_row("seam-refuse", "halt")
         with self.assertRaises(row_fields.RowFieldsError) as ctx:
@@ -8722,9 +8725,455 @@ class HelperFtMillExtractPathsTests(unittest.TestCase):
         self.assertIn(b"halt", labels_raw)
         self.assertIn(b"What should the pair-programmer do?", questions_raw)
 
+    def test_case_spacing_lookalike_keys_not_trained_as_free_text(self) -> None:
+        mill = content_uuid._load_mill_near_dup_tokenizer()
+        allow = row_fields._mill_trainer_allowlist(mill)
+        n_text = DENIED_FIELD_N_TEXT
+        n_bytes = n_text.encode("utf-8")
+        variants = (
+            "Labels",
+            "LABELS",
+            "STATE.meta",
+            "State.Meta",
+            "l\u0430bels",
+            "\uff4cabels",
+            " labels",
+        )
+        for key in variants:
+            with self.subTest(key=key):
+                row = self._valid_row(rid=f"var-{key}")
+                row[key] = n_text
+                try:
+                    pairs = row_fields.trainer_input_from_row(row)
+                except row_fields.RowFieldsError:
+                    continue
+                paths = [_extract_pair_path(item) for item in pairs]
+                if key in allow:
+                    self.assertIn(key, paths)
+                else:
+                    self.assertNotIn(key, paths)
+                    for item in pairs:
+                        self.assertNotIn(n_bytes, _extract_pair_raw_bytes(item))
+
+
+class _FakeNoTextError(Exception):
+    pass
+
+
+class _FakeNoText:
+    def __bool__(self) -> bool:
+        raise _FakeNoTextError("NO_TEXT")
+
+    def __len__(self) -> int:
+        raise _FakeNoTextError("NO_TEXT")
+
+    def __iter__(self):
+        raise _FakeNoTextError("NO_TEXT")
+
+
+_FAKE_NO_TEXT = _FakeNoText()
+
+
+def _install_fake_v22_mill() -> object:
+    mill = types.ModuleType("neardup_tokens_v1")
+    mill.NO_TEXT = _FAKE_NO_TEXT
+    mill.NoTextError = _FakeNoTextError
+    mill.ALLOW_PATHS = frozenset({"state.message", "labels", "questions"})
+    mill.DENY_KEYS = frozenset(
+        {
+            "schema",
+            "id",
+            "tier",
+            "source",
+            "labels",
+            "questions",
+            "consent",
+            "trajectory_id",
+            "record_id",
+            "group_key",
+            "state.meta",
+            "meta",
+        }
+    )
+    mill.DENY_TOP = frozenset(
+        [
+            "schema",
+            "id",
+            "tier",
+            "source",
+            "labels",
+            "questions",
+            "consent",
+            "trajectory_id",
+            "record_id",
+            "group_key",
+        ]
+    )
+    mill.DENY_STATE = frozenset(["meta"])
+
+    def extract_paths(row: object) -> list[tuple[str, bytes, None]]:
+        pairs: list[tuple[str, bytes, None]] = []
+        allow = mill.ALLOW_PATHS
+
+        def walk(obj: object, prefix: str) -> None:
+            if prefix in allow:
+                if type(obj) is str:
+                    pairs.append((prefix, obj.encode("utf-8"), None))
+                elif type(obj) is bytes:
+                    pairs.append((prefix, obj, None))
+                else:
+                    pairs.append(
+                        (
+                            prefix,
+                            json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode(
+                                "utf-8"
+                            ),
+                            None,
+                        )
+                    )
+                return
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    path = f"{prefix}.{key}" if prefix else str(key)
+                    walk(value, path)
+            elif type(obj) is str:
+                pairs.append((prefix, obj.encode("utf-8"), None))
+
+        walk(row, "")
+        return pairs
+
+    def check_denied(row: object) -> None:
+        if not isinstance(row, dict):
+            return
+        n_text = DENIED_FIELD_N_TEXT
+        labels = row.get("labels")
+        if type(labels) is str and n_text in labels:
+            raise row_fields.RowFieldsError("labels", "N text in denied field")
+        state = row.get("state")
+        if isinstance(state, dict):
+            meta = state.get("meta")
+            if type(meta) is str and n_text in meta:
+                raise row_fields.RowFieldsError("state.meta", "N text in denied field")
+        for field in (
+            "schema",
+            "id",
+            "tier",
+            "source",
+            "consent",
+            "trajectory_id",
+            "record_id",
+            "group_key",
+            "questions",
+        ):
+            value = row.get(field)
+            if type(value) is str and n_text in value:
+                raise row_fields.RowFieldsError(field, "N text in denied field")
+
+    def is_no_text(value: object) -> bool:
+        return value is _FAKE_NO_TEXT
+
+    def row_tokens(row: object) -> object:
+        message = None
+        if isinstance(row, dict):
+            state = row.get("state")
+            if isinstance(state, dict) and type(state.get("message")) is str:
+                message = state["message"]
+        if message is None or len(message) < 5:
+            return _FAKE_NO_TEXT
+        return frozenset(message[i : i + 5] for i in range(len(message) - 4))
+
+    def message_tokens(message: object) -> object:
+        if type(message) is not str or len(message) < 5:
+            return _FAKE_NO_TEXT
+        return frozenset(message[i : i + 5] for i in range(len(message) - 4))
+
+    def near_dup(cand: object, ref: object, hasher: object = None) -> bool:
+        toks = row_tokens(cand)
+        if is_no_text(toks):
+            raise _FakeNoTextError("NO_TEXT")
+        if hasher is None:
+            return False
+        hashed = frozenset(hasher(tok) for tok in toks)
+        other = getattr(ref, "tokens", frozenset())
+        union = hashed | other
+        if not union:
+            return False
+        return (len(hashed & other) / len(union)) >= 0.5
+
+    def match(cand: object, ref: object, hasher: object = None) -> dict:
+        if is_no_text(row_tokens(cand)):
+            raise _FakeNoTextError("NO_TEXT")
+        dup = near_dup(cand, ref, hasher=hasher)
+        return {"near_dup": dup, "containment": 1.0 if dup else 0.0}
+
+    mill.extract_paths = extract_paths
+    mill.check_denied = check_denied
+    mill.is_no_text = is_no_text
+    mill.row_tokens = row_tokens
+    mill.message_tokens = message_tokens
+    mill.near_dup = near_dup
+    mill.match = match
+    sys.modules["neardup_tokens_v1"] = mill
+    return mill
+
+
+class HelperFtV22SeamGateTests(unittest.TestCase):
+    """Gate-side v2.2 requirements, exercised against a fake mill on the seam."""
+
+    def setUp(self) -> None:
+        self._orig_mill = sys.modules.get("neardup_tokens_v1")
+        kick_helper_ft.reset_hmac_key_state()
+        content_uuid.reset_kick_near_dup_fingerprints()
+        self._mill = _install_fake_v22_mill()
+
+    def tearDown(self) -> None:
+        kick_helper_ft.reset_hmac_key_state()
+        content_uuid.reset_kick_near_dup_fingerprints()
+        if self._orig_mill is None:
+            sys.modules.pop("neardup_tokens_v1", None)
+        else:
+            sys.modules["neardup_tokens_v1"] = self._orig_mill
+
+    def _valid_row(self, *, rid: str = "keep-labels", action: str = "halt") -> dict:
+        row = _strict_row(rid, action)
+        row["subset"] = "Agent"
+        row["trajectory_id"] = rid
+        return row
+
+    def _hmac_key_file(self, directory: Path, key_id: str, material: bytes) -> Path:
+        path = directory / "reserved_near_dup_hmac.key"
+        path.write_bytes(key_id.encode("ascii") + b"\n" + material)
+        os.chmod(path, 0o400)
+        return path
+
+    def test_seam_ready_with_fake_mill(self) -> None:
+        self.assertTrue(row_fields.extract_paths_ready())
+        self.assertTrue(row_fields.mill_v2x_ready())
+
+    def test_deny_trainer_case_spacing_lookalike_keys(self) -> None:
+        n_text = DENIED_FIELD_N_TEXT
+        n_bytes = n_text.encode("utf-8")
+        allow = frozenset(self._mill.ALLOW_PATHS)
+        variants = (
+            ("Labels", n_text),
+            ("LABELS", n_text),
+            ("STATE.meta", n_text),
+            ("State.Meta", n_text),
+            ("l\u0430bels", n_text),
+            ("\uff4cabels", n_text),
+            (" labels", n_text),
+        )
+        for key, value in variants:
+            with self.subTest(key=key):
+                row = self._valid_row(rid=f"var-{ord(key[0])}")
+                row[key] = value
+                try:
+                    pairs = row_fields.trainer_input_from_row(row)
+                except row_fields.RowFieldsError:
+                    continue
+                paths = [_extract_pair_path(item) for item in pairs]
+                if key in allow:
+                    self.assertIn(key, paths)
+                else:
+                    self.assertNotIn(key, paths)
+                    for item in pairs:
+                        self.assertNotIn(n_bytes, _extract_pair_raw_bytes(item))
+        nested = self._valid_row(rid="nested-meta")
+        nested["state"] = {"message": nested["state"]["message"], "Meta": n_text}
+        pairs = row_fields.trainer_input_from_row(nested)
+        for item in pairs:
+            self.assertNotIn(n_bytes, _extract_pair_raw_bytes(item))
+        intact = row_fields.trainer_input_from_row(self._valid_row(rid="intact"))
+        blobs = b"\n".join(_extract_pair_raw_bytes(item) for item in intact)
+        self.assertIn(b"halt", blobs)
+        self.assertIn(b"What should the pair-programmer do?", blobs)
+
+    def test_no_text_is_checked_and_caught(self) -> None:
+        row = self._valid_row(rid="no-text")
+        row["state"] = {"message": "xy"}
+        self.assertTrue(self._mill.is_no_text(self._mill.row_tokens(row)))
+        with self.assertRaises(_FakeNoTextError):
+            self._mill.near_dup(row, kick_helper_ft._FingerprintRef(frozenset({"abcde"})))
+        with self.assertRaises(_FakeNoTextError):
+            self._mill.match(row, kick_helper_ft._FingerprintRef(frozenset({"abcde"})))
+        key_id = "factory-hmac-test-key"
+        nsha = hashlib.sha256(b"n-notext").hexdigest()
+        content_uuid.install_kick_near_dup_fingerprints(
+            {nsha: ("n1", frozenset(f"{i:064x}" for i in range(16)))}
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            key_path = self._hmac_key_file(Path(tmp), key_id, b"factory-hmac-material")
+            with patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)), patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                kick_helper_ft.load_reserved_near_dup_hmac_key(key_path, key_id)
+                hits = kick_helper_ft._collect_v2x_near_dup(row, "no-text", {nsha})
+                self.assertTrue(any("NO_TEXT" in msg for _field, msg in hits), hits)
+                self.assertTrue(any("near_dup_no_text" in field for field, _msg in hits), hits)
+                self._mill.is_no_text = lambda _value: False
+                hits_raise = kick_helper_ft._collect_v2x_near_dup(row, "no-text-raise", {nsha})
+        self.assertTrue(any("NO_TEXT" in msg for _field, msg in hits_raise), hits_raise)
+
+    def test_other_tokenizer_exception_is_refusal_not_pass(self) -> None:
+        def boom(_cand: object, _ref: object, hasher: object = None) -> bool:
+            raise RuntimeError("unexpected mill failure")
+
+        self._mill.near_dup = boom
+        row = self._valid_row(rid="boom")
+        nsha = hashlib.sha256(b"n-boom").hexdigest()
+        content_uuid.install_kick_near_dup_fingerprints(
+            {nsha: ("n1", frozenset(f"{i:064x}" for i in range(16)))}
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            key_id = "factory-hmac-test-key"
+            key_path = self._hmac_key_file(Path(tmp), key_id, b"factory-hmac-material")
+            with patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)), patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                kick_helper_ft.load_reserved_near_dup_hmac_key(key_path, key_id)
+                hits = kick_helper_ft._collect_v2x_near_dup(row, "boom", {nsha})
+        self.assertTrue(hits)
+        self.assertTrue(all("tokenizer refused" in msg or "NO_TEXT" in msg for _f, msg in hits), hits)
+
+    def test_hasher_missing_refuses_and_mill_without_hasher_is_not_a_pass(self) -> None:
+        row = self._valid_row(rid="hasher")
+        ref_tokens = frozenset(
+            hmac.new(b"factory-hmac-material", tok.encode("utf-8"), hashlib.sha256).hexdigest()
+            for tok in self._mill.row_tokens(row)
+        )
+        self.assertFalse(
+            self._mill.near_dup(row, kick_helper_ft._FingerprintRef(ref_tokens), hasher=None)
+        )
+        with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+            kick_helper_ft._require_keyed_hasher()
+        self.assertEqual(ctx.exception.field, "reserved_near_dup_hmac.hasher")
+        self.assertNotIn("factory-hmac-material", str(ctx.exception))
+        nsha = hashlib.sha256(b"n-hash").hexdigest()
+        content_uuid.install_kick_near_dup_fingerprints({nsha: ("n1", ref_tokens)})
+        hits = kick_helper_ft._collect_v2x_near_dup(row, "hasher", {nsha})
+        self.assertTrue(any("hasher" in field or "hasher" in msg for field, msg in hits), hits)
+
+    def test_hasher_applied_both_sides_never_logs_key_or_digest(self) -> None:
+        row = self._valid_row(rid="hash-both")
+        material = b"factory-hmac-material-not-logged"
+        key_id = "factory-hmac-test-key"
+        toks = self._mill.row_tokens(row)
+        hmacs = frozenset(
+            hmac.new(material, tok.encode("utf-8"), hashlib.sha256).hexdigest() for tok in toks
+        )
+        buf = StringIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            key_path = self._hmac_key_file(Path(tmp), key_id, material)
+            with patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)), patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ), redirect_stdout(buf):
+                kick_helper_ft.load_reserved_near_dup_hmac_key(key_path, key_id)
+                hasher = kick_helper_ft._require_keyed_hasher()
+                scored = frozenset(hasher(tok) for tok in toks)
+                self.assertEqual(scored, hmacs)
+                nsha = hashlib.sha256(b"n-both").hexdigest()
+                content_uuid.install_kick_near_dup_fingerprints({nsha: ("n1", hmacs)})
+                hits = kick_helper_ft._collect_v2x_near_dup(row, "hash-both", {nsha})
+        self.assertTrue(any("near_dup of" in msg for _f, msg in hits), hits)
+        dumped = buf.getvalue()
+        self.assertNotIn(material.decode("ascii"), dumped)
+        self.assertNotIn(material.hex(), dumped)
+        for digest in hmacs:
+            self.assertNotIn(digest, dumped)
+            for field, msg in hits:
+                self.assertNotIn(digest, field)
+                self.assertNotIn(digest, msg)
+
+    def test_shortref_and_nchar_leak_refused_on_load(self) -> None:
+        key_id = "factory-hmac-test-key"
+        material = b"factory-hmac-material"
+        digest = hashlib.sha256(b"n-fp").hexdigest()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            key_path = self._hmac_key_file(root, key_id, material)
+            short = (
+                json.dumps(
+                    {
+                        "content_uuid": digest,
+                        "id": "n1",
+                        "hmac_sha256": [f"{i:064x}" for i in range(15)],
+                        "key_id": key_id,
+                        "tokenizer_version": "v1",
+                    }
+                )
+                + "\n"
+            )
+            leaked = (
+                json.dumps(
+                    {
+                        "content_uuid": digest,
+                        "id": "n1",
+                        "hmac_sha256": [f"{i:064x}" for i in range(16)],
+                        "key_id": key_id,
+                        "tokenizer_version": "v1",
+                        "nchar": 20,
+                    }
+                )
+                + "\n"
+            )
+            leaked_l = (
+                json.dumps(
+                    {
+                        "content_uuid": digest,
+                        "id": "n1",
+                        "hmac_sha256": [f"{i:064x}" for i in range(16)],
+                        "key_id": key_id,
+                        "tokenizer_version": "v1",
+                        "L": 20,
+                    }
+                )
+                + "\n"
+            )
+            ok = (
+                json.dumps(
+                    {
+                        "content_uuid": digest,
+                        "id": "n1",
+                        "hmac_sha256": [f"{i:064x}" for i in range(16)],
+                        "key_id": key_id,
+                        "tokenizer_version": "v1",
+                    }
+                )
+                + "\n"
+            )
+            fps_path = root / "fps.jsonl"
+            with patch.object(kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_PATH", str(key_path)), patch.object(
+                kick_helper_ft, "RESERVED_NEAR_DUP_HMAC_KEY_ID", key_id
+            ):
+                fps_path.write_text(short, encoding="utf-8")
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx_short:
+                    kick_helper_ft.load_reserved_near_dup_fingerprints(
+                        fps_path, hashlib.sha256(short.encode()).hexdigest()
+                    )
+                self.assertIn("hmac_sha256", ctx_short.exception.field)
+                fps_path.write_text(leaked, encoding="utf-8")
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx_n:
+                    kick_helper_ft.load_reserved_near_dup_fingerprints(
+                        fps_path, hashlib.sha256(leaked.encode()).hexdigest()
+                    )
+                self.assertIn("nchar", ctx_n.exception.field)
+                fps_path.write_text(leaked_l, encoding="utf-8")
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx_l:
+                    kick_helper_ft.load_reserved_near_dup_fingerprints(
+                        fps_path, hashlib.sha256(leaked_l.encode()).hexdigest()
+                    )
+                self.assertIn(".L", ctx_l.exception.field)
+                fps_path.write_text(ok, encoding="utf-8")
+                found = kick_helper_ft.load_reserved_near_dup_fingerprints(
+                    fps_path, hashlib.sha256(ok.encode()).hexdigest()
+                )
+                self.assertEqual(set(found), {digest})
+                self.assertEqual(len(found[digest][1]), 16)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
