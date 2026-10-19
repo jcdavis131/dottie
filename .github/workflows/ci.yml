@@ -664,6 +664,18 @@ jobs:
             echo "FAIL: cannot cd to git toplevel"
             exit 1
           }
+          if [ -z "${GITHUB_SHA:-}" ]; then
+            echo "FAIL: GITHUB_SHA is unset"
+            exit 1
+          fi
+          if ! printf '%s' "$GITHUB_SHA" | grep -qxE '[0-9a-fA-F]{40}'; then
+            echo "FAIL: GITHUB_SHA is not 40 hex"
+            exit 1
+          fi
+          if ! git_scrub cat-file -e "$GITHUB_SHA^{commit}"; then
+            echo "FAIL: GITHUB_SHA is not a commit in this repo"
+            exit 1
+          fi
           index_list=$(mktemp)
           tree_list=$(mktemp)
           cleanup() { rm -f "$index_list" "$tree_list"; }
@@ -686,12 +698,21 @@ jobs:
             echo "Pack / harvest artifacts must not be tracked"
             exit 1
           fi
-          git_scrub -c core.quotePath=false ls-tree -r --name-only -z HEAD >"$tree_list" || {
-            echo "FAIL: git ls-tree HEAD failed"
+          git_scrub -c core.quotePath=false ls-tree -r -z --full-tree --name-only "$GITHUB_SHA" >"$tree_list" || {
+            echo "FAIL: git ls-tree GITHUB_SHA failed"
             exit 1
           }
+          n_tree=$(tr -cd '\0' <"$tree_list" | wc -c | tr -d ' ')
+          if ! grep -zFqx '.github/workflows/ci.yml' "$tree_list"; then
+            echo "FAIL: ls-tree missing .github/workflows/ci.yml (hollow tree?)"
+            exit 1
+          fi
+          if [ "$n_tree" -lt "$PACK_GUARD_LS_FILES_FLOOR" ]; then
+            echo "FAIL: ls-tree count ${n_tree} < floor ${PACK_GUARD_LS_FILES_FLOOR}"
+            exit 1
+          fi
           if grep -zEi "$pack_re" "$tree_list"; then
-            echo "Pack / harvest artifacts must not be tracked (HEAD tree)"
+            echo "Pack / harvest artifacts must not be tracked (GITHUB_SHA tree)"
             exit 1
           fi
           echo "No pack artifacts tracked"
