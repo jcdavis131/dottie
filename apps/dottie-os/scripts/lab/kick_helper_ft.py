@@ -74,7 +74,7 @@ GIT_SHA_LEN = 40
 _HEX = frozenset("0123456789abcdef")
 FORGE_ENTRYPOINT_PINS_ENV = "FORGE_ENTRYPOINT_PINS"
 FORGE_PINS_SOURCE_COMMIT_ENV = "FORGE_PINS_SOURCE_COMMIT"
-ENTRYPOINT_PIN_BASENAMES = ("kick_helper_ft.py", "cam_pin_spec.py")
+ENTRYPOINT_PIN_BASENAMES = ("kick_helper_ft.py", "cam_pin_spec.py", "content_uuid.py")
 PINS_JSON_NAME = "PINS.json"
 PINNED_COPY_DEPTH = 4
 PINNED_COPY_REASON = "pinned-copy"
@@ -89,6 +89,15 @@ PINNED_COPY_REQUIRED_RELS = (
     PINNED_COPY_UUID_REL,
     PINNED_COPY_PUB_REL,
     PINNED_COPY_KEY_ID_REL,
+)
+REPO_TRUST_PUB_REL = "apps/dottie-os/trust/cam_pin_ed25519.pub"
+REPO_TRUST_KEY_ID_REL = "apps/dottie-os/trust/cam_pin_key_id"
+ENTRYPOINT_PIN_RELS = (
+    PINNED_COPY_KICK_REL,
+    PINNED_COPY_SPEC_REL,
+    PINNED_COPY_UUID_REL,
+    REPO_TRUST_PUB_REL,
+    REPO_TRUST_KEY_ID_REL,
 )
 PINS_JSON_MAX_BYTES = 64 * 1024
 _GATE_OK = object()
@@ -126,6 +135,8 @@ LEAK_NULL = "__null__"
 LEAK_ABSENT = "__absent__"
 LEAK_KEY_COUNT_SUFFIX = ".__key_count__"
 LEAK_PRESENT_SUFFIX = ".__present__"
+LEAK_ID_RESIDUE_SUFFIX = ".__id_residue__"
+LEAK_PAIR_MAX_PAIRS = 64
 _LEAK_BOOKKEEPING_KEYS = frozenset(
     {
         "schema",
@@ -151,6 +162,7 @@ INBOX_LATEST_PATH_MARKERS = (
     "20260919-093515-host-meta",
 )
 LIVE_INBOX_LATEST_DIR = "runs/inbox/20260919-093515-host-meta"
+_LATEST_SPLIT_RE = re.compile(r"[^a-z0-9]+")
 
 # (manifest sha field, on-disk file, MANIFEST row field, pin row field)
 ARTIFACTS: tuple[tuple[str, str, str, str], ...] = (
@@ -399,22 +411,27 @@ def _require_relative_pin_path(field: str, value: object) -> str:
     return value
 
 
+def _script_repo_root(script: Path | None = None) -> Path:
+    path = Path(script) if script is not None else _running_script()
+    return path.resolve().parents[PINNED_COPY_DEPTH]
+
+
 def _entrypoint_live_files() -> dict[str, Path]:
-    return {
-        "kick_helper_ft.py": Path(__file__).resolve(),
-        "cam_pin_spec.py": Path(cam_pin_spec.__file__).resolve(),
-    }
+    root = _script_repo_root()
+    return {rel: (root / rel).resolve() for rel in ENTRYPOINT_PIN_RELS}
 
 
 def load_entrypoint_pins(*, git_sha: str | None) -> tuple[dict[str, str], str]:
     """Load runner pin map + source commit. Null git sha is allowed only here.
 
-    ``FORGE_ENTRYPOINT_PINS`` is a JSON object mapping relative paths to
-    sha256 hex, and must cover ``kick_helper_ft.py`` and ``cam_pin_spec.py``.
-    ``FORGE_PINS_SOURCE_COMMIT`` is the 40-hex commit those pins were hashed
-    from. A missing ``script_git_sha`` (private verified copy) is accepted
-    only when both env vars are present and well formed. Missing or
-    malformed pins refuse even when ``git_sha`` is present.
+    ``FORGE_ENTRYPOINT_PINS`` is a JSON object mapping **exact** repo-relative
+    paths to sha256 hex. Basename keys are a missing entry. Required keys
+    are the pinned-copy rels (kick, cam_pin_spec, content_uuid, trust pub,
+    trust key id). ``FORGE_PINS_SOURCE_COMMIT`` is the 40-hex commit those
+    pins were hashed from and, when ``git_sha`` is present, must equal it.
+    A missing ``script_git_sha`` (private verified copy) is accepted only
+    when both env vars are present and well formed. Missing or malformed
+    pins refuse even when ``git_sha`` is present.
     """
     if git_sha is not None and (
         type(git_sha) is not str
@@ -444,22 +461,24 @@ def load_entrypoint_pins(*, git_sha: str | None) -> tuple[dict[str, str], str]:
             type(parsed).__name__ if not isinstance(parsed, dict) else "empty",
         )
     pins: dict[str, str] = {}
-    by_base: dict[str, str] = {}
     for key, value in parsed.items():
         rel = _require_relative_pin_path("entrypoint_pins", key)
         digest = _require_sha256_hex(f"entrypoint_pins.{rel}", value)
         pins[rel] = digest
-        base = Path(rel).name
-        if base in by_base:
-            _refuse("entrypoint_pins", f"unique basename {base}", rel)
-        by_base[base] = digest
+        if Path(rel).name == rel:
+            _refuse("entrypoint_pins", "exact repo-relative path", rel)
     live = _entrypoint_live_files()
-    for basename in ENTRYPOINT_PIN_BASENAMES:
-        if basename not in by_base:
-            _refuse("entrypoint_pins", f"pin covering {basename}", "missing")
-        actual = sha256_file(live[basename])
-        if by_base[basename] != actual:
-            _refuse(f"entrypoint_pins.{basename}", actual, by_base[basename])
+    for rel in ENTRYPOINT_PIN_RELS:
+        if rel not in pins:
+            _refuse("entrypoint_pins", f"pin covering {rel}", "missing")
+        target = live[rel]
+        if not target.is_file():
+            _refuse(rel, "readable regular file", "missing")
+        actual = sha256_file(target)
+        if pins[rel] != actual:
+            _refuse(f"entrypoint_pins.{rel}", actual, pins[rel])
+    if git_sha is not None and commit != git_sha:
+        _refuse("pins_source_commit", git_sha, commit)
     return pins, commit
 
 
@@ -921,12 +940,26 @@ def _is_message_key(key: object) -> bool:
     return normalize_leak_key(key) == "message"
 
 
+def _is_user_role(role: object) -> bool:
+    return isinstance(role, str) and normalize_leak_key(role) == "user"
+
+
+def _is_chat_message(value: Mapping[str, Any]) -> bool:
+    role = value.get("role")
+    if not isinstance(role, str) or not role.strip():
+        return False
+    return "content" in value or "tool_calls" in value or "parts" in value
+
+
 def _is_leak_synthetic_path(path: str) -> bool:
-    """Presence and key-count features are categorical, never noul copies."""
+    """Presence, key-count, id-residue, and pairwise features are categorical."""
     return (
         path == "__key_count__"
         or path.endswith(LEAK_KEY_COUNT_SUFFIX)
         or path.endswith(LEAK_PRESENT_SUFFIX)
+        or path.endswith(LEAK_ID_RESIDUE_SUFFIX)
+        or "|" in path
+        or "^" in path
     )
 
 
@@ -983,6 +1016,124 @@ def _conditional_accuracy(
         return 0.0, 0, 0.0
     baseline = Counter(supported).most_common(1)[0][1] / len(supported)
     return correct / len(supported), len(supported), baseline
+
+
+_ID_SPLIT_RE = re.compile(r"[^A-Za-z0-9]+")
+
+
+def _strip_unique_affix(values: list[str]) -> list[str] | None:
+    min_len = min((len(value) for value in values), default=0)
+    if min_len < 2:
+        return None
+    n = len(values)
+    for strip in range(1, min_len):
+        prefixes = [value[:-strip] for value in values]
+        n_unique = len(set(prefixes))
+        if 1 < n_unique < n:
+            return prefixes
+    for strip in range(1, min_len):
+        suffixes = [value[strip:] for value in values]
+        n_unique = len(set(suffixes))
+        if 1 < n_unique < n:
+            return suffixes
+    return None
+
+
+def _unique_id_residues(col: list[object]) -> list[object] | None:
+    """Strip unique prefix/suffix tokens from a unique-per-row string column."""
+    if any(not isinstance(value, str) for value in col):
+        return None
+    texts = [str(value) for value in col]
+    if len(set(texts)) < len(texts):
+        return None
+    tokenized = [_ID_SPLIT_RE.split(text) for text in texts]
+    counts: Counter[str] = Counter()
+    for tokens in tokenized:
+        for token in tokens:
+            if token:
+                counts[token.casefold()] += 1
+    residues: list[object] = []
+    for tokens in tokenized:
+        kept = [token.casefold() for token in tokens if token and counts[token.casefold()] > 1]
+        residues.append("|".join(kept) if kept else LEAK_ABSENT)
+    if len(set(residues)) <= 1 or len(set(residues)) >= len(residues):
+        stripped = _strip_unique_affix(texts)
+        if stripped is None:
+            return None
+        residues = list(stripped)
+    if len(set(residues)) <= 1 or len(set(residues)) >= len(residues):
+        return None
+    return residues
+
+
+def _binary_bits(col: list[object]) -> list[int] | None:
+    unique = sorted({value for value in col}, key=lambda item: str(item))
+    if len(unique) != 2:
+        return None
+    mapping = {unique[0]: 0, unique[1]: 1}
+    return [mapping[value] for value in col]
+
+
+def _score_choice_column(
+    path: str,
+    col: list[object],
+    choices: list[str | None],
+    found: list[str],
+    seen: set[str],
+) -> bool:
+    choice_pairs = [
+        (value, gold) for value, gold in zip(col, choices) if gold is not None
+    ]
+    if not choice_pairs:
+        return False
+    values, golds = [pair[0] for pair in choice_pairs], [pair[1] for pair in choice_pairs]
+    if not _field_predicts_gold(values, golds):
+        return False
+    if path not in seen:
+        seen.add(path)
+        found.append(path)
+    return len(found) >= 10
+
+
+def _add_id_residue_columns(columns: dict[str, list[object | None]]) -> None:
+    for path, col in list(columns.items()):
+        if _is_leak_synthetic_path(path):
+            continue
+        residues = _unique_id_residues(list(col))
+        if residues is not None:
+            columns[path + LEAK_ID_RESIDUE_SUFFIX] = residues
+
+
+def _add_pairwise_columns(
+    columns: dict[str, list[object | None]],
+    choices: list[str | None],
+) -> None:
+    binary_paths: list[str] = []
+    for path, col in columns.items():
+        if _is_leak_synthetic_path(path):
+            continue
+        supported = [value for value, gold in zip(col, choices) if gold is not None]
+        if len(set(supported)) == 2:
+            binary_paths.append(path)
+    binary_paths.sort()
+    added = 0
+    for idx, left in enumerate(binary_paths):
+        left_bits = _binary_bits(list(columns[left]))
+        if left_bits is None:
+            continue
+        for right in binary_paths[idx + 1 :]:
+            if added >= LEAK_PAIR_MAX_PAIRS:
+                return
+            right_bits = _binary_bits(list(columns[right]))
+            if right_bits is None:
+                continue
+            concat = [f"{a}\x1f{b}" for a, b in zip(columns[left], columns[right])]
+            xor_col: list[object | None] = [
+                f"__xor__:{a ^ b}" for a, b in zip(left_bits, right_bits)
+            ]
+            columns[f"{left}|{right}"] = concat
+            columns[f"{left}^{right}"] = xor_col
+            added += 1
 
 
 def _field_predicts_gold(values: list[object], golds: list[object]) -> bool:
@@ -1110,6 +1261,19 @@ def _walk_leak_value(
     from_message: bool,
 ) -> None:
     if isinstance(value, Mapping):
+        if _is_chat_message(value):
+            is_user = _is_user_role(value.get("role"))
+            for key, child in value.items():
+                if normalize_leak_key(key) == "role":
+                    continue
+                child_path = f"{path}.{key}" if path else str(key)
+                _walk_leak_value(
+                    child,
+                    child_path,
+                    into,
+                    from_message=from_message and is_user,
+                )
+            return
         if not from_message:
             count_path = f"{path}{LEAK_KEY_COUNT_SUFFIX}" if path else "__key_count__"
             into[count_path] = len(value)
@@ -1257,24 +1421,15 @@ def _leak_hits_for_rows(
         columns[path + LEAK_PRESENT_SUFFIX] = [
             LEAK_BOOL_FALSE if token == LEAK_ABSENT else LEAK_BOOL_TRUE for token in col
         ]
+    _add_id_residue_columns(columns)
+    _add_pairwise_columns(columns, choices)
 
     found: list[str] = []
     seen: set[str] = set()
     for path, col in columns.items():
         synthetic = _is_leak_synthetic_path(path)
-        choice_pairs = [
-            (value, gold)
-            for value, gold in zip(col, choices)
-            if gold is not None
-        ]
-        if choice_pairs:
-            values, golds = [pair[0] for pair in choice_pairs], [pair[1] for pair in choice_pairs]
-            if _field_predicts_gold(values, golds):
-                if path not in seen:
-                    seen.add(path)
-                    found.append(path)
-                    if len(found) >= 10:
-                        return found
+        if _score_choice_column(path, list(col), choices, found, seen):
+            return found
         if synthetic:
             continue
         noul_pairs = [
@@ -1486,10 +1641,27 @@ def enforce_pack_gates(
         _refuse("state.leak", "absent", leaks[:10])
 
 
+def _path_has_latest_token(text: str) -> bool:
+    """True when ``latest`` is a path component or a ``_``/``-``-delimited token."""
+    compact = text.replace("\\", "/").lower().strip().replace(" ", "")
+    if compact in INBOX_LATEST_TOKENS:
+        return True
+    for part in compact.split("/"):
+        if not part:
+            continue
+        if part in INBOX_LATEST_TOKENS or part == "latest":
+            return True
+        if any(token == "latest" for token in _LATEST_SPLIT_RE.split(part) if token):
+            return True
+    return False
+
+
 def _looks_like_inbox_latest(value: str) -> bool:
     text = value.replace("\\", "/").lower().strip()
     compact = text.replace(" ", "")
     if text in INBOX_LATEST_TOKENS or compact in INBOX_LATEST_TOKENS:
+        return True
+    if _path_has_latest_token(text):
         return True
     return any(marker.lower() in compact for marker in INBOX_LATEST_PATH_MARKERS)
 
@@ -1546,6 +1718,37 @@ def _force_remove(path: Path) -> None:
         shutil.rmtree(path, onerror=_onerror)
     except OSError:
         pass
+
+
+def assigned_checkpoint_id(run_id: str) -> str:
+    """Smoke (and kick) own the checkpoint name. Launchers cannot pick it."""
+    return f"ckpt-{run_id}"
+
+
+def collect_forged_smoke_checkpoints(run_dir: Path, assigned: Path | None) -> list[Path]:
+    """Any ckpt-* / smoke dir other than the run-scoped id is a forged snapshot."""
+    extras: list[Path] = []
+    root = Path(run_dir)
+    if not root.is_dir():
+        return extras
+    assigned_resolved = assigned.resolve() if assigned is not None else None
+    try:
+        children = list(root.iterdir())
+    except OSError:
+        return extras
+    for child in children:
+        name = child.name
+        if name != "smoke" and not name.startswith("ckpt-"):
+            continue
+        try:
+            resolved = child.resolve()
+        except OSError:
+            extras.append(child)
+            continue
+        if assigned_resolved is not None and resolved == assigned_resolved:
+            continue
+        extras.append(child)
+    return extras
 
 
 def cleanup_smoke_artifacts(
@@ -2463,6 +2666,7 @@ def kick(
     smoke = bool(smoke)
     _refuse_local_pin_files(_resolve_pack_dir(pack_dir))
     run_id = _new_run_id()
+    assigned_ckpt = assigned_checkpoint_id(run_id)
     if log_path is not None:
         log_path = Path(log_path)
         run_dir = log_path.parent
@@ -2587,11 +2791,14 @@ def kick(
                 _refuse("kickoff", "ok", result)
         else:
             result = post_kickoff(body, url=kickoff_url)
-        if isinstance(result, dict) and result.get("checkpoint_id") and not smoke:
-            evidence["checkpoint_id"] = result["checkpoint_id"]
+        launcher_ckpt = (
+            result.get("checkpoint_id") if isinstance(result, dict) else None
+        )
+        if smoke:
+            evidence["checkpoint_id"] = assigned_ckpt
             persist()
-        elif smoke:
-            evidence["checkpoint_id"] = "smoke"
+        elif launcher_ckpt:
+            evidence["checkpoint_id"] = launcher_ckpt
             persist()
         # Training must finish before the end-of-training re-hash. Wait in this
         # same process/host, then re-hash the recorded run-dir copy paths.
@@ -2623,7 +2830,12 @@ def kick(
         )
         if smoke:
             evidence["smoke"] = True
-            ckpt_dir = checkpoint_dir_for(run_dir, evidence.get("checkpoint_id"))
+            evidence["scorable"] = False
+            ckpt_dir = checkpoint_dir_for(run_dir, assigned_ckpt)
+            forged = collect_forged_smoke_checkpoints(run_dir, ckpt_dir)
+            forged_names = [path.name for path in forged]
+            for extra in forged:
+                _force_remove(extra)
             survivors = cleanup_smoke_artifacts(
                 checkpoint_dir=ckpt_dir,
                 run_private=run_private,
@@ -2632,6 +2844,24 @@ def kick(
             evidence["checkpoint_id"] = None
             evidence.pop("checkpoint_integrity_evidence_path", None)
             evidence["checkpoint_integrity_status"] = CHECKPOINT_UNSCORED
+            leftover_forged = [
+                path.name
+                for path in collect_forged_smoke_checkpoints(run_dir, None)
+                if os.path.lexists(path)
+            ]
+            if leftover_forged or any(os.path.lexists(path) for path in forged):
+                leftover_forged = sorted(set(forged_names + leftover_forged))
+                evidence["ok"] = False
+                evidence["result"] = CHECKPOINT_REFUSED
+                evidence["survivors"] = leftover_forged
+                persist()
+                _refuse("smoke.checkpoint_id", assigned_ckpt, leftover_forged)
+            if forged_names:
+                evidence["ok"] = False
+                evidence["result"] = CHECKPOINT_REFUSED
+                evidence["forged_checkpoints"] = forged_names
+                persist()
+                _refuse("smoke.checkpoint_id", assigned_ckpt, forged_names)
             if survivors:
                 evidence["ok"] = False
                 evidence["result"] = CHECKPOINT_REFUSED
@@ -2647,11 +2877,14 @@ def kick(
         evidence["actual"] = exc.actual
         if smoke:
             evidence["smoke"] = True
+            evidence["scorable"] = False
             ckpt_dir = None
             try:
-                ckpt_dir = checkpoint_dir_for(run_dir, evidence.get("checkpoint_id"))
+                ckpt_dir = checkpoint_dir_for(run_dir, assigned_ckpt)
             except KickRefused:
                 ckpt_dir = None
+            for extra in collect_forged_smoke_checkpoints(run_dir, ckpt_dir):
+                _force_remove(extra)
             survivors = cleanup_smoke_artifacts(
                 checkpoint_dir=ckpt_dir,
                 run_private=run_private,

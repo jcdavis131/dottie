@@ -228,6 +228,21 @@ def _fallback_state_leaks(body: dict[str, Any]) -> list[str]:
     return found
 
 
+def _inbox_is_latest(value: str) -> bool:
+    """Refuse ``latest`` as a whole path, component, or ``_``/``-`` token."""
+    text = value.replace("\\", "/").lower().strip().replace(" ", "")
+    aliases = {"latest", "inbox_latest", "inbox-latest", "inbox:latest"}
+    if text in aliases:
+        return True
+    for part in text.split("/"):
+        if part in aliases or part == "latest":
+            return True
+        for token in part.replace("-", "_").split("_"):
+            if token == "latest":
+                return True
+    return False
+
+
 def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     """HELPER FT ``POST /train/kickoff``. Never accepts ``inbox: latest``.
 
@@ -243,7 +258,7 @@ def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     inbox = body.get("inbox")
     if "inbox_latest" in body:
         return {"ok": False, "field": "inbox_latest", "expected": "absent", "actual": "present"}
-    if isinstance(inbox, str) and inbox.strip().lower() in {"latest", "inbox_latest", "inbox-latest"}:
+    if isinstance(inbox, str) and _inbox_is_latest(inbox):
         return {"ok": False, "field": "inbox", "expected": "named pack_id", "actual": inbox}
     if body.get("mode") == "inbox-validate":
         return {"ok": False, "field": "mode", "expected": "helper-ft", "actual": "inbox-validate"}

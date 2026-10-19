@@ -96,6 +96,7 @@ finalize_manifest = _load("finalize_manifest", LAB / "finalize_manifest.py")
 kick_helper_ft = _load("kick_helper_ft", LAB / "kick_helper_ft.py")
 helper_ft_kickoff = _load("helper_ft_kickoff", LAB / "helper_ft_kickoff.py")
 content_uuid = _load("content_uuid", LAB / "content_uuid.py")
+labeled_data_guard = _load("labeled_data_guard", SCRIPTS / "labeled_data_guard.py")
 cam_pin_spec = kick_helper_ft.cam_pin_spec
 
 
@@ -560,22 +561,25 @@ FORGE_PINS_SOURCE_COMMIT_FIXTURE = "c" * 40
 
 
 def _live_entrypoint_pins() -> dict[str, str]:
+    root = Path(kick_helper_ft.__file__).resolve().parents[4]
     return {
-        "apps/dottie-os/scripts/lab/kick_helper_ft.py": kick_helper_ft.sha256_file(
-            Path(kick_helper_ft.__file__).resolve()
-        ),
-        "apps/dottie-os/scripts/lab/cam_pin_spec.py": kick_helper_ft.sha256_file(
-            Path(cam_pin_spec.__file__).resolve()
-        ),
+        rel: kick_helper_ft.sha256_file(root / rel)
+        for rel in kick_helper_ft.ENTRYPOINT_PIN_RELS
     }
 
 
 def _install_forge_entrypoint_pins(owner: unittest.TestCase) -> None:
     pins = _live_entrypoint_pins()
+    git_sha = kick_helper_ft._script_git_sha()
+    commit = (
+        git_sha
+        if type(git_sha) is str and len(git_sha) == 40
+        else FORGE_PINS_SOURCE_COMMIT_FIXTURE
+    )
     os.environ[kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV] = json.dumps(pins)
-    os.environ[kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV] = FORGE_PINS_SOURCE_COMMIT_FIXTURE
+    os.environ[kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV] = commit
     owner.forge_entrypoint_pins = pins
-    owner.forge_pins_source_commit = FORGE_PINS_SOURCE_COMMIT_FIXTURE
+    owner.forge_pins_source_commit = commit
 
 
 def _clear_forge_entrypoint_pins() -> None:
@@ -1760,7 +1764,7 @@ def _fresh_kickoff_body(dest: Path, manifest: dict, *, run_id: str = "helper-ft-
     }
 
 
-PINNED_COPY_HEAD = "1" * 40
+PINNED_COPY_HEAD = "a3872eab6a1b056391e4905227b06ca54720aec2"
 
 
 def _chmod_pinned_copy_tree(root: Path) -> None:
@@ -1896,6 +1900,7 @@ class HelperFtPinnedCopyTests(unittest.TestCase):
         self.assertEqual(self.git_cmds, [])
         self.assertIsNone(evidence["script_git_sha"])
         self.assertEqual(evidence["script_git_sha_reason"], "pinned-copy")
+        self.assertEqual(PINNED_COPY_HEAD, "a3872eab6a1b056391e4905227b06ca54720aec2")
         self.assertEqual(evidence["head"], PINNED_COPY_HEAD)
         self.assertEqual(evidence["pins_source_commit"], PINNED_COPY_HEAD)
         self.assertEqual(evidence["entrypoint_pins"], staged["payload"]["files"])
@@ -2394,7 +2399,8 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self._orig_post = kick_helper_ft.post_kickoff
         kick_helper_ft.post_kickoff = fake_post
         self.client = helper_ft_kickoff.TestClient(
-            launch_trainer=lambda body: self.launches.append(body) or {"ok": True, "launched": True}
+            launch_trainer=lambda body: self.launches.append(body)
+            or {"ok": True, "launched": True, "exit_code": 0}
         )
 
     def tearDown(self) -> None:
@@ -2951,19 +2957,19 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             )
         self.assertTrue(evidence["script_git_sha"])
         self.assertEqual(evidence["entrypoint_pins"], self.forge_entrypoint_pins)
-        self.assertEqual(evidence["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(evidence["pins_source_commit"], self.forge_pins_source_commit)
         self.assertEqual(on_disk["entrypoint_pins"], self.forge_entrypoint_pins)
-        self.assertEqual(on_disk["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(on_disk["pins_source_commit"], self.forge_pins_source_commit)
         self.assertEqual(rec["entrypoint_pins"], self.forge_entrypoint_pins)
-        self.assertEqual(rec["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(rec["pins_source_commit"], self.forge_pins_source_commit)
         kick_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/kick")]
         done_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/completion")]
         self.assertEqual(len(kick_posts), 1)
         self.assertEqual(len(done_posts), 1)
         self.assertEqual(kick_posts[0]["body"]["entrypoint_pins"], self.forge_entrypoint_pins)
-        self.assertEqual(kick_posts[0]["body"]["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(kick_posts[0]["body"]["pins_source_commit"], self.forge_pins_source_commit)
         self.assertEqual(done_posts[0]["body"]["entrypoint_pins"], self.forge_entrypoint_pins)
-        self.assertEqual(done_posts[0]["body"]["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(done_posts[0]["body"]["pins_source_commit"], self.forge_pins_source_commit)
         dumped = json.dumps(on_disk) + json.dumps(rec) + json.dumps(kick_posts[0]["body"])
         self.assertNotIn(SWARM_HQ_AGENT_TOKEN_FIXTURE, dumped)
 
@@ -3025,6 +3031,38 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(ctx.exception.actual, "missing")
         self.assertEqual(self.kickoff_calls, [])
         self.assertEqual(self.hq_posts, [])
+
+    def test_entrypoint_pins_basename_only_refuses(self) -> None:
+        live = _live_entrypoint_pins()
+        os.environ[kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV] = json.dumps(
+            {
+                "kick_helper_ft.py": live[kick_helper_ft.PINNED_COPY_KICK_REL],
+                "cam_pin_spec.py": live[kick_helper_ft.PINNED_COPY_SPEC_REL],
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "entrypoint_pins")
+        self.assertEqual(ctx.exception.expected, "exact repo-relative path")
+        self.assertEqual(self.kickoff_calls, [])
+
+    def test_pins_source_commit_must_equal_git_head(self) -> None:
+        os.environ[kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV] = "d" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "pins_source_commit")
+        self.assertEqual(ctx.exception.actual, "d" * 40)
+        self.assertEqual(self.kickoff_calls, [])
 
     def test_integrity_evidence_line_parses_and_matches_file_sha(self) -> None:
         buf = StringIO()
@@ -3505,19 +3543,54 @@ class HelperFtCritic3dacTests(unittest.TestCase):
             log_path = Path(tmp) / "runs" / "helper_ft.log"
             evidence = kick_helper_ft.kick(dest, log_path=log_path, smoke=True)
             run_private = Path(evidence.get("run_private_dir") or "")
-            ckpt = log_path.parent / "smoke"
+            smoke_alias = log_path.parent / "smoke"
+            assigned = log_path.parent / f"ckpt-{evidence['run_id']}"
             survivors = [
                 p
-                for p in (dest, run_private, ckpt)
+                for p in (dest, run_private, smoke_alias, assigned)
                 if p and os.path.lexists(p)
             ]
         self.assertTrue(evidence["smoke"])
+        self.assertFalse(evidence.get("scorable", True))
         self.assertIsNone(evidence.get("checkpoint_id"))
         self.assertNotIn("checkpoint_integrity_evidence_path", evidence)
         self.assertEqual(evidence["checkpoint_integrity_status"], "unscored")
         self.assertEqual(survivors, [])
         self.assertEqual(self.hq_posts, [])
+        self.assertFalse(os.path.lexists(smoke_alias))
         self.assertNotEqual(evidence.get("result"), None)
+
+    def test_smoke_forged_ckpt_real_deleted_and_refused(self) -> None:
+        def kickoff(body: dict) -> dict:
+            run_dir = Path(body["evidence_path"]).parent
+            forged = run_dir / "ckpt-real"
+            forged.mkdir()
+            (forged / "integrity_evidence.json").write_text(
+                json.dumps({"status": "MATCH", "result": "MATCH"}),
+                encoding="utf-8",
+            )
+            return {"ok": True, "checkpoint_id": "ckpt-real", "exit_code": 0}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            man_path = dest / "MANIFEST.json"
+            payload = json.loads(man_path.read_text(encoding="utf-8"))
+            payload["not_for_train"] = True
+            man_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            manifest = _refresh_hashes(dest, not_for_train=True)
+            self._pin(manifest)
+            log_path = Path(tmp) / "runs" / "helper_ft.log"
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest, log_path=log_path, kickoff=kickoff, smoke=True)
+            forged = log_path.parent / "ckpt-real"
+            smoke_alias = log_path.parent / "smoke"
+        self.assertEqual(ctx.exception.field, "smoke.checkpoint_id")
+        self.assertIn("ckpt-real", str(ctx.exception.actual))
+        self.assertFalse(os.path.lexists(forged))
+        self.assertFalse(os.path.lexists(smoke_alias))
+        self.assertEqual(self.hq_posts, [])
 
     def test_wait_returncode_not_overridden_by_ok_dict(self) -> None:
         class FakeProc:
@@ -3678,7 +3751,7 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         rows = [_row(rid=f"fmt-{idx}", action=action) for idx, action in enumerate(actions)]
         for row in rows:
             row["state"] = {
-                "message": "tool=read_file; detail=src/app.py…",
+                "message": f"tool=read_file; detail=src/app.py… {row['id']}",
                 "meta": {"tool": "read_file", "keys": ["cmd", "path"]},
             }
         with tempfile.TemporaryDirectory() as tmp:
@@ -3876,6 +3949,39 @@ class HelperFtCritic3dacTests(unittest.TestCase):
                 kick_helper_ft.kick(dest)
             rc = kick_helper_ft.main(["--pack", "inbox:latest"])
         self.assertEqual(ctx.exception.field, "pack")
+        self.assertEqual(rc, 1)
+
+    def test_bare_latest_path_component_and_pack_latest_refused(self) -> None:
+        tmp_latest = helper_ft_kickoff.handle_train_kickoff(
+            {
+                "mode": "helper-ft",
+                "pack_dir": "/tmp/latest",
+                "pack_id": "p",
+                "evidence": {"ok": True, "pack_id": "p"},
+            }
+        )
+        pack_latest = helper_ft_kickoff.handle_train_kickoff(
+            {
+                "mode": "helper-ft",
+                "inbox": "pack_latest",
+                "pack_id": "p",
+                "evidence": {"ok": True, "pack_id": "p"},
+            }
+        )
+        self.assertEqual(tmp_latest["field"], "pack_dir")
+        self.assertEqual(tmp_latest["actual"], "/tmp/latest")
+        self.assertEqual(pack_latest["field"], "inbox")
+        self.assertEqual(pack_latest["actual"], "pack_latest")
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pack_latest"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+            rc = kick_helper_ft.main(["--pack", str(Path(tmp) / "latest")])
+        self.assertEqual(ctx.exception.field, "pack")
+        self.assertIn("latest", str(ctx.exception.actual))
         self.assertEqual(rc, 1)
 
     def test_8765_training_routes_and_8769_absent_from_lab(self) -> None:
@@ -4752,6 +4858,82 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         self.assertEqual(hits, [])
 
 
+class LabeledDataGuardTests(unittest.TestCase):
+    """Content-keyed allowlist for leakgate source.json + MANIFEST.json."""
+
+    def test_allowlisted_fixture_hashes_match(self) -> None:
+        hits = labeled_data_guard.check_tree(REPO_ROOT)
+        self.assertEqual(hits, [])
+        for rel, expected in labeled_data_guard.ALLOWED_LABELED_DATA.items():
+            actual = labeled_data_guard.sha256_file(REPO_ROOT / rel)
+            self.assertEqual(actual, expected)
+
+    def test_modified_allowlisted_file_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            self._seed_repo(repo)
+            target = repo / "apps/dottie-os/tests/fixtures/leakgate_eval/source.json"
+            target.write_text(target.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+            hits = labeled_data_guard.check_tree(repo)
+        self.assertTrue(any("hash mismatch" in hit for hit in hits))
+
+    def test_extra_labeled_jsonl_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            self._seed_repo(repo)
+            extra = repo / "apps/dottie-os/curated_pack_v2.jsonl"
+            extra.write_text('{"labels":{"action":{"choice":"halt"}}}\n', encoding="utf-8")
+            env = {
+                **os.environ,
+                "GIT_AUTHOR_NAME": "labeled-guard-test",
+                "GIT_AUTHOR_EMAIL": "labeled-guard-test@example.com",
+                "GIT_COMMITTER_NAME": "labeled-guard-test",
+                "GIT_COMMITTER_EMAIL": "labeled-guard-test@example.com",
+            }
+            subprocess.run(
+                ["git", "add", str(extra)], cwd=repo, check=True, capture_output=True, env=env
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "sneak pack"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                env=env,
+            )
+            hits = labeled_data_guard.check_tree(repo)
+        self.assertTrue(any("unallowlisted labeled data" in hit for hit in hits))
+
+    def _seed_repo(self, repo: Path) -> None:
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "labeled-guard-test",
+            "GIT_AUTHOR_EMAIL": "labeled-guard-test@example.com",
+            "GIT_COMMITTER_NAME": "labeled-guard-test",
+            "GIT_COMMITTER_EMAIL": "labeled-guard-test@example.com",
+        }
+        repo.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "init", "-b", "main"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            env=env,
+        )
+        dest = repo / "apps/dottie-os/tests/fixtures/leakgate_eval"
+        dest.mkdir(parents=True)
+        for name in ("source.json", "MANIFEST.json"):
+            src = REPO_ROOT / "apps/dottie-os/tests/fixtures/leakgate_eval" / name
+            shutil.copy2(src, dest / name)
+        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, env=env)
+        subprocess.run(
+            ["git", "commit", "-m", "seed labeled fixtures"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            env=env,
+        )
+
+
 class HelperFtLeakGateSyntheticTests(unittest.TestCase):
     """Partial-leak and small-n cases, kept separate from Mill's 56 fixtures."""
 
@@ -5006,6 +5188,119 @@ class HelperFtLeakGateSyntheticTests(unittest.TestCase):
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             manifest = _write_action_pack(dest, rows, pack_id="synthetic-small-n-clean")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
+    def test_non_user_message_role_leak_refused(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
+        rows = [_row(rid=f"msg-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row, action in zip(rows, actions, strict=True):
+            row["state"] = {
+                "message": [
+                    {"role": "user", "content": f"do the task {row['id']}"},
+                    {"role": "assistant", "content": action},
+                ]
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-message-leak")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+        self.assertTrue(any("content" in str(item) for item in ctx.exception.actual))
+
+    def test_non_user_message_role_uncorrelated_twin_accepted(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
+        rows = [_row(rid=f"msg-twin-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row in rows:
+            row["state"] = {
+                "message": [
+                    {"role": "user", "content": f"do the task {row['id']}"},
+                    {"role": "assistant", "content": "ack"},
+                ]
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-message-twin")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
+    def test_pairwise_xor_binary_fields_refused(self) -> None:
+        actions = ["execute"] * 4 + ["halt"] * 4
+        bits_a = [0, 1, 0, 1, 0, 1, 0, 1]
+        bits_b = [0, 1, 0, 1, 1, 0, 1, 0]
+        rows = [_row(rid=f"xor-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row, left, right in zip(rows, bits_a, bits_b, strict=True):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"a": bool(left), "b": bool(right)},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-multi-xor")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+        listed = " ".join(str(item) for item in ctx.exception.actual)
+        self.assertTrue("^" in listed or "|" in listed)
+
+    def test_pairwise_binary_fields_uncorrelated_twin_accepted(self) -> None:
+        actions = ["execute"] * 4 + ["halt"] * 4
+        bits_a = [0, 1, 0, 1, 0, 1, 0, 1]
+        bits_b = [0, 0, 1, 1, 0, 0, 1, 1]
+        rows = [_row(rid=f"xor-twin-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row, left, right in zip(rows, bits_a, bits_b, strict=True):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"a": bool(left), "b": bool(right)},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-multi-twin")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
+    def test_unique_id_prefix_residue_refused(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
+        rows = [_row(rid=f"uid-{idx}", action=action) for idx, action in enumerate(actions)]
+        for idx, (row, action) in enumerate(zip(rows, actions, strict=True)):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"uid": f"{action}-row-{idx}-deadbeef"},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-unique-id")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+        self.assertTrue(
+            any("id_residue" in str(item) for item in ctx.exception.actual)
+        )
+
+    def test_unique_id_uncorrelated_twin_accepted(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
+        rows = [_row(rid=f"uid-twin-{idx}", action=action) for idx, action in enumerate(actions)]
+        for idx, row in enumerate(rows):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"uid": f"row-{idx}-deadbeef{idx}"},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="lg-unique-id-twin")
             self._pin(manifest)
             evidence = kick_helper_ft.kick(dest)
         self.assertEqual(evidence["result"], "MATCH")
