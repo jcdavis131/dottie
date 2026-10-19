@@ -54,6 +54,7 @@ if _LAB not in sys.path:
     sys.path.insert(0, _LAB)
 
 import cam_pin_spec
+import content_uuid
 
 PACK_FILE = "curated_pack_v2.jsonl"
 TRAIN_FILE = "curated_pack_v2_train.jsonl"
@@ -77,11 +78,13 @@ PINNED_COPY_DEPTH = 4
 PINNED_COPY_REASON = "pinned-copy"
 PINNED_COPY_KICK_REL = "apps/dottie-os/scripts/lab/kick_helper_ft.py"
 PINNED_COPY_SPEC_REL = "apps/dottie-os/scripts/lab/cam_pin_spec.py"
+PINNED_COPY_UUID_REL = "apps/dottie-os/scripts/lab/content_uuid.py"
 PINNED_COPY_PUB_REL = "trust/cam_pin_ed25519.pub"
 PINNED_COPY_KEY_ID_REL = "trust/cam_pin_key_id"
 PINNED_COPY_REQUIRED_RELS = (
     PINNED_COPY_KICK_REL,
     PINNED_COPY_SPEC_REL,
+    PINNED_COPY_UUID_REL,
     PINNED_COPY_PUB_REL,
     PINNED_COPY_KEY_ID_REL,
 )
@@ -300,15 +303,20 @@ def load_pinned_copy_mode(script: Path | None = None) -> dict[str, Any] | None:
         files[rel] = _require_sha256_hex(f"files.{rel}", value)
     kick_live = path.resolve()
     spec_live = (kick_live.parent / "cam_pin_spec.py").resolve()
+    uuid_live = (kick_live.parent / "content_uuid.py").resolve()
     expected_kick = (root / PINNED_COPY_KICK_REL).resolve()
     expected_spec = (root / PINNED_COPY_SPEC_REL).resolve()
+    expected_uuid = (root / PINNED_COPY_UUID_REL).resolve()
     if kick_live != expected_kick:
         _refuse(PINNED_COPY_KICK_REL, str(expected_kick), str(kick_live))
     if spec_live != expected_spec:
         _refuse(PINNED_COPY_SPEC_REL, str(expected_spec), str(spec_live))
+    if uuid_live != expected_uuid:
+        _refuse(PINNED_COPY_UUID_REL, str(expected_uuid), str(uuid_live))
     live_by_rel = {
         PINNED_COPY_KICK_REL: kick_live,
         PINNED_COPY_SPEC_REL: spec_live,
+        PINNED_COPY_UUID_REL: uuid_live,
         PINNED_COPY_PUB_REL: (root / PINNED_COPY_PUB_REL).resolve(),
         PINNED_COPY_KEY_ID_REL: (root / PINNED_COPY_KEY_ID_REL).resolve(),
     }
@@ -1349,6 +1357,32 @@ def collect_state_leaks(
     return found
 
 
+def _training_rows(recorded_paths: Mapping[str, str]) -> list[dict[str, Any]]:
+    rows = _load_jsonl_rows(recorded_paths.get("train"))
+    if rows:
+        return rows
+    return _unique_pack_rows(recorded_paths)
+
+
+def collect_content_uuid_collisions(recorded_paths: Mapping[str, str]) -> list[str]:
+    """Refuse label conflicts and report duplicates. Never silently dedupe."""
+    rows = _unique_pack_rows(recorded_paths)
+    conflicts, duplicates = content_uuid.find_content_uuid_collisions(rows)
+    return [*conflicts, *duplicates]
+
+
+def collect_forged_content_uuids(recorded_paths: Mapping[str, str]) -> list[str]:
+    hits: list[str] = []
+    for row in _training_rows(recorded_paths):
+        try:
+            content_uuid.verify_content_uuid(row)
+        except content_uuid.ContentUuidError as exc:
+            hits.append(str(exc))
+            if len(hits) >= 10:
+                return hits
+    return hits
+
+
 def enforce_pack_gates(
     manifest: Mapping[str, Any],
     recorded_paths: Mapping[str, str],
@@ -1359,6 +1393,17 @@ def enforce_pack_gates(
     hits = collect_not_for_train(manifest, recorded_paths)
     if hits and not smoke:
         _refuse("not_for_train", False, hits[:10])
+    collisions = collect_content_uuid_collisions(recorded_paths)
+    if collisions:
+        field = (
+            "content_uuid.label_conflict"
+            if collisions[0].startswith("label conflict:")
+            else "content_uuid.duplicate"
+        )
+        _refuse(field, "unique content uuid per labels", collisions[:10])
+    forged = collect_forged_content_uuids(recorded_paths)
+    if forged:
+        _refuse("content_uuid", "recomputed digest", forged[:10])
     leaks = collect_state_leaks(recorded_paths, pack_dir=pack_dir)
     if leaks:
         _refuse("state.leak", "absent", leaks[:10])

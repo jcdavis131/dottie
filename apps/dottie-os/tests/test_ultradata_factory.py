@@ -95,6 +95,7 @@ patch_hf = _load("patch_hf_to_system_one", SCRIPTS / "patch_hf_to_system_one.py"
 finalize_manifest = _load("finalize_manifest", LAB / "finalize_manifest.py")
 kick_helper_ft = _load("kick_helper_ft", LAB / "kick_helper_ft.py")
 helper_ft_kickoff = _load("helper_ft_kickoff", LAB / "helper_ft_kickoff.py")
+content_uuid = _load("content_uuid", LAB / "content_uuid.py")
 cam_pin_spec = kick_helper_ft.cam_pin_spec
 
 
@@ -4978,5 +4979,148 @@ class HelperFtLeakGateSyntheticTests(unittest.TestCase):
         self.assertEqual(evidence["result"], "MATCH")
 
 
+class HelperFtContentUuidTests(unittest.TestCase):
+    """Mill and the kick gate share one canonical content-uuid function."""
+
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+        _start_hq_http_mock(self)
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            return {"ok": True, "checkpoint_id": "ckpt-uuid", "exit_code": 0}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+
+    def tearDown(self) -> None:
+        kick_helper_ft.post_kickoff = self._orig_post
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
+
+    def test_canonical_bytes_are_nfc_sorted_compact_utf8(self) -> None:
+        composed = {"state": {"message": "café"}, "questions": {"action": {"type": "choice"}}}
+        decomposed = {
+            "state": {"message": "cafe\u0301"},
+            "questions": {"action": {"type": "choice"}},
+        }
+        blob = content_uuid.canonical_content_bytes(composed)
+        self.assertEqual(blob, content_uuid.canonical_content_bytes(decomposed))
+        self.assertEqual(blob, blob.decode("utf-8").encode("utf-8"))
+        self.assertNotIn(b" ", blob)
+        self.assertIn(b'"state":{', blob)
+        self.assertEqual(content_uuid.content_uuid(composed), content_uuid.content_uuid(decomposed))
+        labels_left = dict(composed)
+        labels_left["labels"] = {"action": {"choice": "halt"}}
+        labels_right = dict(composed)
+        labels_right["labels"] = {"action": {"choice": "execute"}}
+        self.assertEqual(
+            content_uuid.content_uuid(labels_left),
+            content_uuid.content_uuid(labels_right),
+        )
+
+    def test_cli_matches_importable_helper(self) -> None:
+        row = _row(rid="cli-1", action="execute")
+        expected = content_uuid.content_uuid(row)
+        proc = subprocess.run(
+            [sys.executable, str(LAB / "content_uuid.py")],
+            input=json.dumps(row),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.strip(), expected)
+
+    def test_label_conflict_refused_with_both_row_ids(self) -> None:
+        shared_state = {"message": "same canonical tool call"}
+        a = _row(rid="conflict-a", action="execute")
+        b = _row(rid="conflict-b", action="halt")
+        hold = _row(rid="conflict-hold", action="escalate")
+        a["state"] = dict(shared_state)
+        b["state"] = dict(shared_state)
+        b["questions"] = json.loads(json.dumps(a["questions"]))
+        hold["state"] = {"message": "other"}
+        self.assertEqual(content_uuid.content_uuid(a), content_uuid.content_uuid(b))
+        self.assertNotEqual(content_uuid.canonical_labels_bytes(a), content_uuid.canonical_labels_bytes(b))
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, [a, b, hold], pack_id="uuid-label-conflict")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "content_uuid.label_conflict")
+        listed = " ".join(str(item) for item in ctx.exception.actual)
+        self.assertIn("conflict-a", listed)
+        self.assertIn("conflict-b", listed)
+        self.assertIn("label conflict", listed)
+
+    def test_identical_content_and_labels_reported_as_duplicate(self) -> None:
+        a = _row(rid="dup-a", action="execute")
+        b = _row(rid="dup-b", action="execute")
+        hold = _row(rid="dup-hold", action="halt")
+        shared = {"message": "duplicate canonical body"}
+        a["state"] = dict(shared)
+        b["state"] = dict(shared)
+        b["questions"] = json.loads(json.dumps(a["questions"]))
+        b["labels"] = json.loads(json.dumps(a["labels"]))
+        hold["state"] = {"message": "other"}
+        self.assertEqual(content_uuid.content_uuid(a), content_uuid.content_uuid(b))
+        self.assertEqual(content_uuid.canonical_labels_bytes(a), content_uuid.canonical_labels_bytes(b))
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, [a, b, hold], pack_id="uuid-duplicate")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "content_uuid.duplicate")
+        listed = " ".join(str(item) for item in ctx.exception.actual)
+        self.assertIn("dup-a", listed)
+        self.assertIn("dup-b", listed)
+        self.assertIn("duplicate", listed)
+
+    def test_forged_content_uuid_refused(self) -> None:
+        a = _row(rid="forge-a", action="execute")
+        b = _row(rid="forge-b", action="halt")
+        actual = content_uuid.content_uuid(a)
+        a.setdefault("source", {})
+        a["source"]["uuid"] = "a" * 64
+        self.assertNotEqual(a["source"]["uuid"], actual)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, [a, b], pack_id="uuid-forged")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "content_uuid")
+        listed = " ".join(str(item) for item in ctx.exception.actual)
+        self.assertIn("forge-a", listed)
+        self.assertIn("a" * 64, listed)
+        self.assertIn(actual, listed)
+
+    def test_verified_content_uuid_accepted(self) -> None:
+        a = _row(rid="ok-a", action="execute")
+        b = _row(rid="ok-b", action="halt")
+        a.setdefault("source", {})
+        b.setdefault("source", {})
+        a["source"]["uuid"] = content_uuid.content_uuid(a)
+        b["source"]["uuid"] = content_uuid.content_uuid(b)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, [a, b], pack_id="uuid-verified")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
+
+
 if __name__ == "__main__":
     unittest.main()
+
