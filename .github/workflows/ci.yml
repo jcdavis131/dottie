@@ -645,7 +645,18 @@ jobs:
       - name: Refuse tracked pack artifacts
         run: |
           set -euo pipefail
-          toplevel=$(git rev-parse --show-toplevel) || {
+          # Floor N=1280 is half of 2561 tracked files when this was set
+          # (rounded down). A hollow index cannot pass as "no packs".
+          PACK_GUARD_LS_FILES_FLOOR=1280
+          git_scrub() {
+            /usr/bin/env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE \
+              -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY \
+              -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_CONFIG_PARAMETERS \
+              -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_SYSTEM -u BASH_ENV -u ENV \
+              PATH=/usr/bin:/bin \
+              /usr/bin/git "$@"
+          }
+          toplevel=$(git_scrub rev-parse --show-toplevel) || {
             echo "FAIL: git rev-parse --show-toplevel failed"
             exit 1
           }
@@ -653,12 +664,34 @@ jobs:
             echo "FAIL: cannot cd to git toplevel"
             exit 1
           }
-          files=$(git ls-files) || {
+          index_list=$(mktemp)
+          tree_list=$(mktemp)
+          cleanup() { rm -f "$index_list" "$tree_list"; }
+          trap cleanup EXIT
+          git_scrub -c core.quotePath=false ls-files -z >"$index_list" || {
             echo "FAIL: git ls-files failed"
             exit 1
           }
-          if printf '%s\n' "$files" | grep -E 'curated_pack_.*\.(jsonl|json)$|ultradata_harvest_'; then
+          n=$(tr -cd '\0' <"$index_list" | wc -c | tr -d ' ')
+          if ! grep -zFqx '.github/workflows/ci.yml' "$index_list"; then
+            echo "FAIL: ls-files missing .github/workflows/ci.yml (hollow index?)"
+            exit 1
+          fi
+          if [ "$n" -lt "$PACK_GUARD_LS_FILES_FLOOR" ]; then
+            echo "FAIL: ls-files count ${n} < floor ${PACK_GUARD_LS_FILES_FLOOR} (hollow index?)"
+            exit 1
+          fi
+          pack_re='curated_pack_.*\.(jsonl|json)$|ultradata_harvest_'
+          if grep -zEi "$pack_re" "$index_list"; then
             echo "Pack / harvest artifacts must not be tracked"
+            exit 1
+          fi
+          git_scrub -c core.quotePath=false ls-tree -r --name-only -z HEAD >"$tree_list" || {
+            echo "FAIL: git ls-tree HEAD failed"
+            exit 1
+          }
+          if grep -zEi "$pack_re" "$tree_list"; then
+            echo "Pack / harvest artifacts must not be tracked (HEAD tree)"
             exit 1
           fi
           echo "No pack artifacts tracked"
