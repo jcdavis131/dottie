@@ -31,9 +31,12 @@ Encoding, exactly:
 Because labels are excluded, two rows can share a content uuid. The gate
 must not silently dedupe:
 
-- identical content + **different** labels → **label conflict** (refuse, list
-  both row ids)
-- identical content + **identical** labels → **duplicate** (report both ids)
+- identical content + **different** labels → ``content_uuid.label_conflict``
+  (refuse, list both row ids)
+- identical content + **identical** labels **within one split** →
+  ``content_uuid.duplicate``
+- identical content + **identical** labels **across train and holdout** →
+  ``content_uuid.cross_split_duplicate``
 
 Usage (Mill)::
 
@@ -229,37 +232,62 @@ def verify_content_uuid(row: Mapping[str, Any]) -> str | None:
 
 
 def find_content_uuid_collisions(
-    rows: Iterable[Mapping[str, Any]],
-) -> tuple[list[str], list[str]]:
-    """Return (label_conflict messages, duplicate messages). Never silently drops."""
-    by_uuid: dict[str, list[tuple[str, bytes]]] = defaultdict(list)
-    for row in rows:
-        if not isinstance(row, Mapping):
-            continue
-        digest = content_uuid(row)
-        by_uuid[digest].append((row_id(row), canonical_labels_bytes(row)))
+    train: Iterable[Mapping[str, Any]],
+    holdout: Iterable[Mapping[str, Any]] | None = None,
+) -> tuple[list[str], list[str], list[str]]:
+    """Return (label_conflicts, within-split duplicates, cross-split duplicates).
+
+    Never silently drops. Label conflict wins when labels differ, including
+    across splits. Same labels spanning train and holdout are
+    ``cross-split duplicate``, not ``duplicate``.
+    """
+    by_uuid: dict[str, list[tuple[str, bytes, str]]] = defaultdict(list)
+    _index_collision_rows(train, "train", by_uuid)
+    _index_collision_rows(holdout or (), "holdout", by_uuid)
     conflicts: list[str] = []
     duplicates: list[str] = []
+    cross: list[str] = []
     for digest, members in by_uuid.items():
         if len(members) < 2:
             continue
-        by_labels: dict[bytes, list[str]] = defaultdict(list)
-        for rid, labels in members:
-            by_labels[labels].append(rid)
+        by_labels: dict[bytes, list[tuple[str, str]]] = defaultdict(list)
+        for rid, labels, split in members:
+            by_labels[labels].append((rid, split))
         if len(by_labels) > 1:
             groups = list(by_labels.values())
-            left, right = groups[0][0], groups[1][0]
+            left, right = groups[0][0][0], groups[1][0][0]
             conflicts.append(
                 f"label conflict: rows {left} and {right} share content uuid "
                 f"{digest} with different labels"
             )
             continue
-        ids = [rid for rid, _labels in members]
+        ids_and_splits = next(iter(by_labels.values()))
+        splits = {split for _rid, split in ids_and_splits}
+        if "train" in splits and "holdout" in splits:
+            train_id = next(rid for rid, split in ids_and_splits if split == "train")
+            hold_id = next(rid for rid, split in ids_and_splits if split == "holdout")
+            cross.append(
+                f"cross-split duplicate: rows {train_id} and {hold_id} share "
+                f"content uuid {digest} with identical labels"
+            )
+            continue
         duplicates.append(
-            f"duplicate: rows {ids[0]} and {ids[1]} share content uuid {digest} "
-            f"with identical labels"
+            f"duplicate: rows {ids_and_splits[0][0]} and {ids_and_splits[1][0]} "
+            f"share content uuid {digest} with identical labels"
         )
-    return conflicts, duplicates
+    return conflicts, duplicates, cross
+
+
+def _index_collision_rows(
+    rows: Iterable[Mapping[str, Any]],
+    split: str,
+    by_uuid: dict[str, list[tuple[str, bytes, str]]],
+) -> None:
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        digest = content_uuid(row)
+        by_uuid[digest].append((row_id(row), canonical_labels_bytes(row), split))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -279,10 +307,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.check:
         rows = _load_jsonl(args.check)
-        conflicts, duplicates = find_content_uuid_collisions(rows)
-        for line in conflicts + duplicates:
+        conflicts, duplicates, cross = find_content_uuid_collisions(rows)
+        for line in conflicts + cross + duplicates:
             print(line, file=sys.stderr)
-        return 1 if conflicts or duplicates else 0
+        return 1 if conflicts or duplicates or cross else 0
     if args.jsonl:
         for row in _load_jsonl(args.jsonl):
             print(content_uuid(row))

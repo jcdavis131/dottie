@@ -5435,6 +5435,45 @@ class HelperFtContentUuidTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(proc.stdout.strip(), expected)
 
+    def test_collision_kinds_are_three_distinct_reasons(self) -> None:
+        shared = {"message": "shared canonical body"}
+        a = _row(rid="kind-a", action="execute")
+        dup = _row(rid="kind-dup", action="execute")
+        conflict = _row(rid="kind-conflict", action="halt")
+        a["state"] = dict(shared)
+        dup["state"] = dict(shared)
+        conflict["state"] = dict(shared)
+        dup["questions"] = json.loads(json.dumps(a["questions"]))
+        conflict["questions"] = json.loads(json.dumps(a["questions"]))
+        dup["labels"] = json.loads(json.dumps(a["labels"]))
+        conflicts, duplicates, cross = content_uuid.find_content_uuid_collisions(
+            [a, dup], []
+        )
+        self.assertEqual(conflicts, [])
+        self.assertEqual(cross, [])
+        self.assertEqual(len(duplicates), 1)
+        self.assertIn("kind-a", duplicates[0])
+        self.assertIn("kind-dup", duplicates[0])
+        self.assertTrue(duplicates[0].startswith("duplicate:"))
+        conflicts, duplicates, cross = content_uuid.find_content_uuid_collisions(
+            [a, conflict], []
+        )
+        self.assertEqual(duplicates, [])
+        self.assertEqual(cross, [])
+        self.assertEqual(len(conflicts), 1)
+        self.assertTrue(conflicts[0].startswith("label conflict:"))
+        self.assertIn("kind-a", conflicts[0])
+        self.assertIn("kind-conflict", conflicts[0])
+        conflicts, duplicates, cross = content_uuid.find_content_uuid_collisions(
+            [a], [dup]
+        )
+        self.assertEqual(conflicts, [])
+        self.assertEqual(duplicates, [])
+        self.assertEqual(len(cross), 1)
+        self.assertTrue(cross[0].startswith("cross-split duplicate:"))
+        self.assertIn("kind-a", cross[0])
+        self.assertIn("kind-dup", cross[0])
+
     def test_label_conflict_refused_with_both_row_ids(self) -> None:
         shared_state = {"message": "same canonical tool call"}
         a = _row(rid="conflict-a", action="execute")
@@ -5483,6 +5522,36 @@ class HelperFtContentUuidTests(unittest.TestCase):
         self.assertIn("dup-a", listed)
         self.assertIn("dup-b", listed)
         self.assertIn("duplicate", listed)
+        self.assertNotIn("cross-split", listed)
+
+    def test_cross_split_duplicate_refused(self) -> None:
+        a = _row(rid="xsplit-train", action="execute")
+        b = _row(rid="xsplit-hold", action="execute")
+        filler = _row(rid="xsplit-filler", action="halt")
+        shared = {"message": "cross split canonical body"}
+        a["state"] = dict(shared)
+        b["state"] = dict(shared)
+        b["questions"] = json.loads(json.dumps(a["questions"]))
+        b["labels"] = json.loads(json.dumps(a["labels"]))
+        filler["state"] = {"message": "other"}
+        self.assertEqual(content_uuid.content_uuid(a), content_uuid.content_uuid(b))
+        self.assertEqual(
+            content_uuid.canonical_labels_bytes(a), content_uuid.canonical_labels_bytes(b)
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_split_pack(
+                dest, [a, filler], [b], pack_id="uuid-cross-split"
+            )
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "content_uuid.cross_split_duplicate")
+        listed = " ".join(str(item) for item in ctx.exception.actual)
+        self.assertIn("xsplit-train", listed)
+        self.assertIn("xsplit-hold", listed)
+        self.assertIn("cross-split duplicate", listed)
 
     def test_source_uuid_64hex_is_not_a_content_uuid(self) -> None:
         a = _row(rid="ds-a", action="execute")

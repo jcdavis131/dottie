@@ -1521,11 +1521,27 @@ def _training_rows(recorded_paths: Mapping[str, str]) -> list[dict[str, Any]]:
     return _unique_pack_rows(recorded_paths)
 
 
+def _content_uuid_collision_field(message: str) -> str:
+    if message.startswith("label conflict:"):
+        return "content_uuid.label_conflict"
+    if message.startswith("cross-split duplicate:"):
+        return "content_uuid.cross_split_duplicate"
+    if message.startswith("duplicate:"):
+        return "content_uuid.duplicate"
+    return "content_uuid.duplicate"
+
+
 def collect_content_uuid_collisions(recorded_paths: Mapping[str, str]) -> list[str]:
-    """Refuse label conflicts and report duplicates. Never silently dedupe."""
-    rows = _unique_pack_rows(recorded_paths)
-    conflicts, duplicates = content_uuid.find_content_uuid_collisions(rows)
-    return [*conflicts, *duplicates]
+    """Refuse label conflicts, within-split duplicates, and cross-split duplicates."""
+    train = _load_jsonl_rows(recorded_paths.get("train"))
+    holdout = _load_jsonl_rows(recorded_paths.get("holdout"))
+    if not train and not holdout:
+        train = _unique_pack_rows(recorded_paths)
+        holdout = []
+    conflicts, duplicates, cross = content_uuid.find_content_uuid_collisions(
+        train, holdout
+    )
+    return [*conflicts, *cross, *duplicates]
 
 
 def collect_forged_content_uuids(recorded_paths: Mapping[str, str]) -> list[str]:
@@ -1629,11 +1645,7 @@ def enforce_pack_gates(
     except content_uuid.ContentUuidError as exc:
         _refuse(exc.field, exc.expected, [str(exc)])
     if collisions:
-        field = (
-            "content_uuid.label_conflict"
-            if collisions[0].startswith("label conflict:")
-            else "content_uuid.duplicate"
-        )
+        field = _content_uuid_collision_field(collisions[0])
         _refuse(field, "unique content uuid per labels", collisions[:10])
     forged = collect_forged_content_uuids(recorded_paths)
     if forged:
