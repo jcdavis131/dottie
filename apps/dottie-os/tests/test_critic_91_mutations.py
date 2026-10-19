@@ -29,7 +29,7 @@ CI = WT / ".github" / "workflows" / "ci.yml"
 ORIG = CI.read_text(encoding="utf-8")
 STEP = "      - name: Refuse tracked pack artifacts\n        run: |\n"
 JOB = "  dottie-os-smoke:\n    runs-on: ubuntu-latest\n    steps:\n"
-CHECKOUT = JOB + "      - uses: actions/checkout@v4\n"
+CHECKOUT = JOB + "      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n"
 EARLIER = "      - name: Tests must not write apps/dottie-os/trust/\n"
 ON = "on:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n"
 for anchor in (STEP, JOB, EARLIER, ON):
@@ -58,7 +58,7 @@ def earlier(run: str):
 
 
 def earlier_uses(withs: str):
-    return sub(CHECKOUT, JOB + "      - uses: actions/checkout@v4\n        with:\n" + withs)
+    return sub(CHECKOUT, JOB + "      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n        with:\n" + withs)
 
 
 SECOND_WF = (

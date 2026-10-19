@@ -4088,18 +4088,38 @@ LEAKGATE_GEN_TS = "20261018-230457"
 LEAKGATE_GEN_PRODUCED_AT = "2026-10-18T23:04:57-05:00"
 REPO_ROOT = APP.parents[1]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
-PACK_GUARD_JOB = "dottie-os-smoke"
+PACK_GUARD_JOB = "pack-guard"
+DOTTIE_OS_SMOKE_JOB = "dottie-os-smoke"
 PACK_GUARD_STEP_NAME = "Refuse tracked pack artifacts"
 PACK_GUARD_ROOT_PACK = "curated_pack_x.jsonl"
 PACK_GUARD_FIXTURES_PACK = (
     "apps/dottie-os/tests/fixtures/leakgate_eval/packs/a/curated_pack_v2.jsonl"
 )
-# Step may only be {name, run}: shell, working-directory, env, if, and
-# continue-on-error all change whether the extracted block is what CI runs.
-PACK_GUARD_STEP_KEYS = frozenset({"name", "run"})
-# dottie-os-smoke on main (a3872eab) and on 8762693 has exactly these job keys.
-# No name, timeout-minutes, if, continue-on-error, defaults, env, container,
-# or services. Keep this set identical to main; do not grow it to silence a test.
+# Guard step: {name, run, shell}. shell is the GHA custom-shell form with {0}
+# as the script-file placeholder. -p is a bash invocation flag (privileged:
+# ignore BASH_ENV/ENV and exported functions). GitHub substitutes {0} then
+# execs the string; -p is passed through.
+PACK_GUARD_SHELL = (
+    "/usr/bin/bash --noprofile --norc -p -euo pipefail {0}"
+)
+PACK_GUARD_STEP_KEYS = frozenset({"name", "run", "shell"})
+PACK_GUARD_CHECKOUT_PIN = (
+    "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+)
+PACK_GUARD_CHECKOUT_KEYS = frozenset({"uses", "with"})
+PACK_GUARD_CHECKOUT_WITH = {"persist-credentials": False}
+PACK_GUARD_ALLOWED_USES = frozenset(
+    {
+        PACK_GUARD_CHECKOUT_PIN,
+        "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+        "astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86",
+    }
+)
+PACK_GUARD_USES_PIN_RE = re.compile(
+    r"^[^@\s]+(?:/[^@\s]+)+@[0-9a-fA-F]{40}$"
+)
+# pack-guard and dottie-os-smoke: exactly {runs-on, steps}. No needs, name,
+# timeout-minutes, if, continue-on-error, defaults, env, container, services.
 PACK_GUARD_JOB_KEYS = frozenset({"runs-on", "steps"})
 # S6: ci.yml top-level keys and the trigger block on main (a3872eab).
 PACK_GUARD_WORKFLOW_KEYS = frozenset({"name", "on", "jobs"})
@@ -4123,6 +4143,9 @@ PACK_GUARD_GIT_ENV_KEYS = frozenset(
 )
 CRITIC_91_MUTATIONS_SHA256 = (
     "0cbbaa78bc4de52a32ccf64a9e5ecb622a670fde381a018c4d185a6c71e355ad"
+)
+CRITIC_91_136F_SHA256 = (
+    "5bf36a2c791a9bde61e239ec4652ac32ae4c4d51cf483088a48846fe88724dd6"
 )
 LEAKGATE_TRACKED_NAMES = frozenset(
     {
@@ -4557,6 +4580,12 @@ def _parse_yaml_scalar(raw: str) -> object:
     return value
 
 
+def _record_step_key(step: dict[str, object], key: str, value: object) -> None:
+    if key in step:
+        raise AssertionError(f"duplicate YAML key {key!r} in step")
+    step[key] = value
+
+
 def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
     """Parse one GitHub Actions `- name:` / `- uses:` step from raw lines."""
     step: dict[str, object] = {}
@@ -4565,7 +4594,10 @@ def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
         first = first[2:]
     if ":" in first:
         key, raw = first.split(":", 1)
-        step[key.strip()] = _parse_yaml_scalar(raw)
+        raw_stripped = raw.strip()
+        if re.search(r"[&*]", raw_stripped):
+            raise AssertionError(f"YAML anchor/alias on step key {key.strip()!r}")
+        _record_step_key(step, key.strip(), _parse_yaml_scalar(raw))
     key_indent = 8
     idx = 1
     while idx < len(step_lines):
@@ -4580,6 +4612,8 @@ def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
             continue
         key, raw = stripped.split(":", 1)
         raw = raw.strip()
+        if re.search(r"[&*]", raw) and raw not in ("|", "|-", "|+", ">", ">-", ">+"):
+            raise AssertionError(f"YAML anchor/alias on step key {key!r}")
         if raw in ("|", "|-", "|+", ">", ">-", ">+"):
             idx += 1
             block: list[str] = []
@@ -4598,7 +4632,7 @@ def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
                 block.append(block_line[content_indent:])
                 idx += 1
             text = "\n".join(block).rstrip("\n") + "\n"
-            step[key] = text
+            _record_step_key(step, key, text)
             continue
         if raw == "":
             nested: dict[str, object] = {}
@@ -4616,11 +4650,16 @@ def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
                     nested_indent = nested_line_indent
                 if nested_line_indent == nested_indent and ":" in nested_line:
                     nested_key, nested_raw = nested_line.strip().split(":", 1)
-                    nested[nested_key.strip()] = _parse_yaml_scalar(nested_raw)
+                    nested_key = nested_key.strip()
+                    if nested_key in nested:
+                        raise AssertionError(
+                            f"duplicate YAML key {nested_key!r} under {key!r}"
+                        )
+                    nested[nested_key] = _parse_yaml_scalar(nested_raw)
                 idx += 1
-            step[key] = nested
+            _record_step_key(step, key, nested)
             continue
-        step[key] = _parse_yaml_scalar(raw)
+        _record_step_key(step, key, _parse_yaml_scalar(raw))
         idx += 1
     return step
 
@@ -4699,6 +4738,104 @@ def _load_pack_guard_step(text: str | None = None) -> dict[str, object]:
     return _pack_guard_step_from_text(raw)
 
 
+def _assert_ci_yml_strict(text: str) -> None:
+    """S16: reject a second YAML document and duplicate keys anywhere."""
+    lines = text.splitlines()
+    for idx, line in enumerate(lines):
+        if idx == 0 and re.match(r"^---\s*$", line):
+            continue
+        if re.match(r"^---\s*$", line) or re.match(r"^\.\.\.\s*$", line):
+            raise AssertionError(
+                f"YAML multi-document marker at line {idx + 1}: {line!r}"
+            )
+    _assert_no_duplicate_yaml_keys(text)
+
+
+def _assert_no_duplicate_yaml_keys(text: str) -> None:
+    """Indent-stack mapping scanner; skips `|` / `>` block scalars."""
+    lines = text.splitlines()
+    stack: list[tuple[int, set[str]]] = [(-1, set())]
+    in_block_at: int | None = None
+    for line in lines:
+        if in_block_at is not None:
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip(" "))
+            if indent > in_block_at:
+                continue
+            in_block_at = None
+        stripped_full = line.split("#", 1)[0].rstrip()
+        if not stripped_full.strip():
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        stripped = stripped_full.strip()
+        while stack and indent < stack[-1][0]:
+            stack.pop()
+        is_seq = stripped.startswith("- ")
+        if is_seq:
+            while stack and indent == stack[-1][0]:
+                stack.pop()
+            stack.append((indent, set()))
+            rest = stripped[2:]
+            if ":" in rest:
+                key, raw = rest.split(":", 1)
+                key = key.strip().strip("\"'")
+                if key:
+                    if key in stack[-1][1]:
+                        raise AssertionError(f"duplicate YAML key {key!r}")
+                    stack[-1][1].add(key)
+                raw = raw.strip()
+                if raw in ("|", "|-", "|+", ">", ">-", ">+"):
+                    in_block_at = indent
+            continue
+        if ":" not in stripped:
+            continue
+        while stack and indent == stack[-1][0]:
+            break
+        if indent > stack[-1][0]:
+            stack.append((indent, set()))
+        key, raw = stripped.split(":", 1)
+        key = key.strip().strip("\"'")
+        if not key:
+            continue
+        seen = stack[-1][1]
+        if key in seen:
+            raise AssertionError(f"duplicate YAML key {key!r}")
+        seen.add(key)
+        raw = raw.strip()
+        if raw in ("|", "|-", "|+", ">", ">-", ">+"):
+            in_block_at = indent
+
+
+def _assert_uses_pinned_and_allowlisted(text: str) -> None:
+    hits = re.findall(r"^\s+uses:\s*(\S+)", text, flags=re.MULTILINE)
+    if not hits:
+        raise AssertionError("ci.yml has no uses: actions")
+    for raw in hits:
+        uses = raw.split("#", 1)[0].strip().strip("\"'")
+        if uses not in PACK_GUARD_ALLOWED_USES:
+            raise AssertionError(f"uses {uses!r} is not allowlisted")
+        if not PACK_GUARD_USES_PIN_RE.fullmatch(uses):
+            raise AssertionError(f"uses {uses!r} is not pinned to a 40-hex sha")
+
+
+def _assert_tests_do_not_write_runner_env(repo_root: Path | None = None) -> None:
+    """PR test code must not write GITHUB_ENV / GITHUB_PATH / BASH_ENV."""
+    root = REPO_ROOT if repo_root is None else repo_root
+    tests = root / "apps" / "dottie-os" / "tests"
+    skip = {"test_ultradata_factory.py"}
+    skip.update(path.name for path in tests.glob("test_critic_*.py"))
+    for path in sorted(tests.glob("test_*.py")):
+        if path.name in skip:
+            continue
+        raw = path.read_text(encoding="utf-8")
+        if re.search(r"GITHUB_ENV|GITHUB_PATH|BASH_ENV", raw):
+            raise AssertionError(
+                f"{path.name} writes GITHUB_ENV/GITHUB_PATH/BASH_ENV; "
+                "pack-guard must not share a job with PR-controlled tests"
+            )
+
+
 def _workflow_top_level_keys(text: str) -> list[str]:
     keys: list[str] = []
     for line in text.splitlines():
@@ -4708,6 +4845,8 @@ def _workflow_top_level_keys(text: str) -> list[str]:
         if line[0] in " \t" or ":" not in line:
             continue
         keys.append(line.split(":", 1)[0].strip().strip("\"'"))
+    if len(keys) != len(set(keys)):
+        raise AssertionError(f"duplicate top-level YAML keys: {keys}")
     return keys
 
 
@@ -4733,28 +4872,41 @@ def _workflow_on_block(text: str) -> str:
     return "".join(lines[start:end]).rstrip("\n") + "\n"
 
 
+def _assert_workflow_job_unique(
+    job: str, repo_root: Path | None = None
+) -> None:
+    root = REPO_ROOT if repo_root is None else repo_root
+    wf_dir = root / ".github" / "workflows"
+    job_re = re.compile(rf"^  {re.escape(job)}:\s*$", re.MULTILINE)
+    hits: list[str] = []
+    paths = sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml"))
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        rel = str(path.relative_to(root))
+        hits.extend([rel] * len(job_re.findall(text)))
+    expected = [str(Path(".github") / "workflows" / "ci.yml")]
+    if hits != expected:
+        raise AssertionError(
+            f"{job!r} job name must appear only in ci.yml, found {hits}"
+        )
+
+
 def _assert_pack_guard_names_unique(repo_root: Path | None = None) -> None:
     root = REPO_ROOT if repo_root is None else repo_root
     wf_dir = root / ".github" / "workflows"
-    job_re = re.compile(rf"^  {re.escape(PACK_GUARD_JOB)}:\s*$", re.MULTILINE)
     step_re = re.compile(
         rf"^\s+- name:\s*{re.escape(PACK_GUARD_STEP_NAME)}\s*$",
         re.MULTILINE,
     )
-    job_hits: list[str] = []
     step_hits: list[str] = []
     paths = sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml"))
     for path in paths:
         text = path.read_text(encoding="utf-8")
         rel = str(path.relative_to(root))
-        job_hits.extend([rel] * len(job_re.findall(text)))
         step_hits.extend([rel] * len(step_re.findall(text)))
     expected = [str(Path(".github") / "workflows" / "ci.yml")]
-    if job_hits != expected:
-        raise AssertionError(
-            f"{PACK_GUARD_JOB!r} job name must appear only in ci.yml, "
-            f"found {job_hits}"
-        )
+    _assert_workflow_job_unique(PACK_GUARD_JOB, root)
+    _assert_workflow_job_unique(DOTTIE_OS_SMOKE_JOB, root)
     if step_hits != expected:
         raise AssertionError(
             f"{PACK_GUARD_STEP_NAME!r} step must appear only in ci.yml, "
@@ -4762,24 +4914,28 @@ def _assert_pack_guard_names_unique(repo_root: Path | None = None) -> None:
         )
 
 
-def _job_keys_from_text(text: str) -> set[str]:
+def _job_keys_from_text(text: str, job: str | None = None) -> set[str]:
     lines = text.splitlines()
-    start = _job_line_index(lines, PACK_GUARD_JOB)
+    start = _job_line_index(lines, PACK_GUARD_JOB if job is None else job)
     end = _job_end_index(lines, start)
-    keys: set[str] = set()
+    keys: list[str] = []
     for line in lines[start + 1 : end]:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
         indent = len(line) - len(line.lstrip(" "))
         if indent == 4 and ":" in stripped:
-            keys.add(stripped.split(":", 1)[0].strip().strip("\"'"))
-    return keys
+            keys.append(stripped.split(":", 1)[0].strip().strip("\"'"))
+    if len(keys) != len(set(keys)):
+        raise AssertionError(f"duplicate job keys {keys} in {job or PACK_GUARD_JOB!r}")
+    return set(keys)
 
 
-def _job_step_blocks_from_text(text: str) -> list[list[str]]:
+def _job_step_blocks_from_text(
+    text: str, job: str | None = None
+) -> list[list[str]]:
     lines = text.splitlines()
-    start = _job_line_index(lines, PACK_GUARD_JOB)
+    start = _job_line_index(lines, PACK_GUARD_JOB if job is None else job)
     job_lines = lines[start : _job_end_index(lines, start)]
     blocks: list[list[str]] = []
     idx = 0
@@ -4824,8 +4980,46 @@ def _step_env_keys(step: dict[str, object]) -> set[str]:
     return found
 
 
+def _assert_job_keys_exact(text: str, job: str) -> None:
+    job_keys = _job_keys_from_text(text, job=job)
+    if job_keys != PACK_GUARD_JOB_KEYS:
+        raise AssertionError(
+            f"job {job!r} keys {sorted(job_keys)} != "
+            f"{sorted(PACK_GUARD_JOB_KEYS)}"
+        )
+
+
+def _assert_smoke_job_has_no_hollowing_steps(text: str) -> None:
+    """Part A still mutates dottie-os-smoke; keep those edits red."""
+    blocks = _job_step_blocks_from_text(text, job=DOTTIE_OS_SMOKE_JOB)
+    for block in blocks:
+        step = _parse_gha_step_lines(block)
+        run = step.get("run")
+        run_text = run if isinstance(run, str) else ""
+        blob = "\n".join(block)
+        hit = PACK_GUARD_EARLIER_BAN_RE.search(f"{run_text}\n{blob}")
+        if hit is not None:
+            raise AssertionError(
+                f"dottie-os-smoke step {step.get('name')!r} is banned: "
+                f"{hit.group(0)!r}"
+            )
+        bad_env = _step_env_keys(step) & PACK_GUARD_GIT_ENV_KEYS
+        if bad_env:
+            raise AssertionError(
+                f"dottie-os-smoke step {step.get('name')!r} sets "
+                f"{sorted(bad_env)} in env"
+            )
+        uses = str(step.get("uses") or "")
+        if uses.startswith("actions/checkout") and "with" in step:
+            raise AssertionError(
+                "dottie-os-smoke actions/checkout must not set with: "
+                "(ref/path/sparse-checkout would change the tree)"
+            )
+
+
 def _assert_pack_guard_context(text: str) -> dict[str, object]:
-    """S4/S6/S7/S8: allowlists, earlier-step bans, unique job/step names."""
+    """S4/S6/S7/S8/S16/S17: pack-guard allowlists, unique names, pinned uses."""
+    _assert_ci_yml_strict(text)
     top_keys = _workflow_top_level_keys(text)
     if set(top_keys) != PACK_GUARD_WORKFLOW_KEYS:
         raise AssertionError(
@@ -4838,51 +5032,48 @@ def _assert_pack_guard_context(text: str) -> dict[str, object]:
             f"got {on_block!r}"
         )
     _assert_pack_guard_names_unique()
-    job_keys = _job_keys_from_text(text)
-    if job_keys != PACK_GUARD_JOB_KEYS:
-        raise AssertionError(
-            f"job {PACK_GUARD_JOB!r} keys {sorted(job_keys)} != "
-            f"{sorted(PACK_GUARD_JOB_KEYS)}"
-        )
+    _assert_uses_pinned_and_allowlisted(text)
+    _assert_tests_do_not_write_runner_env()
+    _assert_job_keys_exact(text, PACK_GUARD_JOB)
+    _assert_job_keys_exact(text, DOTTIE_OS_SMOKE_JOB)
+    _assert_smoke_job_has_no_hollowing_steps(text)
     blocks = _job_step_blocks_from_text(text)
-    guard_at: int | None = None
-    steps: list[dict[str, object]] = []
-    for idx, block in enumerate(blocks):
-        step = _parse_gha_step_lines(block)
-        steps.append(step)
-        if step.get("name") == PACK_GUARD_STEP_NAME and guard_at is None:
-            guard_at = idx
-    if guard_at is None:
+    if len(blocks) != 2:
         raise AssertionError(
-            f"missing step {PACK_GUARD_STEP_NAME!r} in job {PACK_GUARD_JOB!r}"
+            f"job {PACK_GUARD_JOB!r} must have exactly 2 steps "
+            f"(pinned checkout, then the guard); got {len(blocks)}"
         )
-    guard = steps[guard_at]
+    steps = [_parse_gha_step_lines(block) for block in blocks]
+    checkout, guard = steps[0], steps[1]
+    if set(checkout) != PACK_GUARD_CHECKOUT_KEYS:
+        raise AssertionError(
+            f"pack-guard checkout keys {sorted(checkout)} != "
+            f"{sorted(PACK_GUARD_CHECKOUT_KEYS)}"
+        )
+    if checkout.get("uses") != PACK_GUARD_CHECKOUT_PIN:
+        raise AssertionError(
+            f"pack-guard checkout uses {checkout.get('uses')!r} != "
+            f"{PACK_GUARD_CHECKOUT_PIN!r}"
+        )
+    if checkout.get("with") != PACK_GUARD_CHECKOUT_WITH:
+        raise AssertionError(
+            "pack-guard checkout with: must be exactly "
+            f"{PACK_GUARD_CHECKOUT_WITH}, got {checkout.get('with')!r}"
+        )
+    if guard.get("name") != PACK_GUARD_STEP_NAME:
+        raise AssertionError(
+            f"first step after checkout must be {PACK_GUARD_STEP_NAME!r}, "
+            f"got {guard.get('name')!r}"
+        )
     if set(guard) != PACK_GUARD_STEP_KEYS:
         raise AssertionError(
             f"pack-guard step keys {sorted(guard)} != "
             f"{sorted(PACK_GUARD_STEP_KEYS)}"
         )
-    for step, block in zip(steps[:guard_at], blocks[:guard_at], strict=True):
-        run = step.get("run")
-        run_text = run if isinstance(run, str) else ""
-        blob = "\n".join(block)
-        hit = PACK_GUARD_EARLIER_BAN_RE.search(f"{run_text}\n{blob}")
-        if hit is not None:
-            raise AssertionError(
-                f"earlier step {step.get('name')!r} is banned: {hit.group(0)!r}"
-            )
-        bad_env = _step_env_keys(step) & PACK_GUARD_GIT_ENV_KEYS
-        if bad_env:
-            raise AssertionError(
-                f"earlier step {step.get('name')!r} sets "
-                f"{sorted(bad_env)} in env"
-            )
-        uses = str(step.get("uses") or "")
-        if uses.startswith("actions/checkout") and "with" in step:
-            raise AssertionError(
-                "actions/checkout must not set with: "
-                "(ref/path/sparse-checkout would change the tree the guard sees)"
-            )
+    if guard.get("shell") != PACK_GUARD_SHELL:
+        raise AssertionError(
+            f"pack-guard shell {guard.get('shell')!r} != {PACK_GUARD_SHELL!r}"
+        )
     return guard
 
 
@@ -5010,7 +5201,7 @@ def _run_pack_guard_script(
 
 
 class TrackedPackArtifactGuardTests(unittest.TestCase):
-    """CI pack guard is the real dottie-os-smoke step, executed with bash."""
+    """CI pack-guard job is the real extracted step, executed with bash."""
 
     def _run_block(self, text: str | None = None) -> str:
         raw = CI_WORKFLOW.read_text(encoding="utf-8") if text is None else text
@@ -5038,23 +5229,34 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         self.assertEqual(step.get("name"), PACK_GUARD_STEP_NAME)
         self.assertNotIn("if", step)
         self.assertNotIn("continue-on-error", step)
-        self.assertNotIn("shell", step)
+        self.assertEqual(step.get("shell"), PACK_GUARD_SHELL)
         self.assertNotIn("working-directory", step)
         self.assertNotIn("env", step)
         self.assertIsInstance(step.get("run"), str)
         self.assertEqual(_job_keys_from_text(text), PACK_GUARD_JOB_KEYS)
+        self.assertEqual(
+            _job_keys_from_text(text, job=DOTTIE_OS_SMOKE_JOB),
+            PACK_GUARD_JOB_KEYS,
+        )
         self.assertEqual(
             set(_workflow_top_level_keys(text)), PACK_GUARD_WORKFLOW_KEYS
         )
         self.assertEqual(_workflow_on_block(text), PACK_GUARD_ON_BLOCK)
         self.assertIn(f"PACK_GUARD_LS_FILES_FLOOR={PACK_GUARD_LS_FILES_FLOOR}", str(step.get("run")))
         self.assertIn("/usr/bin/git", str(step.get("run")))
-        self.assertIn("grep -zEi", str(step.get("run")))
+        self.assertIn("/usr/bin/grep -zEi", str(step.get("run")))
         run_text = str(step.get("run"))
         self.assertIn(
             'ls-tree -r -z --full-tree --name-only "$GITHUB_SHA"', run_text
         )
-        self.assertIn('cat-file -e "$GITHUB_SHA^{commit}"', run_text)
+        self.assertIn('cat-file -t "$GITHUB_SHA"', run_text)
+        self.assertNotIn("^{commit}", run_text)
+        self.assertIn("GIT_NO_REPLACE_OBJECTS=1", run_text)
+        self.assertIn("--no-replace-objects", run_text)
+        self.assertIn("core.fsmonitor=false", run_text)
+        self.assertIn("core.hooksPath=/dev/null", run_text)
+        self.assertIn("/usr/bin/env -i", run_text)
+        self.assertIn("curated_pack_|ultradata_harvest_", run_text)
         self.assertNotIn("ls-tree -r --name-only -z HEAD", run_text)
         stdlib_step = _pack_guard_step_from_text(text)
         self.assertEqual(set(stdlib_step), PACK_GUARD_STEP_KEYS)
@@ -5084,6 +5286,15 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         self.assertIn(
             CRITIC_91_MUTATIONS_SHA256, path.read_text(encoding="utf-8")
         )
+
+    def test_critic_91_136f_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_136f.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            CRITIC_91_136F_SHA256,
+            "5bf36a2c791a9bde61e239ec4652ac32ae4c4d51cf483088a48846fe88724dd6",
+        )
+        self.assertIn(CRITIC_91_136F_SHA256, path.read_text(encoding="utf-8"))
 
     def test_ci_pack_guard_run_block_trips_on_tracked_packs(self) -> None:
         run = self._run_block()
@@ -5248,7 +5459,14 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
                 f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
             ),
         )
-        self.assertIn("curated_pack_v2.jsonl", proc.stdout)
+        self.assertTrue(
+            "curated_pack_v2.jsonl" in proc.stdout
+            or "HEAD" in proc.stdout,
+            msg=(
+                "reset --hard older must trip (pack at GITHUB_SHA or HEAD "
+                f"mismatch); stdout={proc.stdout!r}"
+            ),
+        )
 
     def test_pack_guard_ls_tree_without_dash_r_misses_nested_pack(self) -> None:
         """Nested pack unstaged from the index is still red; dropping -r is not."""
