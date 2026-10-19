@@ -888,3 +888,29 @@ jobs:
           set -euo pipefail
           python3 scripts/state_pollution_sweep.py --snapshot "$RUNNER_TEMP/factory-after.json"
           python3 scripts/state_pollution_sweep.py --diff "$RUNNER_TEMP/factory-before.json" "$RUNNER_TEMP/factory-after.json"
+
+  # apps/jev-v0: System One /decide serve (stdlib). The veto pre-filter and
+  # /reload auth live here. Torch-free; no live host, no champion load.
+  # Floor so `unittest discover` over an empty tests/ cannot go green.
+  jev-v0-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Stdlib /decide veto + reload auth (no torch, no host)
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s apps/jev-v0/tests -v 2>&1 | tee /tmp/jev-v0.txt
+          ran=$(grep -oE 'Ran [0-9]+ tests?' /tmp/jev-v0.txt | tail -1 | grep -oE '[0-9]+' || echo 0)
+          echo "jev-v0 tests ran: ${ran}"
+          if [ "${ran}" -lt 40 ]; then
+            echo "FAIL: only ${ran} tests ran (floor 40)."
+            exit 1
+          fi
+          if ! grep -qE '^OK$' /tmp/jev-v0.txt; then
+            echo "FAIL: unittest did not report OK"
+            exit 1
+          fi
