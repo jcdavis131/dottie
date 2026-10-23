@@ -32,6 +32,7 @@ if _LAB not in sys.path:
     sys.path.insert(0, _LAB)
 
 import cam_pin_spec
+import helper_ft_trackio
 import kick_helper_ft
 
 CHUNK = 1 << 20
@@ -255,6 +256,55 @@ def require_hq_cam_pin(pack_id: str) -> dict[str, Any]:
     return {"ok": True, "pin": pin}
 
 
+def _session_from_body(body: dict[str, Any] | None) -> helper_ft_trackio.RunSession:
+    run_id = None
+    run_dir = None
+    if isinstance(body, dict):
+        raw_id = body.get("run_id")
+        if type(raw_id) is str and raw_id:
+            run_id = raw_id
+        evidence = body.get("evidence") if isinstance(body.get("evidence"), dict) else {}
+        if run_id is None:
+            ev_id = evidence.get("run_id")
+            if type(ev_id) is str and ev_id:
+                run_id = ev_id
+        ev_path = body.get("evidence_path") or evidence.get("evidence_path")
+        if isinstance(ev_path, str) and ev_path:
+            run_dir = Path(ev_path).parent
+    return helper_ft_trackio.RunSession(run_id=run_id, run_dir=run_dir)
+
+
+def _track_kickoff_result(
+    session: helper_ft_trackio.RunSession,
+    body: dict[str, Any] | None,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Record MATCH/REFUSED after the gate has already decided. Fail-open."""
+    try:
+        evidence = body.get("evidence") if isinstance(body, dict) and isinstance(body.get("evidence"), dict) else {}
+        config = helper_ft_trackio.config_from_evidence({**evidence, **payload})
+        if payload.get("ok") is True:
+            if not session.inited:
+                session.start(config)
+            smoke = payload.get("smoke") is True
+            session.log_integrity(
+                {
+                    "sha256_evidence": payload.get("sha256_evidence"),
+                    "result": payload.get("result"),
+                    "exit_code": payload.get("exit_code"),
+                    "smoke": smoke,
+                    "scorable": False if smoke else True,
+                    "host": payload.get("host"),
+                }
+            )
+            session.finish()
+            return payload
+        session.refuse(payload, config=config)
+    except Exception:
+        pass
+    return payload
+
+
 def handle_train_kickoff(
     body: dict[str, Any] | None,
     *,
@@ -266,6 +316,16 @@ def handle_train_kickoff(
     ``stampVerified`` and ``pack_matches`` are advisory and never sufficient.
     ``inbox: latest`` is never accepted. Evidence ``ok: true`` is not trust.
     """
+    session = _session_from_body(body)
+    return _track_kickoff_result(session, body, _handle_train_kickoff(body, launch_trainer=launch_trainer, session=session))
+
+
+def _handle_train_kickoff(
+    body: dict[str, Any] | None,
+    *,
+    launch_trainer: LaunchTrainer | None = None,
+    session: helper_ft_trackio.RunSession | None = None,
+) -> dict[str, Any]:
     if not isinstance(body, dict):
         return _bad("body", "object", type(body).__name__)
     try:
@@ -434,6 +494,26 @@ def handle_train_kickoff(
     host = socket.gethostname()
     trainer_config = {"host": host, "paths": recorded_paths}
     trainer_argv = kick_helper_ft.build_trainer_argv(recorded_paths)
+    if session is not None:
+        session.run_id = run_id
+        session.start(
+            helper_ft_trackio.config_from_evidence(
+                {
+                    **evidence,
+                    "run_id": run_id,
+                    "pack_id": pack_id,
+                    "computed_shas": {
+                        "sha256_pack": hq_pin["sha256_pack"],
+                        "sha256_train": hq_pin["sha256_train"],
+                        "sha256_holdout": hq_pin["sha256_holdout"],
+                    },
+                    "pin": hq_pin,
+                    "host": host,
+                    "head_sha": blobs.get("HEAD"),
+                    "trainer_config": trainer_config,
+                }
+            )
+        )
     launch_body = dict(body)
     launch_body["paths"] = recorded_paths
     launch_body["trainer_config"] = trainer_config
@@ -449,6 +529,11 @@ def handle_train_kickoff(
     launched = launcher(launch_body)
     if not isinstance(launched, dict) or launched.get("ok") is not True:
         return _bad("trainer", "ok", launched)
+    if session is not None:
+        log_path = None
+        if isinstance(evidence_path, str) and evidence_path:
+            log_path = Path(evidence_path).parent / kick_helper_ft.DEFAULT_LOG_NAME
+        session.log_losses_from_launch(launched, log_path=log_path)
     exit_info = kick_helper_ft.wait_for_training_exit(launched)
     record = kick_helper_ft.rehash_recorded_trainer_paths(
         recorded_paths,

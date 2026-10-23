@@ -16,6 +16,28 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-10-23 (supersedes every block below)
+
+**Stamped 2026-10-23 at HEAD `93de347`** (`cursor/helper-ft-trackio-53d2`, the
+merge of `origin/main` `09b0765` / #89 plus Trackio #86). Measured with
+`git rev-parse --short HEAD` + `scripts/check_handoff_fresh.py --check`.
+
+**Why this block exists:** `lint-and-test` on this PR failed
+`scripts/check_handoff_fresh.py --check`. The 2026-10-13 stamp records
+`43f4189`. On `main` that is 9 commits of drift (under the 20-commit
+budget). This branch still carries the unsquashed #85 history plus Trackio,
+so the same stamp is 36 commits behind HEAD and the check exits 1. This
+refresh restamps the trusted block; it does not change the Trackio or
+leakgate code.
+
+**Verified at this stamp (python 3.12.3, ruff 0.15.22):**
+`uvx ruff@0.15.22 check packages/dottie-loop` clean;
+`python3 -m unittest discover -s apps/dottie-os/tests -v` 201 OK;
+`scripts/check_handoff_fresh.py --check` reports this sha as the recorded
+HEAD (drift 0 before the stamp commit).
+
+---
+
 ## 📌 Session continuation — 2026-10-13 (supersedes every block below)
 
 **Stamped 2026-10-13 at HEAD `43f4189`** (`main`, the squash merge of PR #83;
