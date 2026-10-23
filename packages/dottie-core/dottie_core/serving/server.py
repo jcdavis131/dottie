@@ -10,6 +10,10 @@ Endpoints:
     POST /decide   -> {"state": {...}, "query": {...}}
                       -> {"best": {"value":..., "confidence":...},
                           "alternatives": [...], "model_id": ..., "calibration": ...}
+                      A veto hit skips the model and returns choice=halt with
+                      veto_rule.                       A veto exception fail-closes to halt (never execute).
+                      Request bodies larger than BODY_CAP (256 KiB) return 413.
+                      Unknown paths (including /reload) are 404.
 
 Run on nugatron:
     python3 -m dottie_core.serving.server --weights training/out/weights.json --port 8766
@@ -33,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dottie_core.state import Belief, Constraints, StateRef, WorldState  # noqa: E402
 from dottie_core.model import TypedQuery  # noqa: E402
 from dottie_core.trained import TrainedModel  # noqa: E402
+from dottie_core.serving.veto import BODY_CAP, VETO_ERROR, VETO_OVERSIZE, VetoResult, halt_body, veto  # noqa: E402
 
 
 def _state_from_dict(d: dict) -> WorldState:
@@ -101,21 +106,47 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):  # quiet
         pass
 
+    def _not_found(self) -> None:
+        self._send(404, {"ok": False, "error": "not found"})
+
     def do_GET(self):
         if urlparse(self.path).path == "/health":
             m = self.model
             self._send(200, {"ok": True, "model_id": m.model_id if m else None,
                              "calibration": m.calibration if m else None})
         else:
-            self._send(404, {"ok": False, "error": "not found"})
+            self._not_found()
 
     def do_POST(self):
         if urlparse(self.path).path != "/decide":
-            self._send(404, {"ok": False, "error": "not found"})
+            self._not_found()
             return
         try:
             length = int(self.headers.get("Content-Length", 0))
+            if length > BODY_CAP:
+                remaining = length
+                while remaining > 0:
+                    chunk = self.rfile.read(min(65536, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                self._send(413, {
+                    "ok": False,
+                    "error": "payload too large",
+                    "choice": "halt",
+                    "veto_rule": VETO_OVERSIZE,
+                })
+                return
             body = json.loads(self.rfile.read(length) or b"{}")
+            hit = None
+            try:
+                hit = veto(body)
+            except Exception as exc:
+                sys.stderr.write("veto_error: %s: %s\n" % (type(exc).__name__, exc))
+                hit = VetoResult(rule=VETO_ERROR)
+            if hit is not None:
+                self._send(200, {"ok": True, **halt_body(body, hit.rule)})
+                return
             state = _state_from_dict(body["state"])
             query = _query_from_dict(body["query"])
             ans = self.model.decide(state, query)  # type: ignore[union-attr]
@@ -123,6 +154,21 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             traceback.print_exc()
             self._send(400, {"ok": False, "error": f"{type(e).__name__}: {e}"})
+
+    def do_PUT(self):
+        self._not_found()
+
+    def do_DELETE(self):
+        self._not_found()
+
+    def do_PATCH(self):
+        self._not_found()
+
+    def do_HEAD(self):
+        self._not_found()
+
+    def do_OPTIONS(self):
+        self._not_found()
 
 
 def serve(weights: str, port: int = 8766) -> None:

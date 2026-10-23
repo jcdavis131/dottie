@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Typed System One ``POST /decide`` dev server (default 127.0.0.1:8771).
+"""Typed System One ``POST /decide`` parked fixture (default 127.0.0.1:8771).
+
+This is not the live :8770 HELPER. The live serve runs off-tree in nugatron's
+factory-trainer Docker image. This fixture stays for schema wiring and tests.
 
 Port ownership: dottie-os, the local sidecar that serves System One on your
 machine or tailnet, owns ``:8770``. This jev-v0 dev server defaults to
@@ -12,6 +15,18 @@ offered set): a wiring contract, not a model, and the router treats it as no
 signal. With ``--checkpoint <dir>`` (a ``train_pointer_lora.py --go`` output)
 it lazy-imports torch, answers in ``mode=pointer-lora``, and reports the
 checkpoint's identity hash and its ``eval_summary.json`` gate in ``/health``.
+
+A fixed veto pre-filter (``dottie_core.serving.veto``) runs on every
+``/decide`` before the model. It is a pure function (no network, no config,
+no env kill-switch). Matching input returns a frozen ``decideResponse``
+(``mode`` stays ``untrained`` / ``pointer-lora``, no extra keys) with
+``answers.<qid>.choice=halt`` and does not call the model. A veto parse
+exception, deadline, oversize field or unknown construct fail-closes to
+halt and does not call the model. The veto can only add a halt.
+
+Implemented paths: GET ``/``, GET ``/health``, POST ``/decide``. Every other
+path, including POST ``/reload``, is 404 for every method. There is no
+control-plane route.
 
 This is NOT TypeSafe ``/v1/systemone`` parity and it does not call
 TypeSafe. Bind stays loopback unless ``--host`` is set.
@@ -28,8 +43,12 @@ from typing import Any
 from urllib.parse import urlparse
 
 _APP = Path(__file__).resolve().parent
+_ROOT = _APP.parents[1]  # apps/jev-v0 -> repo
+_CORE = _ROOT / "packages" / "dottie-core"
 if str(_APP) not in sys.path:
     sys.path.insert(0, str(_APP))
+if str(_CORE) not in sys.path:
+    sys.path.insert(0, str(_CORE))
 
 from decision_io import (
     SCHEMA_ID,
@@ -40,6 +59,7 @@ from decision_io import (
     untrained_answer,
     validate_request,
 )
+from dottie_core.serving.veto import wrap_decide
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8771  # dottie-os owns 8770; see the module docstring
@@ -47,15 +67,14 @@ SIDECAR_PORT = 8770
 MAX_BODY = 64 * 1024
 
 
-def decide(payload: Any, *, model: str, mode: str, predictor: Any = None) -> dict[str, Any]:
-    """Answer every question. ``predictor`` (a loaded checkpoint) or uniform."""
-    request = validate_request(payload)
+def _model_decide(
+    request: dict[str, Any], *, model: str, mode: str, predictor: Any
+) -> dict[str, Any]:
     if predictor is None:
         answers = {
             qid: untrained_answer(question) for qid, question in request["questions"].items()
         }
     elif hasattr(predictor, "probabilities_many"):
-        # one pass over the shared state prefix for every question (pointer_infer.SharedPrefixScorer)
         probs = predictor.probabilities_many(request["state"], request["questions"])
         answers = {
             qid: answer_from_probabilities(question, probs[qid])
@@ -72,6 +91,16 @@ def decide(payload: Any, *, model: str, mode: str, predictor: Any = None) -> dic
         "mode": mode,
         "answers": answers,
     }
+
+
+def decide(payload: Any, *, model: str, mode: str, predictor: Any = None) -> dict[str, Any]:
+    """Answer every question. Veto runs first and, on a hit, skips ``predictor``."""
+    request = validate_request(payload)
+
+    def inner(req: dict[str, Any]) -> dict[str, Any]:
+        return _model_decide(req, model=model, mode=mode, predictor=predictor)
+
+    return wrap_decide(inner)(request)
 
 
 class DecideHandler(BaseHTTPRequestHandler):
@@ -97,6 +126,11 @@ class DecideHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def _not_found(self) -> None:
+        # Unread bodies on keep-alive sockets must not become the next request.
+        self.close_connection = True
+        self._send(404, {"ok": False, "error": "not found"})
+
     def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
         path = urlparse(self.path).path
         if path in {"/", "/health"}:
@@ -113,13 +147,12 @@ class DecideHandler(BaseHTTPRequestHandler):
                 },
             )
             return
-        self._send(404, {"ok": False, "error": "not found"})
+        self._not_found()
 
     def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
         path = urlparse(self.path).path
         if path != "/decide":
-            self.close_connection = True  # the unread body must not become the next request
-            self._send(404, {"ok": False, "error": "not found"})
+            self._not_found()
             return
         length_raw = self.headers.get("Content-Length", "")
         try:
@@ -149,6 +182,21 @@ class DecideHandler(BaseHTTPRequestHandler):
             self._send(422, {"ok": False, "error": str(exc)})
             return
         self._send(200, body)
+
+    def do_PUT(self) -> None:  # noqa: N802
+        self._not_found()
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        self._not_found()
+
+    def do_PATCH(self) -> None:  # noqa: N802
+        self._not_found()
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        self._not_found()
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self._not_found()
 
 
 class DecideServer(ThreadingHTTPServer):
