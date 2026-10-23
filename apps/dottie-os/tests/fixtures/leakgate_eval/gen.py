@@ -1,5 +1,8 @@
 import argparse
-import json,hashlib,os,base64,copy,datetime,collections
+# leak-gate fixture generator, canonical v3 (Mill). stdlib-only.
+# = Mill gen.py 5d7244a6 + Forge PR#89 CLI args/pinned timestamps (3097e27b) + S1 (explicit utf-8, newline='\n' on all I/O)
+#   + accepts a {'synthetic':true,'rows':[...]} source wrapper; records source/gen sha256 in MANIFEST.
+import json,hashlib,os,base64,copy,collections
 parser=argparse.ArgumentParser()
 parser.add_argument('--src',required=True)
 parser.add_argument('--out',required=True)
@@ -10,10 +13,15 @@ SRC=_ARGS.src
 ts=_ARGS.ts
 produced_at=_ARGS.produced_at
 ROOT=_ARGS.out
-_src_text=open(SRC).read()
+with open(SRC,'r',encoding='utf-8',newline='\n') as _fh: _src_text=_fh.read()
+_SRC_SHA=hashlib.sha256(_src_text.encode('utf-8')).hexdigest()
+SYNTH=False
 if SRC.endswith('.json'):
     _loaded=json.loads(_src_text)
-    rows=_loaded if isinstance(_loaded,list) else [_loaded]
+    if isinstance(_loaded,dict) and isinstance(_loaded.get('rows'),list):
+        SYNTH=bool(_loaded.get('synthetic')); rows=_loaded['rows']
+    else:
+        rows=_loaded if isinstance(_loaded,list) else [_loaded]
 else:
     rows=[json.loads(l) for l in _src_text.splitlines() if l.strip()]
 def has_choice(r): return any(isinstance(v,dict) and v.get('type')=='choice' for v in r['labels'].values())
@@ -62,7 +70,7 @@ def t_numeric_p(r,g,i,leaky):
     r['state']['meta']['p']= gnum(r) if leaky else 0.5
 def t_base64(r,g,i,leaky):
     w=g if leaky else CONST
-    r['state']['meta']['code']=base64.b64encode(w.encode()).decode()
+    r['state']['meta']['code']=base64.b64encode(w.encode('utf-8')).decode()
 # unicode keys
 CY='r\u0456sk_h\u0456nt'           # cyrillic i (U+0456)
 FW='\uff52\uff49\uff53\uff4b\uff3f\uff48\uff49\uff4e\uff54'  # fullwidth risk_hint
@@ -114,7 +122,7 @@ def c_substring(r,g,i,leaky):
 def c_numeric_unc(r,g,i,leaky):
     r['state']['meta']['latency_ms']=(i*37+11)%97                # uncorrelated with gold/score
 CLEAN=[
- ('clean_base',          None,          "untouched real rows; must ACCEPT (negative control)"),
+ ('clean_base',          None,          ("untouched base rows; must ACCEPT (negative control)" if SYNTH else "untouched real rows; must ACCEPT (negative control)")),
  ('clean_label_word_in_command',c_label_words,"label words appear inside command text, uncorrelated with gold -> ACCEPT"),
  ('clean_status_mixed',  c_status_mixed,"meta.status holds label words but MIXED vs gold across pack -> ACCEPT"),
  ('clean_meta_lang_tool',c_lang_tool,   "normal meta.lang/meta.tool, not label-predictive -> ACCEPT"),
@@ -127,7 +135,7 @@ def sha_bytes(b): return hashlib.sha256(b).hexdigest()
 def split_rows(rs):
     tr=[];ho=[]
     for r in rs:
-        h=int(hashlib.sha256(r['id'].encode()).hexdigest(),16)
+        h=int(hashlib.sha256(r['id'].encode('utf-8')).hexdigest(),16)
         (ho if h%4==0 else tr).append(r)
     if not ho: ho=[tr.pop()]
     if not tr: tr=[ho.pop()]
@@ -136,16 +144,16 @@ def write_pack(case_id, rs, sidecar=None):
     d=f'{PKDIR}/{case_id}'; os.makedirs(d,exist_ok=True)
     tr,ho=split_rows(rs)
     def dump(name,objs):
-        b=''.join(json.dumps(o,ensure_ascii=False)+'\n' for o in objs).encode()
+        b=''.join(json.dumps(o,ensure_ascii=False)+'\n' for o in objs).encode('utf-8')
         open(f'{d}/{name}','wb').write(b); return sha_bytes(b)
     sp=dump('curated_pack_v2.jsonl',rs); st=dump('curated_pack_v2_train.jsonl',tr); sh=dump('curated_pack_v2_holdout.jsonl',ho)
     man={'pack_id':f'leakfix-{case_id}','rows':len(rs),'train_rows':len(tr),'holdout_rows':len(ho),
          'sha256_pack':sp,'sha256_train':st,'sha256_holdout':sh,'eval_only':True,'not_for_train':True,
          'champion_touched':False,'ft_kicked':False,'live_gate_touched':False}
     if sidecar is not None:
-        sb=''.join(json.dumps(o,ensure_ascii=False)+'\n' for o in sidecar).encode()
+        sb=''.join(json.dumps(o,ensure_ascii=False)+'\n' for o in sidecar).encode('utf-8')
         open(f'{d}/labels_sidecar.jsonl','wb').write(sb); man['sha256_sidecar']=sha_bytes(sb)
-    json.dump(man,open(f'{d}/MANIFEST.json','w'),indent=1,ensure_ascii=False)
+    with open(f'{d}/MANIFEST.json','w',encoding='utf-8',newline='\n') as _fh: json.dump(man,_fh,indent=1,ensure_ascii=False)
     return {'pack':sp,'train':st,'holdout':sh,**({'sidecar':man['sha256_sidecar']} if sidecar is not None else {})}
 
 fixtures=[]           # annotated rows for fixtures.jsonl
@@ -183,7 +191,7 @@ for key,tf,note in CLEAN:
     build_case(key,'accept',None,note,tf,False)
 
 # fixtures.jsonl + README + MANIFEST
-fx=''.join(json.dumps(o,ensure_ascii=False)+'\n' for o in fixtures).encode()
+fx=''.join(json.dumps(o,ensure_ascii=False)+'\n' for o in fixtures).encode('utf-8')
 open(f'{ROOT}/fixtures.jsonl','wb').write(fx)
 # README
 lines=["# Leak-gate adversarial fixtures (build-against set for Forge #85 kick() label-leak gate)","",
@@ -191,7 +199,8 @@ lines=["# Leak-gate adversarial fixtures (build-against set for Forge #85 kick()
  "A leak = a NON-message field whose VALUE predicts the gold label (action for L3, domain for L2) across the whole pack.",
  "Detection must be VALUE-based and PACK-level: refuse when a field's values predict gold across rows; accept when the",
  "same key exists but its values are constant/mixed/uncorrelated. Single-row coincidences must ACCEPT.","",
- f"Base rows: 16 real rows from ultradata_l3halt_lenmatch_20261018-224530 (golds: {dict(collections.Counter(gold(r) for r in BASE))}).","",
+ (f"Base rows: 16 SYNTHETIC placeholder rows from {os.path.basename(SRC)} (no real commands/code/uuids; golds: {dict(collections.Counter(gold(r) for r in BASE))})." if SYNTH else
+  f"Base rows: 16 real rows from ultradata_l3halt_lenmatch_20261018-224530 (golds: {dict(collections.Counter(gold(r) for r in BASE))})."),"",
  "## Cases"]
 for cid,exp,tw,note in caselist:
     lines.append(f"- `{cid}` [{exp}]"+(f" (twin_of {tw})" if tw else "")+f": {note}")
@@ -203,11 +212,11 @@ lines+=["","## Why value-based (not key-name) detection is required",
  "  a real leak (twin_* packs keep the suspicious key with a non-predictive value and must ACCEPT).",
  "- Leaks also hide in string values (JSON-in-string, base64), in numeric copies of the gold score (meta.p == safe.noul),",
  "  in a message suffix, and in a companion sidecar file keyed by id -> all must be caught by comparing values to gold."]
-readme=('\n'.join(lines)+'\n').encode(); open(f'{ROOT}/README.md','wb').write(readme)
+readme=('\n'.join(lines)+'\n').encode('utf-8'); open(f'{ROOT}/README.md','wb').write(readme)
 
-man={'fixture_set_id':f'leakgate_fixtures-{ts}','produced_at':produced_at,
+man={'fixture_set_id':(f'leakgate_fixtures_synth-{ts}' if SYNTH else f'leakgate_fixtures-{ts}'),'produced_at':produced_at,
  'producer':'Mill (box; data only under /workspace/packs/)',
- 'source_pack':'ultradata_l3halt_lenmatch_20261018-224530/curated_pack_v2.jsonl',
+ 'source_pack':(os.path.basename(SRC) if SYNTH else 'ultradata_l3halt_lenmatch_20261018-224530/curated_pack_v2.jsonl'),
  'base_rows':len(BASE),'base_gold_counts':dict(collections.Counter(gold(r) for r in BASE)),
  'gold_definition':'L3: labels.action.choice ; L2: labels.domain.choice ; numeric gold: labels.safe.noul',
  'total_fixture_rows':len(fixtures),'cases':len(caselist),
@@ -219,7 +228,8 @@ man={'fixture_set_id':f'leakgate_fixtures-{ts}','produced_at':produced_at,
  'sha256_fixtures_jsonl':sha_bytes(fx),'sha256_readme_md':sha_bytes(readme),
  'not_for_train':True,'eval_only':True,'champion_touched':False,'ft_kicked':False,'live_gate_touched':False,
  'scope':'open adversarial build-against set; Critic holds a separate held-out set'}
-json.dump(man,open(f'{ROOT}/MANIFEST.json','w'),indent=1,ensure_ascii=False)
+if SYNTH: man.update({'source_synthetic':True,'sha256_source':_SRC_SHA})  # absent for real-source builds (keeps 888645 byte-identical)
+with open(f'{ROOT}/MANIFEST.json','w',encoding='utf-8',newline='\n') as _fh: json.dump(man,_fh,indent=1,ensure_ascii=False)
 print('ROOT',ROOT)
 print('cases',len(caselist),'rows',len(fixtures))
 print('expect cases',man['expect_counts_cases'])
