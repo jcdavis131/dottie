@@ -16,6 +16,43 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-10-23 (supersedes every block below)
+
+**Stamped 2026-10-23 at HEAD `6ede50eb`** (`cursor/leakgate-guard-hardening`,
+PR #91; this restamp's parent). Measured with `git rev-parse HEAD`,
+`git fetch origin main`, a local `git merge --no-ff origin/main` of this
+branch, and `scripts/check_handoff_fresh.py --check`. CI `pull_request`
+HEAD is the merge commit, so the recorded sha is `6ede50eb` and not
+`origin/main` `09b07651`: merge-ref drift is 3 (this restamp + #89's
+merge `09b07651` + the PR merge commit) against a budget of 20.
+Recording `09b07651` counts all 24 #91 commits plus the merge and fails
+(25). Recording the previous stamp `43f4189` is 34 on that merge ref.
+
+**What #91 adds** (vs `origin/main` `09b07651`; 13 files, +5679/−130):
+
+- A dedicated `pack-guard` job in `.github/workflows/ci.yml` that scans
+  the whole index and `GITHUB_SHA` tree (not a base diff), with scrubbed
+  `/usr/bin/git`, exact `(path, sha256)` PIN plus `KNOWN_LEGACY` for
+  `corpus.jsonl` and `repair_sft_unified.jsonl`, and a warn-only CSV
+  tripwire. S24 quote-aware GHA expression scan. No
+  `PACK_GUARD_BLOB_PIN_TEST`.
+- CODEOWNERS on `/.github/` and the pack-guard tests; `lint.yml` and
+  `factory.yml` action pins moved to 40-hex SHAs.
+- Vendored Critic suites, byte-identical at their pinned shas: 0b05_r2,
+  0ac5_r2, ce30_r2, 50d2_r2, plus 136f, af2d, f8f1, and the mutations
+  suite; `apps/dottie-os/tests/test_ultradata_factory.py` carries the
+  guard tests.
+
+**Verified at this stamp:**
+`WT=/workspace python3 -m unittest discover -s apps/dottie-os/tests -v`
+on `6ede50eb` — Ran 343 tests, OK (skipped=2:
+`test_h3_real_spoofs_red_pyyaml`, `test_pack_only_in_pr_history_refused`).
+CI run 39962897453 on that sha: `pack-guard` pass; `dottie-os-smoke`
+unittest also 343 / OK (skipped=2), job red because the wrapper
+`grep -qE '^OK$'` does not match `OK (skipped=2)` (skip-allowlist guard
+not on main yet); `lint-and-test` red only on this freshness check
+(recorded `43f4189`, merge HEAD `064268b`, drift 34).
+
 ## 📌 Session continuation — 2026-10-13 (supersedes every block below)
 
 **Stamped 2026-10-13 at HEAD `43f4189`** (`main`, the squash merge of PR #83;

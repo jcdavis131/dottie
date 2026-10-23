@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import unicodedata
 import signal
 import socket
 import stat
@@ -3507,6 +3508,8 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertIn("apps/dottie-os/scripts/lab/cam_pin_spec.py", text)
         self.assertIn("apps/dottie-os/scripts/lab/kick_helper_ft.py", text)
         self.assertIn("apps/dottie-os/tests/cam_pin_vector_helper.py", text)
+        self.assertIn("/.github/", text)
+        self.assertIn("/apps/dottie-os/tests/", text)
         self.assertIn(".github/workflows/ci.yml", text)
         self.assertIn("@jcdavis131", text)
         self.assertIn("required code-owner review", text)
@@ -4088,11 +4091,576 @@ LEAKGATE_GEN_TS = "20261018-230457"
 LEAKGATE_GEN_PRODUCED_AT = "2026-10-18T23:04:57-05:00"
 REPO_ROOT = APP.parents[1]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
-PACK_GUARD_JOB = "dottie-os-smoke"
+PACK_GUARD_JOB = "pack-guard"
+DOTTIE_OS_SMOKE_JOB = "dottie-os-smoke"
 PACK_GUARD_STEP_NAME = "Refuse tracked pack artifacts"
 PACK_GUARD_ROOT_PACK = "curated_pack_x.jsonl"
 PACK_GUARD_FIXTURES_PACK = (
     "apps/dottie-os/tests/fixtures/leakgate_eval/packs/a/curated_pack_v2.jsonl"
+)
+# Guard step: {name, run, shell}. shell is the GHA custom-shell form with {0}
+# as the script-file placeholder. -p is a bash invocation flag (privileged:
+# ignore BASH_ENV/ENV and exported functions). GitHub substitutes {0} then
+# execs the string; -p is passed through.
+PACK_GUARD_SHELL = (
+    "/usr/bin/bash --noprofile --norc -p -euo pipefail {0}"
+)
+PACK_GUARD_STEP_KEYS = frozenset({"name", "run", "shell"})
+PACK_GUARD_CHECKOUT_PIN = (
+    "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+)
+PACK_GUARD_CHECKOUT_KEYS = frozenset({"uses", "with"})
+PACK_GUARD_CHECKOUT_WITH = {"persist-credentials": False}
+PACK_GUARD_ALLOWED_USES = frozenset(
+    {
+        PACK_GUARD_CHECKOUT_PIN,
+        "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+        "astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86",
+    }
+)
+PACK_GUARD_USES_PIN_RE = re.compile(
+    r"^[^@\s]+(?:/[^@\s]+)+@[0-9a-f]{40}$"
+)
+PACK_GUARD_USES_LINE_RE = re.compile(
+    r"^\s+(?:- )?uses:\s*['\"]?([^\s'\"#]+)", re.MULTILINE
+)
+PACK_GUARD_GHA_KEYS = frozenset(
+    {
+        "name",
+        "on",
+        "permissions",
+        "jobs",
+        "runs-on",
+        "steps",
+        "uses",
+        "with",
+        "secrets",
+        "env",
+        "defaults",
+        "concurrency",
+        "timeout-minutes",
+        "if",
+        "continue-on-error",
+        "needs",
+        "strategy",
+        "container",
+        "services",
+        "outputs",
+        "environment",
+        "shell",
+        "working-directory",
+        "id",
+        "run",
+        "persist-credentials",
+        "fetch-depth",
+        "path",
+        "ref",
+        "github-token",
+        "script",
+        "run-name",
+        "runs",
+        "using",
+        "image",
+        "main",
+        "pre",
+        "post",
+        "inputs",
+    }
+)
+PACK_GUARD_ALLOWED_TRIGGERS = frozenset(
+    {"push", "pull_request", "schedule", "workflow_dispatch"}
+)
+PACK_GUARD_LOCAL_USES_PREFIX = "./.github/"
+PACK_GUARD_EXPR_RE = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
+PACK_GUARD_GITHUB_SAFE = frozenset(
+    {
+        "actor",
+        "api_url",
+        "base_ref",
+        "event_name",
+        "job",
+        "ref",
+        "ref_name",
+        "repository",
+        "repository_id",
+        "repository_owner",
+        "run_attempt",
+        "run_id",
+        "run_number",
+        "server_url",
+        "sha",
+        "workflow",
+        "workspace",
+    }
+)
+PACK_GUARD_DOCKER_DIGEST_RE = re.compile(
+    r"^docker://\S+@sha256:[0-9a-f]{64}$"
+)
+PACK_GUARD_SECRETS_INHERIT_RE = re.compile(
+    r"secrets:\s+inherit\b", re.IGNORECASE
+)
+PACK_GUARD_API_POST_RE = re.compile(
+    r"github-script|\bgh\b.*\bapi\b|/statuses/|check-runs|check_runs|"
+    r"createCommitStatus|api\.github\.com",
+    re.IGNORECASE | re.DOTALL,
+)
+PACK_GUARD_CLONE_TOKEN_RE = re.compile(
+    r"x-access-token:|\$\{\{\s*(github\.token|secrets\.)|"
+    r"https://[^/\s]*:[^/@\s]+@github\.com",
+    re.IGNORECASE,
+)
+PACK_GUARD_SECRETS_RE = re.compile(r"\$\{\{\s*secrets\.", re.IGNORECASE)
+# pack-guard and dottie-os-smoke: exactly {runs-on, steps}. No needs, name,
+# timeout-minutes, if, continue-on-error, defaults, env, container, services.
+PACK_GUARD_JOB_KEYS = frozenset({"runs-on", "steps"})
+PACK_GUARD_JOB_FORBIDDEN_KEYS = frozenset(
+    {"if", "continue-on-error", "needs", "strategy", "name", "permissions"}
+)
+PACK_GUARD_RUNS_ON = "ubuntu-latest"
+PACK_GUARD_LOOKALIKE_RE = re.compile(r"pack[-_ ]?guard")
+# S21: per-segment NFKC+alnum, refuse curatedpack / ultradataharvest;
+# exact-path allowlist only. Shared with the pack-guard CI python.
+PACK_GUARD_PATH_NEEDLES = ("curatedpack", "ultradataharvest")
+PACK_GUARD_PATH_ALLOWLIST_PROD = frozenset(
+    {
+        "docs/curated-packing-notes.md",
+        "scripts/run_ultradata_harvest.py",
+        "apps/dottie-os/scripts/lab/run_ultradata_harvest.py",
+    }
+)
+# Test-only name: S21 normalizes to contain curatedpack. Factory tests
+# pass this set explicitly; CI PATH_PY A= is production only.
+PACK_GUARD_PATH_ALLOWLIST_TEST = frozenset(
+    {
+        "apps/x/uncurated_package.py",
+    }
+)
+PACK_GUARD_PATH_ALLOWLIST = PACK_GUARD_PATH_ALLOWLIST_PROD
+PACK_GUARD_PATH_TRANSLIT = {
+    "\u0430": "a",
+    "\u0435": "e",
+    "\u043e": "o",
+    "\u0440": "p",
+    "\u0441": "c",
+    "\u0445": "x",
+    "\u0443": "y",
+    "\u0456": "i",
+    "\u0458": "j",
+    "\u0455": "s",
+    "\u0501": "d",
+    "\u03bf": "o",
+    "\u039f": "o",
+    "\u0410": "a",
+    "\u0415": "e",
+    "\u041e": "o",
+    "\u0420": "p",
+    "\u0421": "c",
+    "\u0425": "x",
+    "\u0423": "y",
+    "\u0406": "i",
+}
+_PACK_GUARD_ALLOW_REPR = (
+    "{" + ",".join(repr(p) for p in sorted(PACK_GUARD_PATH_ALLOWLIST_PROD)) + "}"
+)
+# Exact (path, sha256) pins for tracked jsonl/gz/sqlite/JSONL-shaped blobs.
+PACK_GUARD_BLOB_PIN = frozenset(
+    {
+        ('.scout/missions/slasso-analytics-trace-ops/timeline.jsonl',
+         '9a325a18793f798ba7b99d1792c432f7796b53998a087714a52055a61c285947'),
+        ('.scout/missions/slasso-sota-20260815/timeline.jsonl',
+         '7ff5d62b75028568e461b006102679c9b0dc569695c54329558ff93d73eec81a'),
+        ('apps/arxiviq-factory/sample/pack_sample.jsonl',
+         '76b1865557ca8d0d002bca90f5901baf14dc3a3dd3581af1b93e11d12078ea32'),
+        ('apps/arxiviq-factory/sources/enrich.jsonl.gz',
+         'e94e4d7f2cc41515e21a672789417ba9e872644b81059e3bb752f755f2b9f258'),
+        ('apps/arxiviq-factory/sources/paper_skills.jsonl.gz',
+         '2d7aed11f43d2ea927ae61d1ebec5272a1ee7849ee3da70175707714cbee25f7'),
+        ('apps/arxiviq-factory/sources/papers.jsonl.gz',
+         '78c04d61dabd5128e76390f120c4a83644320361aa6dbb725791489a1064a3a3'),
+        ('apps/arxiviq-factory/sources/ror.jsonl.gz',
+         '456c8942ebbe7ac408575aacd960ae923c7f4c6719499f61c509dc753d4c6fdd'),
+        ('apps/arxiviq-factory/sources/teacher.jsonl.gz',
+         '89fe1378a8f57a8033549d260398c9f8989735e0406e748c5c9a71c6924488b1'),
+        ('apps/atlas-outcomes/sample/pack_sample.jsonl',
+         '889a230a6714cec02f30863f1254777f5edbd0b5d0e34b4d28c6efd417a4906e'),
+        ('apps/atlas-outcomes/sources/flows.jsonl.gz',
+         '6c0e7305d69e1afab7756e4bf6fc3a30c8019c187884eefc4da7029d1a152f3e'),
+        ('apps/atlas-outcomes/sources/gauges.jsonl.gz',
+         '5de5a28331aac5ed67a3c728e2e1bc9f3aee7c4c143c52aa8277323f390d26ae'),
+        ('apps/atlas-outcomes/sources/warnings.jsonl.gz',
+         'ca5d4e7756e2cc78922f36e7df0bb651012d3bba06e692915b12e92b04ce8b93'),
+        ('apps/ava-factory/data/orchestration/label_corrections.jsonl',
+         'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'),
+        ('apps/ava-factory/evals/probe_items/arithmetic.jsonl',
+         '40cea14a7187795a57591e92eee7500c6d2320390a3688b7ee240c679e519c1e'),
+        ('apps/ava-factory/evals/probe_items/code_out.jsonl',
+         'd45b230a5dbdfe87a848bdb483e5be583fd6554ebcd4b4e52c7827c0b9023447'),
+        ('apps/ava-factory/evals/probe_items/compression.jsonl',
+         '2d7e41c994922aa0759b4d94fc1ad9d81f7431566c3db3b12f5eca6d1a069a65'),
+        ('apps/ava-factory/evals/probe_items/db_mechanics.jsonl',
+         '93961f3b50ea7c69b50e16398ab0c6fe62a7a01aa6f005fc72e58e84a3d9341a'),
+        ('apps/ava-factory/evals/probe_items/facts.jsonl',
+         '57ea34817d140b4ec17f9636b7e16c840213e24e5548220f25164f3a44d456f0'),
+        ('apps/ava-factory/evals/probe_items/modus_ponens.jsonl',
+         'eb356044b1ef9531144e6693862a84f63a2a46160971e3ea76ffd880a5c00b53'),
+        ('apps/ava-factory/evals/probe_items/safety.jsonl',
+         '2cbd55400958cce7cdbb03b71dbc9cb0bdb26d349c4b0e9ec3ac274b42c4328c'),
+        ('apps/ava-factory/evals/probe_items/safety_words.jsonl',
+         'c1beb5675d891b164cac5450903d93a3b183079189559423ce130b1c681996aa'),
+        ('apps/ava-factory/evals/probe_items/tool_selection.jsonl',
+         '085cecc134e903ce0cd7378869e9d4ac1af66f83a48fd5944475750e7a38f519'),
+        ('apps/ava-factory/runs/cpu_pilot/reports/agentic/metrics_nano.jsonl',
+         'f85a63c03418254d6992d57b3dee028db40478a19f062c069afc9a295f848d1b'),
+        ('apps/ava-factory/runs/cpu_pilot/reports/agentic/train_stdout.log',
+         'fc52388204eefbe1648731b2d95966f95dca71e715e296989f30ce3b5797398e'),
+        ('apps/ava-factory/runs/cpu_pilot/reports/base/metrics_nano.jsonl',
+         'baed1fb07ae051f2bd2e66263c55b4763e3c52c7526077d2d260f669a94153a7'),
+        ('apps/ava-factory/runs/cpu_pilot/reports/base/train_stdout.log',
+         '0a9aa58ab4e85fd30dda07ae1e7e8ce7d348b56117d1cd21461953893922099e'),
+        ('apps/ava-factory/scripts/fixtures/probe_error_analysis/generations.jsonl',
+         '5d595408b7ed3c8f5cbfce2c7b27dad46783f123ebd1d5510f1efa1de8837ed5'),
+        ('apps/dottie-harness-api/bundles/ultra/runs/slasso-lattice-v2/timeline.jsonl',
+         '4c831ffc6c1477b12fdef9d2281c086a1076bd554e93022b149e088b3e812864'),
+        ('apps/dottie-harness-api/lib/analytics_store.jsonl',
+         'd147afa804d77408741e94c31ba4e1366d345bf2717bc8d6fd3a5f5ed03b1622'),
+        ('apps/dottie-harness-api/lib/flags.jsonl',
+         '5b5c7f6feb61e690dfd58463129f5caf8c79ed2ab5f96e5643a4547c3cbee868'),
+        ('apps/dottie-harness-api/lib/trace.jsonl',
+         'b13997a7fa502a9bc39e2333b59423c01c88de3f2e33c056bb99d4ad98ae60f5'),
+        ('apps/jev-v0/fixtures/synthetic_decisions.jsonl',
+         '53b3910239275e764ddbd301ea84db2fd0d12cec8fdb2ac25ce570316bce9057'),
+        ('bundles/analytics/store.jsonl',
+         'd147afa804d77408741e94c31ba4e1366d345bf2717bc8d6fd3a5f5ed03b1622'),
+        ('bundles/coordination/timeline.jsonl',
+         '6a6312c0573f7b1d1dfb51a617e387a9401a08ccc32fbb890832fce408c9835e'),
+        ('bundles/flags/flags.jsonl',
+         '5b5c7f6feb61e690dfd58463129f5caf8c79ed2ab5f96e5643a4547c3cbee868'),
+        ('bundles/ultra/runs/slasso-analytics-trace-ops/timeline.jsonl',
+         'e6dee7dd595c19767169d0019319b7043ac453a320c2630ad45290496c8e6d86'),
+        ('bundles/ultra/runs/slasso-sota-20260815/timeline.jsonl',
+         'f70acb6cfad1729de4b0b702cd9964265f56da40eac97c24eef0334730315803'),
+        ('dottie/bundles/ultra/runs/slasso-analytics-trace-ops/timeline.jsonl',
+         '9a325a18793f798ba7b99d1792c432f7796b53998a087714a52055a61c285947'),
+        ('dottie/bundles/ultra/runs/slasso-sota-20260815/timeline.jsonl',
+         '7ff5d62b75028568e461b006102679c9b0dc569695c54329558ff93d73eec81a'),
+        ('examples/goldens.jsonl',
+         'e5f9bc06179b760c5f4af47a2c418c85dc1e446e911b6a518d3b2c6edda79149'),
+        ('goals/frontend-swarm-hoops-level-everywhere/hidden_files/timeline.jsonl',
+         '5f5c7a96c9a788cf38cb610f4ab185fca2cc6dca51f0c5b428c34793cc3f8648'),
+        ('goals/orchestrator-scout-prime-always-on/hidden_files/timeline.jsonl',
+         '5f5c7a96c9a788cf38cb610f4ab185fca2cc6dca51f0c5b428c34793cc3f8648'),
+        ('hidden_files/cron_health.jsonl',
+         'cc13e680f4e5e822ce6ae53d0d3081ca11a3d7ad2eb501a01d33831be802c759'),
+        ('hidden_files/timeline.jsonl',
+         '8330896c15ef7d19cd2255578476147b47b96142c90c9edd0f366ee3f3bbe0c4'),
+        ('hidden_files/timeline_cml_research.jsonl',
+         '73938bf034d752dd530d0c7bb7a21ad35c6706b20e37f64a80c4d0504b4490b7'),
+        ('hidden_files/timeline_dottie_sota.jsonl',
+         '2c5b3d6b744599feecc264520c9aead5844c9ef9263474aa79456875a48b6ace'),
+        ('hidden_files/trace-orchestration-2026-08-17.jsonl',
+         '6d22cda61c3b7d4642ff09b12f563b661ce8a0f64fcff678e35f7f526c4779ba'),
+        ('lessons/ledger.jsonl',
+         'b880667916ce90997d5d4a58aed6e66586610dd104934e79b4e8ad86162cbfd6'),
+        ('packages/dottie-loop/dottie_loop/benchmarks/router_bench_v1.jsonl',
+         '5f21340e79c89ef9bd99efc1c1705330dee182377eb728563c7e412b59392f4e'),
+        ('pipeline/runs/slasso-analytics-trace-ops/timeline.jsonl',
+         '9a325a18793f798ba7b99d1792c432f7796b53998a087714a52055a61c285947'),
+        ('tasks/artifacts/corpus_proposals/gridiron_forecast_rows/gridiron_forecast_rows.jsonl',
+         '42504913eb5ab860bc282c65f4fdee1f827aaeb958068ef082e656dd070aa959'),
+        ('tasks/artifacts/corpus_proposals/oapen_open_books/oapen_open_books.jsonl',
+         '5f2a0c2cfb7c7bfd1fa18a72221baff4c3cece1c46e28ad6d6495996db512e40'),
+        ('tasks/artifacts/corpus_proposals/repair_transcripts/repair_transcripts.jsonl',
+         'e6cadb84f9ec048c458790641aba60013df493a8a927eb2bac49bcb5937ea556'),
+        ('tasks/artifacts/ledger_copy.sqlite3',
+         '5150bdf0c9bfc12d8a1fc277cb92d02f739847c883f0421b686ea98f10b489c4'),
+        ('workspace/skills/lessons/ledger.jsonl',
+         'f6c4b7b47d414a790f0ce7b5f757b696172cec0749b284bb805b79437603e16b'),
+    }
+)
+# KNOWN_LEGACY is separate from PACK_GUARD_BLOB_PIN and from any folder
+# exemption list. These two files wait for a move decision from Cam and Mill.
+# Allowed only at this exact path with this exact sha256; any copy, rename,
+# new path, or changed content is refused.
+PACK_GUARD_KNOWN_LEGACY = frozenset(
+    {
+        ('apps/ava-factory/data/orchestration/corpus.jsonl',
+         'bf57c470a6f3d287f06857457ca7012f1b8d1551c5c921c2aaf1f6bc1ef04127'),
+        ('tasks/artifacts/corpus_proposals/repair_transcripts/repair_sft_unified.jsonl',
+         '61a55d528b3945f4a488e0ffd077d7bff49d7344f24409d3441a6120004646be'),
+    }
+)
+# Warn-only CSV-header tripwire. Paper-skill tables are pinned; extras
+# print WARN and never fail CI (accepted leftover bounded by the 3 MiB cap).
+PACK_GUARD_CSV_PIN = frozenset(
+    {
+        (
+            "apps/arxiviq-factory/sources/paper_skills/2609.26458/"
+            "assets/table/table-p0009-006.csv",
+            "66133abef7d8eaf19048faf8a4ca99b08180307b4c15f30e0acf1df3d39e5f76",
+        ),
+        (
+            "apps/arxiviq-factory/sources/paper_skills/2609.26458/"
+            "assets/table/table-p0009-010.csv",
+            "41a26cac36b9beeb90e0db2b06a1fd1cc13752a4004cd8cc2fa8234dc669b774",
+        ),
+        (
+            "apps/arxiviq-factory/sources/paper_skills/2609.26642/"
+            "assets/table/table-p0005-002.csv",
+            "7c97a417bf81dae3361c47f2e2cde17bccbfd3f6b2de696a6b436932343bee0a",
+        ),
+        (
+            "apps/arxiviq-factory/sources/paper_skills/2609.26642/"
+            "assets/table/table-p0015-006.csv",
+            "449f039c5a30fdab6b26a1ecabc4c72f92608ae0cee536bb0fc43b9715ff5002",
+        ),
+    }
+)
+PACK_GUARD_CSV_TRIPWIRE_PY = (
+    "import hashlib,sys;"
+    "P=frozenset("
+    f"{tuple(sorted(PACK_GUARD_CSV_PIN))!r}"
+    ");"
+    "[sys.stdout.write('WARN csv tripwire '+p+' '+h+chr(10))"
+    " for rec in sys.stdin.buffer.read().split(bytes([0])) if rec"
+    " for p in [rec.decode('utf-8','surrogateescape')]"
+    " if p.casefold().endswith('.csv')"
+    " for h in [hashlib.sha256(open(p,'rb').read()).hexdigest()]"
+    " if (p,h) not in P];"
+    "sys.exit(0)"
+)
+PACK_GUARD_BLOB_MAX = 3 * 1024 * 1024
+_PACK_GUARD_INNER = r"""
+out=G('cat-file','--batch',inp=raw).stdout
+i=0
+while i<len(out):
+ nl=out.find(bytes([10]),i)
+ if nl<0:break
+ hdr=out[i:nl].split()
+ if len(hdr)<3:
+  i=nl+1
+  continue
+ sz=int(hdr[2]);st=nl+1;oid=hdr[0].decode()
+ if sz>CAP:
+  B[oid]=None
+  i=st+sz+1
+  continue
+ B[oid]=out[st:st+sz];i=st+sz+1
+def jl(b):
+ n=0;sk=0
+ for line in b.split(bytes([10])):
+  s=line.strip()
+  if not s:continue
+  if s[:1] not in b'{[':
+   sk+=1
+   if sk>8:return 0
+   continue
+  try:json.loads(s)
+  except Exception:
+   sk+=1
+   if sk>8:return 0
+   continue
+  n+=1
+  if n>=2:return 1
+ return 0
+def jarr(b):
+ try:v=json.loads(b)
+ except Exception:return 0
+ if isinstance(v,list) and len(v)>=2 and all(isinstance(x,dict) and ('messages' in x) for x in v[:8]):return 1
+ return 0
+def tarv7(b):
+ if len(b)<512:return 0
+ fld=b[148:156]
+ try:st=int(fld.replace(bytes([0]),b' ').strip() or b'0',8)
+ except Exception:return 0
+ if sum(b[:148])+256+sum(b[156:512])!=st:return 0
+ name=b[:100].split(bytes([0]),1)[0]
+ return 1 if name and all(32<=c<127 for c in name) else 0
+def b64d(b):
+ al=bytes(list(range(65,91))+list(range(97,123))+list(range(48,58)))
+ ok=al+b'+/';ou=al+b'-_'
+ parts=[]
+ for ln in b.split(bytes([10])):
+  s=b''.join(ln.split())
+  if s and len(s)>=32 and len(s)%4==0 and all((c in ok or c in ou or c==61) for c in s):parts.append(s)
+ s=b''.join(parts)
+ if len(s)<32 or len(s)%4:return b''
+ try:return base64.b64decode(s,validate=True)
+ except Exception:
+  try:return base64.b64decode(s,altchars=b'-_',validate=True)
+  except Exception:return b''
+def hexd(b):
+ s=b.strip()
+ if len(s)<64 or len(s)%2:return b''
+ if not all((48<=c<=57 or 65<=c<=70 or 97<=c<=102) for c in s):return b''
+ try:return bytes.fromhex(s.decode('ascii'))
+ except Exception:return b''
+PK3=b'PK'+bytes([3,4]);PK5=b'PK'+bytes([5,6]);PK7=b'PK'+bytes([7,8])
+Z7=b'7z'+bytes([0xbc,0xaf,0x27,0x1c])
+RAR=bytes([0x52,0x61,0x72,0x21,0x1a,0x07])
+LZ4=bytes([4,0x22,0x4d,0x18]);Z=bytes([0x1f,0x9d]);LZMA=bytes([0x5d,0,0,0x80,0])
+GZ=bytes([0x1f,0x8b]);GZ8=bytes([0x1f,0x8b,0x08])
+XZ=bytes([0xfd])+b'7zXZ'+bytes([0]);ZST=bytes([0x28,0xb5,0x2f,0xfd])
+SQL=b'SQLite format 3'+bytes([0])
+def packy(b):
+ return bad(b) or b.startswith((GZ,b'BZh',XZ,ZST,SQL,LZ4,Z,LZMA,b'PAR1')) or GZ8 in b or jl(b) or jarr(b)
+def bad(b):
+ if b is None or len(b)>CAP:return 1
+ if b.startswith((LFS,LFS2,LFS3)):return 1
+ if PK3 in b or PK5 in b or PK7 in b:return 1
+ if RAR in b or Z7 in b:return 1
+ if len(b)>261 and b[257:262]==b'ustar':return 1
+ if tarv7(b) or (len(b)>1023 and tarv7(b[512:])):return 1
+ return 0
+def s26(p):
+ m,o=info.get(p,('',''))
+ if m in ('120000','160000'):return 1
+ b=B.get(o,b'')
+ if bad(b):return 1
+ if isinstance(b,bytes):
+  h=hashlib.sha256(b).hexdigest()
+  if (p,h) in PIN or (p,h) in LEG:return 0
+ cf=p.casefold()
+ ext=any(cf.endswith(e) for e in EXT) or '.jsonl.' in cf or '.ndjson.' in cf
+ mag=isinstance(b,bytes) and (b.startswith((GZ,b'BZh',XZ,ZST,SQL,LZ4,Z,LZMA,b'PAR1')) or GZ8 in b)
+ if isinstance(b,bytes) and (ext or mag or jl(b) or jarr(b)):return 1
+ if isinstance(b,bytes):
+  dcd=b64d(b)
+  if dcd and packy(dcd):return 1
+  hx=hexd(b)
+  if hx and packy(hx):return 1
+ return 0
+"""
+_PACK_GUARD_INNER_EXEC = (
+    "exec('"
+    + _PACK_GUARD_INNER.strip("\n")
+    .replace("\\", "\\\\")
+    .replace("'", "\\'")
+    .replace("\n", "\\n")
+    + "')"
+)
+PACK_GUARD_PATH_PY = (
+    "import sys,unicodedata,subprocess,os,json,base64,hashlib;"
+    f"A={_PACK_GUARD_ALLOW_REPR};"
+    f"N={PACK_GUARD_PATH_NEEDLES!r};"
+    "C=str.maketrans({"
+    "'\\u0430':'a','\\u0435':'e','\\u043e':'o','\\u0440':'p','\\u0441':'c',"
+    "'\\u0445':'x','\\u0443':'y','\\u0456':'i','\\u0458':'j','\\u0455':'s',"
+    "'\\u0501':'d','\\u03bf':'o','\\u039f':'o','\\u0410':'a','\\u0415':'e',"
+    "'\\u041e':'o','\\u0420':'p','\\u0421':'c','\\u0425':'x','\\u0423':'y',"
+    "'\\u0406':'i'"
+    "});"
+    "nrm=lambda s:''.join(ch for ch in unicodedata.normalize('NFKC',s)"
+    ".translate(C).casefold() if ch.isalnum());"
+    "hit=lambda s:(lambda segs:any(n in x for x in segs for n in N) or "
+    "any(n in ''.join(segs) for n in N) or any(ord(c)>127 for c in s))"
+    "([nrm(y) for y in s.split('/')]);"
+    "PIN=frozenset("
+    f"{tuple(sorted(PACK_GUARD_BLOB_PIN))!r}"
+    ");"
+    "LEG=frozenset("
+    f"{tuple(sorted(PACK_GUARD_KNOWN_LEGACY))!r}"
+    ");"
+    f"CAP={PACK_GUARD_BLOB_MAX};"
+    "EXT=('.zip','.tar','.tgz','.7z','.rar','.gz','.bz2','.xz',"
+    "'.zst','.jsonl','.ndjson','.lz4','.lzma','.z01','.parquet',"
+    "'.z','.db','.sqlite','.sqlite3');"
+    "LFS=b'version https://git-lfs.github.com/spec/v1';"
+    "LFS2=b'version https://hawser.github.com/spec/v1';"
+    "LFS3=b'version http://git-media.io/v/2';"
+    "ge={'PATH':'/usr/bin:/bin','HOME':'/nonexistent',"
+    "'GIT_CONFIG_NOSYSTEM':'1','GIT_CONFIG_GLOBAL':'/dev/null',"
+    "'GIT_NO_REPLACE_OBJECTS':'1'};"
+    "G=lambda *a,inp=None:subprocess.run(["
+    "'/usr/bin/git','--no-replace-objects',"
+    "'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',*a"
+    "],capture_output=True,env=ge,input=inp);"
+    "parse=lambda out,tree:{p.decode('utf-8','surrogateescape'):"
+    "(w[0].decode(),(w[2] if tree else w[1]).decode())"
+    " for rec in out.split(bytes([0])) if rec and bytes([9]) in rec"
+    " for meta,p in [rec.split(bytes([9]),1)] for w in [meta.split()]};"
+    "info={};"
+    "info.update(parse(G('ls-files','-z','--stage').stdout,0));"
+    "sha=(sys.argv[2] if len(sys.argv)>2 and sys.argv[2] else"
+    " G('rev-parse','HEAD').stdout.decode().strip());"
+    "info.update(parse(G('ls-tree','-r','-z','--full-tree',sha).stdout,1)"
+    " if sha else {});"
+    "raw=b''.join((o+chr(10)).encode() for m,o in info.values() if o);"
+    "B={};"
+    f"{_PACK_GUARD_INNER_EXEC};"
+    "names=[s for p in open(sys.argv[1],'rb').read().split(bytes([0]))"
+    " if p for s in [p.decode('utf-8','surrogateescape')]];"
+    "hits=[s for s in names if (s not in A and hit(s)) or s26(s)];"
+    "[sys.stdout.write(s.encode('utf-8','backslashreplace').decode()"
+    "+chr(10)) for s in hits];"
+    "sys.exit(0 if hits else 1)"
+)
+PACK_GUARD_PATH_RE = PACK_GUARD_PATH_PY
+PACK_GUARD_GREP_RE = PACK_GUARD_PATH_PY
+PACK_GUARD_ENV_PATH = "/usr/bin:/bin"
+PACK_GUARD_ENV_HOME = "/nonexistent"
+PACK_GUARD_ENV_LC_ALL = "C"
+PACK_GUARD_ENV_SCRUB_RE = re.compile(
+    r"PATH=/usr/bin:/bin \\\n\s+HOME=/nonexistent \\\n\s+LC_ALL=C \\\n"
+)
+PACK_GUARD_ENV_INLINE = (
+    f"PATH={PACK_GUARD_ENV_PATH} HOME={PACK_GUARD_ENV_HOME} "
+    f"LC_ALL={PACK_GUARD_ENV_LC_ALL}"
+)
+PACK_GUARD_CODEOWNERS_GITHUB = "/.github/"
+PACK_GUARD_CODEOWNERS_TESTS = "/apps/dottie-os/tests/"
+PACK_GUARD_CODEOWNERS_FACTORY = (
+    "apps/dottie-os/tests/test_ultradata_factory.py"
+)
+PACK_GUARD_CODEOWNERS_CRITIC = "apps/dottie-os/tests/test_critic_91_*.py"
+PACK_GUARD_CODEOWNERS_OWNER = "@jcdavis131"
+PACK_GUARD_CHECKOUT_USES_RE = re.compile(
+    r"^actions/checkout@[0-9a-fA-F]{40}$"
+)
+PACK_GUARD_SHELL_EUO = "-euo pipefail"
+# S6: ci.yml top-level keys and the trigger block on main (a3872eab).
+PACK_GUARD_WORKFLOW_KEYS = frozenset({"name", "on", "permissions", "jobs"})
+PACK_GUARD_ON_BLOCK = (
+    "on:\n"
+    "  push:\n"
+    "    branches: [main]\n"
+  "  pull_request:\n"
+    "    branches: [main]\n"
+)
+PACK_GUARD_PERMISSIONS_BLOCK = "permissions:\n  contents: read\n"
+# Half of 2561 tracked files when the floor was set, rounded down.
+PACK_GUARD_LS_FILES_FLOOR = 1280
+PACK_GUARD_EARLIER_BAN_RE = re.compile(
+    r"GITHUB_ENV|GITHUB_PATH|read-tree|\breset\b|update-index|sparse"
+    r"|excludesFile|info/exclude|update-ref|--orphan|\bstash\b"
+    r"|\bgit\b(?:[\t ]+\S+)*[\t ]+rm\b",
+    re.IGNORECASE,
+)
+PACK_GUARD_GIT_ENV_KEYS = frozenset(
+    {"GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE"}
+)
+CRITIC_91_MUTATIONS_SHA256 = (
+    "039fc431010be21b1ef5fab8d8d0c1c32311321a3bd4b474a5fe14152176471f"
+)
+CRITIC_91_136F_SHA256 = (
+    "f8edfd4ddd0ba6405870cacdc642a0413a50e68aca4e62d4db2e7e3eff31b282"
+)
+CRITIC_91_AF2D_SHA256 = (
+    "7f8ca3fec9e50dd45e2e53b4a86bb7ce575c5e1600d9e1f11335f57405bbb510"
+)
+CRITIC_91_50D2_SHA256 = (
+    "32a310671d274481fbef2b98007e75ae7ed2205ebf82e1c4281e622508caeaa2"
+)
+CRITIC_91_CE30_SHA256 = (
+    "d2295e285f0babb054e3c898c7cd5816d6b32db6c865ad7eac35209e6a671fd3"
+)
+CRITIC_91_F8F1_SHA256 = (
+    "4cdf999eef803bd20ee448a3c836230fcf9fe294bf2b3c11a20ffeba081986a0"
+)
+CRITIC_91_0B05_SHA256 = (
+    "49c11d0e1fd3596f4eefb13737a2d13aa4cc49fa816e481665ee4347a60b4d54"
+)
+CRITIC_91_0AC5_SHA256 = (
+    "182d9dcd264312b7a76de6b79f3d0ffc20edcf41d1859d05b8dcb68ed7cbb2cc"
 )
 LEAKGATE_TRACKED_NAMES = frozenset(
     {
@@ -4113,6 +4681,48 @@ RFC4122_UUID_RE = re.compile(
 HEX_ID_10_RE = re.compile(
     r"(?i)(?<![0-9a-f])(?=[0-9a-f]{10,})[0-9a-f]*[a-f][0-9a-f]*(?![0-9a-f])"
 )
+# Real UltraData row ids (S5/S9): anywhere in source.json raw text.
+AGENT_ID_RE = re.compile(r"(Code|General)_Agent_\d{6}", re.IGNORECASE)
+
+
+def _assert_source_json_is_synthetic(raw: str) -> None:
+    """Fail if source.json raw text or payload looks like real UltraData.
+
+    Isolated from sha pins so a mutated copy still goes red when
+    HelperFtLeakGateEvalTests.setUpClass is stubbed.
+    """
+    lowered = raw.lower()
+    if "ultradata" in lowered:
+        raise AssertionError("source.json must not contain an ultradata substring")
+    if "openbmb" in lowered:
+        raise AssertionError("source.json must not contain an openbmb substring")
+    agent_ids = [match.group(0) for match in AGENT_ID_RE.finditer(raw)]
+    if agent_ids:
+        raise AssertionError(f"real agent ids: {agent_ids[:5]}")
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise AssertionError("source.json must be a JSON object")
+    if payload.get("synthetic") is not True:
+        raise AssertionError("source.json must set synthetic: true")
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        raise AssertionError("source.json rows must be a list")
+    if len(rows) != 16:
+        raise AssertionError(f"source.json rows {len(rows)} != 16")
+    uuids = _source_uuid_values(payload)
+    if len(uuids) != 16:
+        raise AssertionError(f"uuid values {len(uuids)} != 16")
+    if len(set(uuids)) != 16:
+        raise AssertionError("uuid values must be unique")
+    for value in uuids:
+        if SYNTHETIC_UUID_RE.fullmatch(value) is None:
+            raise AssertionError(f"non-synthetic uuid: {value!r}")
+    rfc = RFC4122_UUID_RE.findall(raw)
+    if rfc:
+        raise AssertionError(f"rfc4122 uuids: {rfc[:5]}")
+    hex_ids = HEX_ID_10_RE.findall(raw)
+    if hex_ids:
+        raise AssertionError(f"10+ hex-char ids: {hex_ids[:5]}")
 
 
 def _source_uuid_values(obj: object) -> list[str]:
@@ -4284,28 +4894,11 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
 
         The wrapper is ``{"synthetic": true, "rows": [...]}`` with 16
         ``"uuid"`` values matching ``synthetic-NNN``. Forbid UltraData
-        text and uuid-like (RFC4122 / 10+ hex) ids.
+        text, ``openbmb``, ``(Code|General)_Agent_\\d{6}``, and
+        uuid-like (RFC4122 / 10+ hex) ids.
         """
         raw = (LEAKGATE_EVAL_DIR / "source.json").read_text(encoding="utf-8")
-        self.assertFalse(
-            "ultradata" in raw.lower(),
-            "source.json must not contain an ultradata substring",
-        )
-        payload = json.loads(raw)
-        self.assertIsInstance(payload, dict)
-        self.assertIs(payload.get("synthetic"), True)
-        rows = payload.get("rows")
-        self.assertIsInstance(rows, list)
-        self.assertEqual(len(rows), 16)
-        uuids = _source_uuid_values(payload)
-        self.assertEqual(len(uuids), 16)
-        self.assertEqual(len(set(uuids)), 16)
-        for value in uuids:
-            self.assertRegex(value, SYNTHETIC_UUID_RE)
-        rfc = RFC4122_UUID_RE.findall(raw)
-        self.assertEqual(rfc, [], msg=f"rfc4122 uuids: {rfc[:5]}")
-        hex_ids = HEX_ID_10_RE.findall(raw)
-        self.assertEqual(hex_ids, [], msg=f"10+ hex-char ids: {hex_ids[:5]}")
+        _assert_source_json_is_synthetic(raw)
 
     def test_mill_leakgate_fixtures_end_to_end(self) -> None:
         cases = self.index["case_list"]
@@ -4404,15 +4997,681 @@ class HelperFtLeakGateEvalTests(unittest.TestCase):
             )
 
 
-def _parse_yaml_scalar(raw: str) -> object:
-    value = raw.strip()
+class SourceJsonSyntheticRawTextTests(unittest.TestCase):
+    """S5: raw-text bans, independent of HelperFtLeakGateEvalTests sha pins."""
+
+    def _mill_payload(self) -> dict:
+        raw = (LEAKGATE_EVAL_DIR / "source.json").read_text(encoding="utf-8")
+        payload = json.loads(raw)
+        self.assertIsInstance(payload, dict)
+        return payload
+
+    def test_mill_source_json_still_passes(self) -> None:
+        raw = (LEAKGATE_EVAL_DIR / "source.json").read_text(encoding="utf-8")
+        _assert_source_json_is_synthetic(raw)
+
+    def test_four_real_id_placements_go_red_with_setupclass_stubbed(self) -> None:
+        mill = self._mill_payload()
+
+        def dump(payload: dict) -> str:
+            return json.dumps(payload, ensure_ascii=False)
+
+        def in_message() -> str:
+            payload = json.loads(json.dumps(mill))
+            payload["rows"][0]["state"]["message"] += " Code_Agent_039442"
+            return dump(payload)
+
+        def in_trajectory_id() -> str:
+            payload = json.loads(json.dumps(mill))
+            payload["rows"][0]["trajectory_id"] = "openbmb/x:General_Agent_112972"
+            return dump(payload)
+
+        def openbmb_without_ultradata() -> str:
+            payload = json.loads(json.dumps(mill))
+            payload["rows"][0]["source"]["hf"] = "openbmb/SFT-Agent-2609"
+            raw = dump(payload)
+            self.assertNotIn("ultradata", raw.lower())
+            return raw
+
+        def in_any_field() -> str:
+            payload = json.loads(json.dumps(mill))
+            payload["note"] = str(payload.get("note") or "") + " General_Agent_112990"
+            return dump(payload)
+
+        def lower_agent() -> str:
+            payload = json.loads(json.dumps(mill))
+            payload["rows"][0]["state"]["message"] += " code_agent_039442"
+            return dump(payload)
+
+        placements = (
+            ("Code_Agent_039442 inside a message", in_message),
+            ("openbmb/x:General_Agent_112972 in trajectory_id", in_trajectory_id),
+            ("openbmb/SFT-Agent-2609 without ultradata", openbmb_without_ultradata),
+            ("General_Agent_112990 in any field", in_any_field),
+            ("code_agent_039442 lowercase (S9)", lower_agent),
+        )
+
+        def _noop_setup(cls: type) -> None:
+            return None
+
+        with (
+            patch.object(
+                HelperFtLeakGateEvalTests,
+                "setUpClass",
+                classmethod(_noop_setup),
+            ),
+            patch.object(
+                HelperFtLeakGateEvalTests,
+                "tearDownClass",
+                classmethod(_noop_setup),
+            ),
+        ):
+            for label, mutate in placements:
+                with self.subTest(placement=label):
+                    raw = mutate()
+                    with tempfile.TemporaryDirectory() as tmp:
+                        fake_dir = Path(tmp)
+                        (fake_dir / "source.json").write_text(
+                            raw, encoding="utf-8"
+                        )
+                        with patch(
+                            f"{__name__}.LEAKGATE_EVAL_DIR", fake_dir
+                        ):
+                            case = HelperFtLeakGateEvalTests(
+                                "test_source_json_is_synthetic"
+                            )
+                            with self.assertRaises(AssertionError):
+                                case.test_source_json_is_synthetic()
+
+
+def _pack_guard_norm_segment(segment: str) -> str:
+    folded = (
+        unicodedata.normalize("NFKC", segment)
+        .translate(str.maketrans(PACK_GUARD_PATH_TRANSLIT))
+        .casefold()
+    )
+    return "".join(ch for ch in folded if ch.isalnum())
+
+
+def _pack_guard_path_is_banned(
+    path: str, extra_allow: frozenset[str] | None = None
+) -> bool:
+    """S21: exact-path allowlist, else refuse curatedpack/ultradataharvest."""
+    posix = path.replace("\\", "/")
+    allow = PACK_GUARD_PATH_ALLOWLIST_PROD | (extra_allow or frozenset())
+    if posix in allow:
+        return False
+    segs = [_pack_guard_norm_segment(part) for part in posix.split("/")]
+    blob = "".join(segs)
+    if any(
+        needle in seg
+        for seg in segs
+        for needle in PACK_GUARD_PATH_NEEDLES
+    ) or any(needle in blob for needle in PACK_GUARD_PATH_NEEDLES):
+        return True
+    return any(ord(ch) > 127 for ch in posix)
+
+
+def _yaml_parse_fail(message: str) -> None:
+    raise AssertionError(f"workflow YAML parse failed: {message}")
+
+
+def _yaml_hex_escape(s: str, i: int, width: int) -> tuple[str, int]:
+    end = i + width
+    if end > len(s):
+        _yaml_parse_fail("truncated YAML hex escape")
+    digits = s[i:end]
+    try:
+        return chr(int(digits, 16)), end
+    except (ValueError, OverflowError) as exc:
+        raise AssertionError(
+            f"workflow YAML parse failed: bad hex escape {digits!r}"
+        ) from exc
+
+
+def _yaml_read_quoted(s: str, i: int) -> tuple[str, int, bool]:
+    """YAML 1.2 quoted scalar. Third flag is True when an escape was decoded."""
+    quote = s[i]
+    i += 1
+    out: list[str] = []
+    had_escape = False
+    if quote == "'":
+        while i < len(s):
+            ch = s[i]
+            if ch == "'":
+                if i + 1 < len(s) and s[i + 1] == "'":
+                    out.append("'")
+                    i += 2
+                    continue
+                return "".join(out), i + 1, had_escape
+            out.append(ch)
+            i += 1
+        _yaml_parse_fail("unterminated quoted string")
+    if quote != '"':
+        _yaml_parse_fail("quoted scalar missing quotes")
+    simple = {
+        "0": "\0",
+        "a": "\a",
+        "b": "\b",
+        "t": "\t",
+        "n": "\n",
+        "v": "\v",
+        "f": "\f",
+        "r": "\r",
+        "e": "\x1b",
+        " ": " ",
+        '"': '"',
+        "/": "/",
+        "\\": "\\",
+        "N": "\u0085",
+        "_": "\u00a0",
+        "L": "\u2028",
+        "P": "\u2029",
+    }
+    while i < len(s):
+        ch = s[i]
+        if ch == '"':
+            return "".join(out), i + 1, had_escape
+        if ch == "\\":
+            had_escape = True
+            i += 1
+            if i >= len(s):
+                _yaml_parse_fail("truncated YAML escape")
+            nxt = s[i]
+            if nxt == "x":
+                ch, i = _yaml_hex_escape(s, i + 1, 2)
+                out.append(ch)
+                continue
+            if nxt == "u":
+                ch, i = _yaml_hex_escape(s, i + 1, 4)
+                out.append(ch)
+                continue
+            if nxt == "U":
+                ch, i = _yaml_hex_escape(s, i + 1, 8)
+                out.append(ch)
+                continue
+            if nxt == "\n":
+                i += 1
+                continue
+            if nxt not in simple:
+                _yaml_parse_fail(f"unknown YAML escape \\{nxt}")
+            out.append(simple[nxt])
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    _yaml_parse_fail("unterminated quoted string")
+    raise AssertionError("unreachable")
+
+
+def _yaml_parse_quoted(s: str, i: int) -> tuple[str, int]:
+    value, end, _had = _yaml_read_quoted(s, i)
+    return value, end
+
+
+_YAML_ANCHORS: dict[str, object] = {}
+
+
+def _yaml_refuse_tag_or_merge(raw: str, *, what: str) -> None:
+    stripped = raw.strip()
+    if stripped.startswith("!!") or stripped.startswith("!<"):
+        _yaml_parse_fail(f"{what} uses YAML tag")
+    if stripped == "<<" or stripped.startswith("<<"):
+        _yaml_parse_fail(f"{what} uses YAML merge key")
+
+
+def _yaml_parse_key(raw: str) -> str:
+    stripped = raw.strip()
+    if stripped.startswith("?"):
+        _yaml_parse_fail("complex YAML key")
+    _yaml_refuse_tag_or_merge(stripped, what="workflow key")
+    if stripped.startswith("&") or stripped.startswith("*"):
+        _yaml_parse_fail("workflow key uses YAML anchor/alias")
+    if stripped.startswith(("'", '"')):
+        decoded, end, had = _yaml_read_quoted(stripped, 0)
+        if end != len(stripped):
+            _yaml_parse_fail(f"trailing junk on quoted key {stripped!r}")
+        if had:
+            _yaml_parse_fail(f"escape sequence in workflow key {decoded!r}")
+        key = decoded
+    else:
+        key = stripped
+    folded = key.casefold()
+    if folded in PACK_GUARD_GHA_KEYS and key != folded:
+        _yaml_parse_fail(f"mixed-case workflow key {key!r}")
+    return key
+
+
+def _yaml_skip_flow_space(s: str, i: int) -> int:
+    while i < len(s) and s[i] in " \t\n\r":
+        i += 1
+    if i < len(s) and s[i] == "#":
+        while i < len(s) and s[i] not in "\n\r":
+            i += 1
+        return _yaml_skip_flow_space(s, i)
+    return i
+
+
+def _yaml_parse_plain_flow(s: str, i: int) -> tuple[object, int]:
+    start = i
+    while i < len(s) and s[i] not in ",]}#\n\r":
+        if s[i] == ":" and (i + 1 >= len(s) or s[i + 1] in " ,]}"):
+            break
+        i += 1
+    raw = s[start:i].strip()
+    _yaml_refuse_tag_or_merge(raw, what="flow scalar")
+    return _parse_yaml_scalar(raw), i
+
+
+def _yaml_flow_is_complete(s: str) -> bool:
+    depth = 0
+    in_single = False
+    in_double = False
+    saw = False
+    idx = 0
+    while idx < len(s):
+        ch = s[idx]
+        if in_single:
+            if ch == "'":
+                if idx + 1 < len(s) and s[idx + 1] == "'":
+                    idx += 2
+                    continue
+                in_single = False
+            idx += 1
+            continue
+        if in_double:
+            if ch == "\\":
+                idx += 2
+                continue
+            if ch == '"':
+                in_double = False
+            idx += 1
+            continue
+        if ch == "'":
+            in_single = True
+        elif ch == '"':
+            in_double = True
+        elif ch in "{[":
+            depth += 1
+            saw = True
+        elif ch in "}]":
+            depth -= 1
+        idx += 1
+    return saw and depth <= 0 and not in_single and not in_double
+
+
+def _yaml_parse_flow(s: str, i: int) -> tuple[object, int]:
+    i = _yaml_skip_flow_space(s, i)
+    if i >= len(s):
+        _yaml_parse_fail("truncated flow YAML")
+    if s[i] in "'\"":
+        return _yaml_parse_quoted(s, i)
+    if s[i] == "{":
+        mapping: dict[str, object] = {}
+        i = _yaml_skip_flow_space(s, i + 1)
+        if i < len(s) and s[i] == "}":
+            return mapping, i + 1
+        while True:
+            i = _yaml_skip_flow_space(s, i)
+            if i < len(s) and s[i] in "'\"":
+                key, i, had = _yaml_read_quoted(s, i)
+                if had:
+                    _yaml_parse_fail(f"escape sequence in workflow key {key!r}")
+                _yaml_refuse_tag_or_merge(key, what="flow key")
+                folded = key.casefold()
+                if folded in PACK_GUARD_GHA_KEYS and key != folded:
+                    _yaml_parse_fail(f"mixed-case workflow key {key!r}")
+            else:
+                start = i
+                while i < len(s) and s[i] not in ",]}#\n\r":
+                    if s[i] == ":" and (i + 1 >= len(s) or s[i + 1] in " ,]}"):
+                        break
+                    i += 1
+                key = _yaml_parse_key(s[start:i])
+            i = _yaml_skip_flow_space(s, i)
+            if i >= len(s) or s[i] != ":":
+                _yaml_parse_fail("flow mapping missing ':'")
+            i += 1
+            value, i = _yaml_parse_flow(s, i)
+            if key in mapping:
+                _yaml_parse_fail(f"duplicate YAML key {key!r}")
+            mapping[str(key)] = value
+            i = _yaml_skip_flow_space(s, i)
+            if i < len(s) and s[i] == ",":
+                i += 1
+                continue
+            if i < len(s) and s[i] == "}":
+                return mapping, i + 1
+            _yaml_parse_fail("flow mapping not closed")
+    if s[i] == "[":
+        seq: list[object] = []
+        i = _yaml_skip_flow_space(s, i + 1)
+        if i < len(s) and s[i] == "]":
+            return seq, i + 1
+        while True:
+            value, i = _yaml_parse_flow(s, i)
+            seq.append(value)
+            i = _yaml_skip_flow_space(s, i)
+            if i < len(s) and s[i] == ",":
+                i += 1
+                continue
+            if i < len(s) and s[i] == "]":
+                return seq, i + 1
+            _yaml_parse_fail("flow sequence not closed")
+    return _yaml_parse_plain_flow(s, i)
+
+
+def _yaml_indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _yaml_strip_comment(line: str) -> str:
+    in_single = False
+    in_double = False
+    for idx, ch in enumerate(line):
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == "#" and not in_single and not in_double:
+            if idx == 0 or line[idx - 1] in " \t":
+                return line[:idx].rstrip()
+    return line.rstrip()
+
+
+def _yaml_skip_blanks(lines: list[str], idx: int) -> int:
+    while idx < len(lines):
+        stripped = lines[idx].strip()
+        if not stripped or stripped.startswith("#"):
+            idx += 1
+            continue
+        break
+    return idx
+
+
+def _yaml_parse_block_scalar(lines: list[str], idx: int, key_indent: int) -> tuple[str, int]:
+    idx += 1
+    block: list[str] = []
+    content_indent: int | None = None
+    while idx < len(lines):
+        line = lines[idx]
+        if not line.strip():
+            block.append("")
+            idx += 1
+            continue
+        indent = _yaml_indent(line)
+        if indent <= key_indent:
+            break
+        if content_indent is None:
+            content_indent = indent
+        block.append(line[content_indent:] if len(line) >= content_indent else "")
+        idx += 1
+    return "\n".join(block).rstrip("\n") + "\n", idx
+
+
+def _yaml_parse_value(
+    lines: list[str], idx: int, min_indent: int
+) -> tuple[object, int]:
+    idx = _yaml_skip_blanks(lines, idx)
+    if idx >= len(lines):
+        return None, idx
+    line = _yaml_strip_comment(lines[idx])
+    indent = _yaml_indent(line)
+    if indent < min_indent:
+        return None, idx
+    stripped = line.strip()
+    if stripped.startswith("- ") or stripped == "-":
+        return _yaml_parse_seq(lines, idx, indent)
+    return _yaml_parse_map(lines, idx, indent)
+
+
+def _yaml_parse_map(
+    lines: list[str], idx: int, map_indent: int
+) -> tuple[dict[str, object], int]:
+    mapping: dict[str, object] = {}
+    while idx < len(lines):
+        idx = _yaml_skip_blanks(lines, idx)
+        if idx >= len(lines):
+            break
+        raw_line = lines[idx]
+        line = _yaml_strip_comment(raw_line)
+        if not line.strip():
+            idx += 1
+            continue
+        indent = _yaml_indent(line)
+        if indent < map_indent:
+            break
+        if indent > map_indent:
+            cont = line.strip()
+            if mapping:
+                last_key = next(reversed(mapping))
+                last_val = mapping[last_key]
+                if isinstance(last_val, str) and not cont.startswith("- "):
+                    mapping[last_key] = last_val + "\n" + cont
+                    idx += 1
+                    continue
+            _yaml_parse_fail(f"bad indent at {line!r}")
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            break
+        if ":" not in stripped:
+            _yaml_parse_fail(f"expected mapping key at {stripped!r}")
+        if stripped.startswith("{") or stripped.startswith("["):
+            value, consumed = _yaml_parse_flow(stripped, 0)
+            if not isinstance(value, dict):
+                _yaml_parse_fail("expected mapping")
+            for key, item in value.items():
+                if key in mapping:
+                    _yaml_parse_fail(f"duplicate YAML key {key!r}")
+                mapping[str(key)] = item
+            idx += 1
+            break
+        key_part, rest = stripped.split(":", 1)
+        key = _yaml_parse_key(key_part)
+        rest = rest.strip()
+        if key in mapping:
+            _yaml_parse_fail(f"duplicate YAML key {key!r}")
+        if rest in ("|", "|-", "|+", ">", ">-", ">+"):
+            mapping[key], idx = _yaml_parse_block_scalar(lines, idx, indent)
+            continue
+        if rest.startswith("{") or rest.startswith("["):
+            buf = rest
+            look = idx + 1
+            while not _yaml_flow_is_complete(buf) and look < len(lines):
+                buf += "\n" + lines[look]
+                look += 1
+            mapping[key], _ = _yaml_parse_flow(buf, 0)
+            idx = look
+            continue
+        if rest == "":
+            nxt = _yaml_skip_blanks(lines, idx + 1)
+            if nxt < len(lines):
+                nxt_line = _yaml_strip_comment(lines[nxt])
+                nxt_indent = _yaml_indent(nxt_line)
+                if nxt_indent > indent:
+                    mapping[key], idx = _yaml_parse_value(lines, nxt, nxt_indent)
+                    continue
+                if nxt_indent == indent and nxt_line.strip().startswith("- "):
+                    mapping[key], idx = _yaml_parse_seq(
+                        lines, nxt, nxt_indent
+                    )
+                    continue
+            mapping[key] = None
+            idx += 1
+            continue
+        mapping[key] = _parse_yaml_scalar(rest, as_name=(key == "name"))
+        idx += 1
+    return mapping, idx
+
+
+def _yaml_parse_seq(
+    lines: list[str], idx: int, seq_indent: int
+) -> tuple[list[object], int]:
+    seq: list[object] = []
+    while idx < len(lines):
+        idx = _yaml_skip_blanks(lines, idx)
+        if idx >= len(lines):
+            break
+        line = _yaml_strip_comment(lines[idx])
+        indent = _yaml_indent(line)
+        if indent < seq_indent:
+            break
+        stripped = line.strip()
+        if not (stripped.startswith("- ") or stripped == "-"):
+            break
+        if indent != seq_indent:
+            _yaml_parse_fail(f"bad sequence indent at {stripped!r}")
+        payload = stripped[1:].strip()
+        if payload == "":
+            nxt = _yaml_skip_blanks(lines, idx + 1)
+            if nxt < len(lines) and _yaml_indent(_yaml_strip_comment(lines[nxt])) > seq_indent:
+                value, idx = _yaml_parse_value(
+                    lines, nxt, _yaml_indent(_yaml_strip_comment(lines[nxt]))
+                )
+            else:
+                value = None
+                idx += 1
+            seq.append(value)
+            continue
+        if payload.startswith("{") or payload.startswith("["):
+            value, _ = _yaml_parse_flow(payload, 0)
+            seq.append(value)
+            idx += 1
+            continue
+        if ":" in payload and not payload.startswith(("'", '"')):
+            nested_line = " " * (seq_indent + 2) + payload
+            nested_lines = [nested_line, *lines[idx + 1 :]]
+            value, consumed = _yaml_parse_map(nested_lines, 0, seq_indent + 2)
+            eaten = max(consumed - 1, 0)
+            idx = idx + 1 + eaten
+            seq.append(value)
+            continue
+        seq.append(_parse_yaml_scalar(payload))
+        idx += 1
+    return seq, idx
+
+
+def _minimal_yaml_load(text: str) -> object:
+    global _YAML_ANCHORS
+    _YAML_ANCHORS = {}
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    lines = [line.replace("\t", "  ").rstrip() for line in text.splitlines()]
+    idx = 0
+    saw_doc = False
+    while idx < len(lines):
+        stripped = lines[idx].strip()
+        if not stripped or stripped.startswith("#"):
+            idx += 1
+            continue
+        if stripped == "---":
+            if saw_doc:
+                _yaml_parse_fail("second YAML document")
+            saw_doc = True
+            idx += 1
+            continue
+        if stripped == "...":
+            _yaml_parse_fail("YAML document end marker")
+        break
+    if idx >= len(lines):
+        return {}
+    value, nxt = _yaml_parse_value(lines, idx, 0)
+    nxt = _yaml_skip_blanks(lines, nxt)
+    while nxt < len(lines):
+        stripped = lines[nxt].strip()
+        if not stripped or stripped.startswith("#"):
+            nxt += 1
+            continue
+        if stripped == "...":
+            break
+        if stripped == "---":
+            _yaml_parse_fail("second YAML document")
+        _yaml_parse_fail(f"trailing YAML content {stripped!r}")
+    return value if value is not None else {}
+
+
+def _load_workflow_yaml(text: str) -> object:
+    """Vendored YAML 1.2 loader (dottie-os-smoke has no PyYAML). Fail closed."""
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    try:
+        return _minimal_yaml_load(text)
+    except AssertionError:
+        raise
+    except Exception as extra:
+        raise AssertionError(
+            f"workflow YAML parse failed: {extra}"
+        ) from extra
+
+
+def _pack_guard_lookalike_token(value: object) -> bool:
+    if value is None:
+        return False
+    text = value if isinstance(value, str) else str(value)
+    if text.casefold() == PACK_GUARD_JOB.casefold():
+        return True
+    folded = unicodedata.normalize("NFKC", text).casefold()
+    return PACK_GUARD_LOOKALIKE_RE.search(folded) is not None
+
+
+def _iter_parsed_jobs(doc: object) -> list[tuple[str, object | None]]:
+    if not isinstance(doc, dict):
+        _yaml_parse_fail("workflow YAML is not a mapping")
+    jobs = doc.get("jobs")
+    if jobs is None:
+        return []
+    if not isinstance(jobs, dict):
+        _yaml_parse_fail("jobs: is not a mapping")
+    found: list[tuple[str, object | None]] = []
+    for job_id, body in jobs.items():
+        name: object | None = None
+        if isinstance(body, dict) and "name" in body:
+            name = body.get("name")
+        found.append((str(job_id), name))
+    return found
+
+
+def _parse_yaml_scalar(raw: str, *, as_name: bool = False) -> object:
+    value = _yaml_strip_comment(raw).strip()
+    _yaml_refuse_tag_or_merge(
+        value, what="job/step name" if as_name else "YAML scalar"
+    )
+    if value.startswith("*"):
+        name = value[1:].strip()
+        if name not in _YAML_ANCHORS:
+            _yaml_parse_fail(f"unresolved YAML alias *{name}")
+        return _YAML_ANCHORS[name]
+    if value.startswith("&"):
+        body = value[1:]
+        end = 0
+        while end < len(body) and body[end] not in " \t":
+            end += 1
+        name, rest = body[:end], body[end:].strip()
+        if not name:
+            _yaml_parse_fail("empty YAML anchor name")
+        parsed: object = (
+            _parse_yaml_scalar(rest, as_name=as_name) if rest else None
+        )
+        _YAML_ANCHORS[name] = parsed
+        return parsed
     if value in ("true", "True", "yes", "Yes", "on"):
         return True
     if value in ("false", "False", "no", "No", "off"):
         return False
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
-        return value[1:-1]
+    if value.startswith(("'", '"')):
+        decoded, end, had = _yaml_read_quoted(value, 0)
+        if end != len(value):
+            _yaml_parse_fail(f"trailing junk on quoted scalar {value!r}")
+        if as_name and had:
+            _yaml_parse_fail(f"escape sequence in job/step name {decoded!r}")
+        return decoded
     return value
+
+
+def _record_step_key(step: dict[str, object], key: str, value: object) -> None:
+    if key in step:
+        raise AssertionError(f"duplicate YAML key {key!r} in step")
+    step[key] = value
 
 
 def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
@@ -4423,7 +5682,10 @@ def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
         first = first[2:]
     if ":" in first:
         key, raw = first.split(":", 1)
-        step[key.strip()] = _parse_yaml_scalar(raw)
+        raw_stripped = raw.strip()
+        if re.search(r"[&*]", raw_stripped):
+            raise AssertionError(f"YAML anchor/alias on step key {key.strip()!r}")
+        _record_step_key(step, key.strip(), _parse_yaml_scalar(raw))
     key_indent = 8
     idx = 1
     while idx < len(step_lines):
@@ -4438,6 +5700,8 @@ def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
             continue
         key, raw = stripped.split(":", 1)
         raw = raw.strip()
+        if re.search(r"[&*]", raw) and raw not in ("|", "|-", "|+", ">", ">-", ">+"):
+            raise AssertionError(f"YAML anchor/alias on step key {key!r}")
         if raw in ("|", "|-", "|+", ">", ">-", ">+"):
             idx += 1
             block: list[str] = []
@@ -4456,9 +5720,36 @@ def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
                 block.append(block_line[content_indent:])
                 idx += 1
             text = "\n".join(block).rstrip("\n") + "\n"
-            step[key] = text
+            _record_step_key(step, key, text)
             continue
-        step[key] = _parse_yaml_scalar(raw)
+        if raw == "":
+            nested: dict[str, object] = {}
+            idx += 1
+            nested_indent: int | None = None
+            while idx < len(step_lines):
+                nested_line = step_lines[idx]
+                if not nested_line.strip() or nested_line.strip().startswith("#"):
+                    idx += 1
+                    continue
+                nested_line_indent = len(nested_line) - len(nested_line.lstrip(" "))
+                if nested_line_indent <= key_indent:
+                    break
+                if nested_indent is None:
+                    nested_indent = nested_line_indent
+                if nested_line_indent == nested_indent and ":" in nested_line:
+                    nested_key, nested_raw = nested_line.strip().split(":", 1)
+                    nested_key = nested_key.strip()
+                    if nested_key in nested:
+                        raise AssertionError(
+                            f"duplicate YAML key {nested_key!r} under {key!r}"
+                        )
+                    nested[nested_key] = _parse_yaml_scalar(
+                        _yaml_strip_comment(nested_raw)
+                    )
+                idx += 1
+            _record_step_key(step, key, nested)
+            continue
+        _record_step_key(step, key, _parse_yaml_scalar(raw))
         idx += 1
     return step
 
@@ -4537,11 +5828,972 @@ def _load_pack_guard_step(text: str | None = None) -> dict[str, object]:
     return _pack_guard_step_from_text(raw)
 
 
+def _assert_ci_yml_strict(text: str) -> None:
+    """S16: reject a second YAML document and duplicate keys anywhere."""
+    lines = text.splitlines()
+    for idx, line in enumerate(lines):
+        if idx == 0 and re.match(r"^---\s*$", line):
+            continue
+        if re.match(r"^---\s*$", line) or re.match(r"^\.\.\.\s*$", line):
+            raise AssertionError(
+                f"YAML multi-document marker at line {idx + 1}: {line!r}"
+            )
+    _assert_no_duplicate_yaml_keys(text)
+
+
+def _assert_no_duplicate_yaml_keys(text: str) -> None:
+    """Indent-stack mapping scanner; skips `|` / `>` block scalars."""
+    lines = text.splitlines()
+    stack: list[tuple[int, set[str]]] = [(-1, set())]
+    in_block_at: int | None = None
+    for line in lines:
+        if in_block_at is not None:
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip(" "))
+            if indent > in_block_at:
+                continue
+            in_block_at = None
+        stripped_full = line.split("#", 1)[0].rstrip()
+        if not stripped_full.strip():
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        stripped = stripped_full.strip()
+        while stack and indent < stack[-1][0]:
+            stack.pop()
+        is_seq = stripped.startswith("- ")
+        if is_seq:
+            while stack and indent == stack[-1][0]:
+                stack.pop()
+            stack.append((indent, set()))
+            rest = stripped[2:]
+            if ":" in rest:
+                key, raw = rest.split(":", 1)
+                key = key.strip().strip("\"'")
+                if key:
+                    if key in stack[-1][1]:
+                        raise AssertionError(f"duplicate YAML key {key!r}")
+                    stack[-1][1].add(key)
+                raw = raw.strip()
+                if raw in ("|", "|-", "|+", ">", ">-", ">+"):
+                    in_block_at = indent
+            continue
+        if ":" not in stripped:
+            continue
+        while stack and indent == stack[-1][0]:
+            break
+        if indent > stack[-1][0]:
+            stack.append((indent, set()))
+        key, raw = stripped.split(":", 1)
+        key = key.strip().strip("\"'")
+        if not key:
+            continue
+        seen = stack[-1][1]
+        if key in seen:
+            raise AssertionError(f"duplicate YAML key {key!r}")
+        seen.add(key)
+        raw = raw.strip()
+        if raw in ("|", "|-", "|+", ">", ">-", ">+"):
+            in_block_at = indent
+
+
+def _gha_expr_norm(expr: str) -> str:
+    return re.sub(r"\s+", "", expr).casefold()
+
+
+def _iter_gha_exprs(text: str) -> list[str]:
+    """GitHub TemplateReader: ${{ }} ends at an unquoted }}; '...' with ''."""
+    found: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        start = text.find("${{", i)
+        if start < 0:
+            break
+        j = start + 3
+        in_sq = False
+        while j < n:
+            ch = text[j]
+            if in_sq:
+                if ch == "'":
+                    if j + 1 < n and text[j + 1] == "'":
+                        j += 2
+                        continue
+                    in_sq = False
+                j += 1
+                continue
+            if ch == "'":
+                in_sq = True
+                j += 1
+                continue
+            if ch == "}" and j + 1 < n and text[j + 1] == "}":
+                found.append(text[start + 3 : j])
+                i = j + 2
+                break
+            j += 1
+        else:
+            found.append(text[start + 3 :])
+            break
+    return found
+
+
+def _gha_expr_is_forbidden(expr: str) -> bool:
+    n = _gha_expr_norm(expr)
+    if "secrets" in n or "github_token" in n:
+        return True
+    i = 0
+    while True:
+        j = n.find("github", i)
+        if j < 0:
+            return False
+        if j > 0 and (n[j - 1].isalnum() or n[j - 1] == "_"):
+            i = j + 6
+            continue
+        end = j + 6
+        if end < len(n) and (n[end].isalnum() or n[end] == "_"):
+            i = j + 6
+            continue
+        rest = n[end:]
+        if j and n[j - 1] in "(,":
+            return True
+        if not rest or rest[0] in "[*":
+            return True
+        if rest.startswith(".*"):
+            return True
+        if rest[0] != ".":
+            return True
+        k = 1
+        while k < len(rest) and (rest[k].isalnum() or rest[k] == "_"):
+            k += 1
+        prop = rest[1:k]
+        if prop not in PACK_GUARD_GITHUB_SAFE:
+            return True
+        if k < len(rest) and rest[k] in ".[":
+            return True
+        i = end + k
+
+
+def _workflow_body_has_forbidden_expr(body: str) -> bool:
+    return any(_gha_expr_is_forbidden(expr) for expr in _iter_gha_exprs(body))
+
+
+def _gha_if_is_forbidden(raw: object) -> bool:
+    """`if:` is evaluated unbraced; scan the whole value as an expression."""
+    if raw is None or isinstance(raw, bool):
+        return False
+    text = raw if isinstance(raw, str) else str(raw)
+    if _gha_expr_is_forbidden(text):
+        return True
+    return _workflow_body_has_forbidden_expr(text)
+
+
+def _local_uses_norm(raw: str) -> str:
+    posix = raw.replace("\\", "/").split("@", 1)[0].strip()
+    if posix.startswith("./"):
+        posix = posix[2:]
+    posix = posix.lstrip("/")
+    return os.path.normpath(posix).replace("\\", "/")
+
+
+def _gha_entry_under_dot_github(root: Path, rel: str, entry: str) -> bool:
+    action_dir = (root / rel).parent
+    github_root = (root / ".github").resolve()
+    target = (action_dir / entry).resolve()
+    try:
+        target.relative_to(github_root)
+    except ValueError:
+        return False
+    return True
+
+
+def _assert_local_gha_scanned(
+    uses: str, *, rel: str, root: Path, seen: set[str]
+) -> None:
+    norm = _local_uses_norm(uses)
+    if norm != ".github" and not norm.startswith(".github/"):
+        raise AssertionError(
+            f"{rel} local uses {uses!r} is outside ./.github/"
+        )
+    if norm in seen:
+        return
+    seen.add(norm)
+    target = root / norm
+    files: list[Path] = []
+    if target.is_file():
+        files.append(target)
+    elif target.is_dir():
+        for name in ("action.yml", "action.yaml"):
+            cand = target / name
+            if cand.is_file():
+                files.append(cand)
+        if not files:
+            raise AssertionError(
+                f"{rel} local uses {uses!r} has no action.yml"
+            )
+    else:
+        raise AssertionError(f"{rel} local uses {uses!r} does not exist")
+    for path in files:
+        body = path.read_text(encoding="utf-8")
+        _assert_gha_file_surface(
+            body,
+            rel=str(path.relative_to(root)),
+            root=root,
+            seen=seen,
+            require_workflow=False,
+        )
+
+
+def _assert_one_uses(
+    uses: str,
+    *,
+    rel: str,
+    root: Path | None = None,
+    seen: set[str] | None = None,
+) -> None:
+    raw = uses.split("#", 1)[0].strip().strip("\"'")
+    repo = REPO_ROOT if root is None else root
+    visited = set() if seen is None else seen
+    if raw.startswith("./") or raw.startswith(".\\"):
+        _assert_local_gha_scanned(raw, rel=rel, root=repo, seen=visited)
+        return
+    if raw.startswith("docker://"):
+        raise AssertionError(f"{rel} refuses docker:// actions {raw!r}")
+    owner_repo = raw.split("@", 1)[0]
+    if owner_repo != owner_repo.casefold():
+        raise AssertionError(f"{rel} mixed-case uses {raw!r}")
+    lower = raw.casefold()
+    if "github-script" in lower:
+        raise AssertionError(f"{rel} refuses actions/github-script")
+    if "/.github/workflows/" in lower:
+        raise AssertionError(
+            f"{rel} external reusable workflow {raw!r}"
+        )
+    if not PACK_GUARD_USES_PIN_RE.fullmatch(raw):
+        raise AssertionError(
+            f"{rel} uses {raw!r} is not pinned to a 40-hex sha"
+        )
+    if raw not in PACK_GUARD_ALLOWED_USES:
+        raise AssertionError(f"{rel} uses {raw!r} is not allowlisted")
+
+
+def _assert_uses_pinned_and_allowlisted(
+    text: str, repo_root: Path | None = None
+) -> None:
+    """S24/S25: every uses: in every workflow file is a 40-hex pin."""
+    root = REPO_ROOT if repo_root is None else repo_root
+    found = False
+    for path in _workflow_yaml_paths(root):
+        rel = str(path.relative_to(root))
+        body = (
+            text
+            if path.name == "ci.yml" and path.parent.name == "workflows"
+            else path.read_text(encoding="utf-8")
+        )
+        for match in PACK_GUARD_USES_LINE_RE.finditer(body):
+            found = True
+            _assert_one_uses(match.group(1), rel=rel, root=root)
+    if not found:
+        raise AssertionError("workflows have no uses: actions")
+
+
+def _assert_tests_do_not_write_runner_env(repo_root: Path | None = None) -> None:
+    """PR test code must not write GITHUB_ENV / GITHUB_PATH / BASH_ENV."""
+    root = REPO_ROOT if repo_root is None else repo_root
+    tests = root / "apps" / "dottie-os" / "tests"
+    skip = {"test_ultradata_factory.py"}
+    skip.update(path.name for path in tests.glob("test_critic_*.py"))
+    for path in sorted(tests.glob("test_*.py")):
+        if path.name in skip:
+            continue
+        raw = path.read_text(encoding="utf-8")
+        if re.search(r"GITHUB_ENV|GITHUB_PATH|BASH_ENV", raw):
+            raise AssertionError(
+                f"{path.name} writes GITHUB_ENV/GITHUB_PATH/BASH_ENV; "
+                "pack-guard must not share a job with PR-controlled tests"
+            )
+
+
+def _workflow_top_level_keys(text: str) -> list[str]:
+    keys: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if line[0] in " \t" or ":" not in line:
+            continue
+        keys.append(line.split(":", 1)[0].strip().strip("\"'"))
+    if len(keys) != len(set(keys)):
+        raise AssertionError(f"duplicate top-level YAML keys: {keys}")
+    return keys
+
+
+def _workflow_on_block(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    start: int | None = None
+    for idx, line in enumerate(lines):
+        if line[:1] in " \t#" or ":" not in line:
+            continue
+        if line.split(":", 1)[0].strip() == "on":
+            start = idx
+            break
+    if start is None:
+        raise AssertionError("ci.yml has no top-level on:")
+    end = len(lines)
+    for idx in range(start + 1, len(lines)):
+        line = lines[idx]
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line[0] not in " \t":
+            end = idx
+            break
+    return "".join(lines[start:end]).rstrip("\n") + "\n"
+
+
+def _workflow_yaml_paths(repo_root: Path) -> list[Path]:
+    wf_dir = repo_root / ".github" / "workflows"
+    if not wf_dir.is_dir():
+        return []
+    return sorted(
+        path
+        for path in wf_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in {".yml", ".yaml"}
+    )
+
+
+def _assert_workflow_job_unique(
+    job: str, repo_root: Path | None = None
+) -> None:
+    root = REPO_ROOT if repo_root is None else repo_root
+    ci_rel = str(Path(".github") / "workflows" / "ci.yml")
+    hits: list[str] = []
+    for path in _workflow_yaml_paths(root):
+        rel = str(path.relative_to(root))
+        doc = _load_workflow_yaml(path.read_text(encoding="utf-8"))
+        for job_id, _name in _iter_parsed_jobs(doc):
+            if job_id == job:
+                hits.append(rel)
+    expected = [ci_rel]
+    if hits != expected:
+        raise AssertionError(
+            f"{job!r} job name must appear only in ci.yml, found {hits}"
+        )
+
+
+def _assert_pack_guard_check_name_unique(
+    text: str, repo_root: Path | None = None
+) -> None:
+    """B4: YAML-parse every workflow; refuse spoofed pack-guard check names."""
+    root = REPO_ROOT if repo_root is None else repo_root
+    ci_rel = str(Path(".github") / "workflows" / "ci.yml")
+    allowed: tuple[str, str] | None = None
+    spoofs: list[str] = []
+    wf_dir = root / ".github" / "workflows"
+    paths = (
+        sorted(
+            path
+            for path in wf_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in {".yml", ".yaml"}
+        )
+        if wf_dir.is_dir()
+        else []
+    )
+    for path in paths:
+        rel = str(path.relative_to(root))
+        body = text if rel == ci_rel else path.read_text(encoding="utf-8")
+        doc = _load_workflow_yaml(body)
+        jobs_map = doc.get("jobs") if isinstance(doc, dict) else None
+        for job_id, name in _iter_parsed_jobs(doc):
+            id_hit = _pack_guard_lookalike_token(job_id)
+            name_hit = name is not None and _pack_guard_lookalike_token(name)
+            if name is not None and "${{" in str(name):
+                spoofs.append(f"{rel} job {job_id!r} name has ${{{{")
+            if id_hit:
+                if rel == ci_rel and job_id == PACK_GUARD_JOB:
+                    if allowed is not None:
+                        spoofs.append(f"duplicate ci.yml job id {job_id!r}")
+                    allowed = (rel, job_id)
+                else:
+                    spoofs.append(f"{rel} job id {job_id!r}")
+            if name_hit:
+                spoofs.append(f"{rel} job {job_id!r} name {name!r}")
+        if isinstance(jobs_map, dict):
+            for job_id, job_body in jobs_map.items():
+                if not isinstance(job_body, dict):
+                    continue
+                steps = job_body.get("steps")
+                if not isinstance(steps, list):
+                    continue
+                for step in steps:
+                    if not isinstance(step, dict) or "name" not in step:
+                        continue
+                    step_name = step.get("name")
+                    if step_name is not None and (
+                        _pack_guard_lookalike_token(step_name)
+                        or "${{" in str(step_name)
+                    ):
+                        spoofs.append(
+                            f"{rel} job {job_id!r} step name {step_name!r}"
+                        )
+    if allowed is None:
+        raise AssertionError(
+            f"missing the single ci.yml job id {PACK_GUARD_JOB!r}"
+        )
+    if spoofs:
+        raise AssertionError(
+            "pack-guard check name is spoofable; refuse "
+            f"{spoofs}"
+        )
+
+
+def _assert_pack_guard_names_unique(repo_root: Path | None = None) -> None:
+    root = REPO_ROOT if repo_root is None else repo_root
+    step_re = re.compile(
+        rf"^\s+- name:\s*{re.escape(PACK_GUARD_STEP_NAME)}\s*$",
+        re.MULTILINE,
+    )
+    step_hits: list[str] = []
+    paths = _workflow_yaml_paths(root)
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        rel = str(path.relative_to(root))
+        step_hits.extend([rel] * len(step_re.findall(text)))
+    expected = [str(Path(".github") / "workflows" / "ci.yml")]
+    _assert_workflow_job_unique(PACK_GUARD_JOB, root)
+    _assert_workflow_job_unique(DOTTIE_OS_SMOKE_JOB, root)
+    if step_hits != expected:
+        raise AssertionError(
+            f"{PACK_GUARD_STEP_NAME!r} step must appear only in ci.yml, "
+            f"found {step_hits}"
+        )
+
+
+def _job_keys_from_text(text: str, job: str | None = None) -> set[str]:
+    lines = text.splitlines()
+    start = _job_line_index(lines, PACK_GUARD_JOB if job is None else job)
+    end = _job_end_index(lines, start)
+    keys: list[str] = []
+    for line in lines[start + 1 : end]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if indent == 4 and ":" in stripped:
+            keys.append(stripped.split(":", 1)[0].strip().strip("\"'"))
+    if len(keys) != len(set(keys)):
+        raise AssertionError(f"duplicate job keys {keys} in {job or PACK_GUARD_JOB!r}")
+    return set(keys)
+
+
+def _job_step_blocks_from_text(
+    text: str, job: str | None = None
+) -> list[list[str]]:
+    lines = text.splitlines()
+    start = _job_line_index(lines, PACK_GUARD_JOB if job is None else job)
+    job_lines = lines[start : _job_end_index(lines, start)]
+    blocks: list[list[str]] = []
+    idx = 0
+    while idx < len(job_lines):
+        line = job_lines[idx]
+        if line.startswith("      - "):
+            block = [line]
+            idx += 1
+            while idx < len(job_lines):
+                nxt = job_lines[idx]
+                if nxt.startswith("      - "):
+                    break
+                if re.match(r"^  [A-Za-z0-9_-]+:\s*$", nxt):
+                    break
+                nxt_stripped = nxt.strip()
+                nxt_indent = len(nxt) - len(nxt.lstrip(" "))
+                if (
+                    nxt_indent == 4
+                    and nxt_stripped
+                    and not nxt_stripped.startswith("#")
+                    and ":" in nxt_stripped
+                ):
+                    break
+                block.append(nxt)
+                idx += 1
+            blocks.append(block)
+            continue
+        idx += 1
+    return blocks
+
+
+def _step_env_keys(step: dict[str, object]) -> set[str]:
+    env = step.get("env")
+    if isinstance(env, dict):
+        return {str(key) for key in env}
+    if not isinstance(env, str) or not env:
+        return set()
+    found: set[str] = set()
+    for key in PACK_GUARD_GIT_ENV_KEYS:
+        if key in env:
+            found.add(key)
+    return found
+
+
+def _assert_job_keys_exact(text: str, job: str) -> None:
+    job_keys = _job_keys_from_text(text, job=job)
+    if job_keys != PACK_GUARD_JOB_KEYS:
+        raise AssertionError(
+            f"job {job!r} keys {sorted(job_keys)} != "
+            f"{sorted(PACK_GUARD_JOB_KEYS)}"
+        )
+
+
+def _assert_smoke_job_has_no_hollowing_steps(text: str) -> None:
+    """Part A still mutates dottie-os-smoke; keep those edits red."""
+    blocks = _job_step_blocks_from_text(text, job=DOTTIE_OS_SMOKE_JOB)
+    for block in blocks:
+        step = _parse_gha_step_lines(block)
+        run = step.get("run")
+        run_text = run if isinstance(run, str) else ""
+        blob = "\n".join(block)
+        hit = PACK_GUARD_EARLIER_BAN_RE.search(f"{run_text}\n{blob}")
+        if hit is not None:
+            raise AssertionError(
+                f"dottie-os-smoke step {step.get('name')!r} is banned: "
+                f"{hit.group(0)!r}"
+            )
+        bad_env = _step_env_keys(step) & PACK_GUARD_GIT_ENV_KEYS
+        if bad_env:
+            raise AssertionError(
+                f"dottie-os-smoke step {step.get('name')!r} sets "
+                f"{sorted(bad_env)} in env"
+            )
+        uses = str(step.get("uses") or "")
+        if uses.startswith("actions/checkout"):
+            with_ = step.get("with")
+            if not isinstance(with_, dict):
+                raise AssertionError(
+                    "dottie-os-smoke actions/checkout must set "
+                    "persist-credentials: false"
+                )
+            if with_.get("persist-credentials") is not False:
+                raise AssertionError(
+                    "dottie-os-smoke actions/checkout must set "
+                    "persist-credentials: false"
+                )
+            banned = {"ref", "path", "sparse-checkout"} & set(with_)
+            if banned:
+                raise AssertionError(
+                    "dottie-os-smoke actions/checkout must not set "
+                    f"{sorted(banned)}"
+                )
+
+
+def _workflow_permissions_block(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    start: int | None = None
+    for idx, line in enumerate(lines):
+        if line[:1] in " \t#" or ":" not in line:
+            continue
+        if line.split(":", 1)[0].strip() == "permissions":
+            start = idx
+            break
+    if start is None:
+        raise AssertionError("workflow has no top-level permissions:")
+    end = len(lines)
+    for idx in range(start + 1, len(lines)):
+        line = lines[idx]
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line[0] not in " \t":
+            end = idx
+            break
+    return "".join(lines[start:end]).rstrip("\n") + "\n"
+
+
+def _permissions_has_write(value: object) -> bool:
+    if isinstance(value, str):
+        return "write" in value.casefold()
+    if isinstance(value, dict):
+        return any(
+            "write" in str(item).casefold() for item in value.values()
+        )
+    return False
+
+
+def _on_has_forbidden_trigger(on_value: object) -> bool:
+    names: list[str] = []
+    if on_value is None or isinstance(on_value, bool):
+        return True
+    if isinstance(on_value, str):
+        names = [on_value]
+    elif isinstance(on_value, list):
+        for item in on_value:
+            if isinstance(item, str):
+                names.append(item)
+            elif isinstance(item, dict):
+                names.extend(str(key) for key in item)
+    elif isinstance(on_value, dict):
+        names = [str(key) for key in on_value]
+    else:
+        return True
+    if not names:
+        return True
+    return any(
+        name.casefold() not in PACK_GUARD_ALLOWED_TRIGGERS for name in names
+    )
+
+
+def _dump_strings(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "\n".join(_dump_strings(item) for item in value)
+    if isinstance(value, dict):
+        return "\n".join(
+            f"{key}\n{_dump_strings(item)}" for key, item in value.items()
+        )
+    return "" if value is None else str(value)
+
+
+def _assert_step_attack_surface(
+    step: object,
+    *,
+    rel: str,
+    job_id: str,
+    root: Path,
+    seen: set[str],
+) -> None:
+    if not isinstance(step, dict):
+        return
+    uses = str(step.get("uses") or "")
+    if uses:
+        _assert_one_uses(uses, rel=rel, root=root, seen=seen)
+    if _gha_if_is_forbidden(step.get("if")):
+        raise AssertionError(
+            f"{rel} job {job_id!r} if: mentions secrets or github.token"
+        )
+    uses_fold = uses.casefold()
+    with_ = step.get("with")
+    if "checkout" in uses_fold:
+        if not isinstance(with_, dict) or with_.get(
+            "persist-credentials"
+        ) is not False:
+            raise AssertionError(
+                f"{rel} job {job_id!r} checkout must set "
+                "persist-credentials: false"
+            )
+    blob = _dump_strings(step)
+    if PACK_GUARD_CLONE_TOKEN_RE.search(blob):
+        raise AssertionError(f"{rel} job {job_id!r} embeds a token in a URL")
+    if PACK_GUARD_API_POST_RE.search(blob):
+        raise AssertionError(
+            f"{rel} job {job_id!r} posts statuses/check runs or uses "
+            "github-script/gh/curl against the GitHub API"
+        )
+
+
+def _assert_gha_file_surface(
+    body: str,
+    *,
+    rel: str,
+    root: Path,
+    seen: set[str],
+    require_workflow: bool,
+) -> None:
+    """S24: file-wide expr + trigger allowlist + uses, every GHA YAML file."""
+    if _workflow_body_has_forbidden_expr(body):
+        raise AssertionError(
+            f"{rel} ${{{{ }}}} expression mentions secrets or github.token"
+        )
+    if PACK_GUARD_SECRETS_INHERIT_RE.search(body):
+        raise AssertionError(f"{rel} forbids secrets: inherit")
+    doc = _load_workflow_yaml(body)
+    if not isinstance(doc, dict):
+        raise AssertionError(f"{rel} is not a YAML mapping")
+    if _workflow_body_has_forbidden_expr(_dump_strings(doc)):
+        raise AssertionError(
+            f"{rel} parsed YAML ${{{{ }}}} mentions secrets or github.token"
+        )
+    on_value = None
+    for key, value in doc.items():
+        if str(key).casefold() == "on":
+            on_value = value
+            break
+    if require_workflow and _on_has_forbidden_trigger(on_value):
+        raise AssertionError(
+            f"{rel} on: must be push, pull_request, schedule, "
+            "or workflow_dispatch"
+        )
+    if require_workflow:
+        top_perm = doc.get("permissions")
+        if top_perm is None or _permissions_has_write(top_perm):
+            raise AssertionError(
+                f"{rel} must set read-only top-level permissions"
+            )
+    jobs = doc.get("jobs")
+    if isinstance(jobs, dict):
+        for job_id, job in jobs.items():
+            if not isinstance(job, dict):
+                continue
+            job_keys = {str(key) for key in job}
+            if any(key != key.casefold() for key in job_keys):
+                bad = sorted(k for k in job_keys if k != k.casefold())
+                if any(k.casefold() in PACK_GUARD_GHA_KEYS for k in bad):
+                    raise AssertionError(
+                        f"{rel} job {job_id!r} mixed-case keys {bad}"
+                    )
+            if "permissions" in job and _permissions_has_write(
+                job.get("permissions")
+            ):
+                raise AssertionError(
+                    f"{rel} job {job_id!r} widens permissions"
+                )
+            secrets = job.get("secrets")
+            if secrets == "inherit" or secrets is True:
+                raise AssertionError(
+                    f"{rel} job {job_id!r} forbids secrets: inherit"
+                )
+            if _gha_if_is_forbidden(job.get("if")):
+                raise AssertionError(
+                    f"{rel} job {job_id!r} if: mentions secrets or github.token"
+                )
+            job_uses = str(job.get("uses") or "")
+            if job_uses:
+                _assert_one_uses(
+                    job_uses, rel=rel, root=root, seen=seen
+                )
+            steps = job.get("steps")
+            if not isinstance(steps, list):
+                continue
+            for step in steps:
+                _assert_step_attack_surface(
+                    step,
+                    rel=rel,
+                    job_id=str(job_id),
+                    root=root,
+                    seen=seen,
+                )
+    runs = doc.get("runs")
+    if isinstance(runs, dict):
+        using = str(runs.get("using") or "").casefold()
+        if using == "docker":
+            image = str(runs.get("image") or "").strip()
+            if not PACK_GUARD_DOCKER_DIGEST_RE.fullmatch(image.casefold()):
+                raise AssertionError(
+                    f"{rel} docker action image must be digest-pinned, "
+                    f"got {image!r}"
+                )
+        if using.startswith("node"):
+            for key in ("main", "pre", "post"):
+                entry = runs.get(key)
+                if not entry:
+                    continue
+                if not _gha_entry_under_dot_github(root, rel, str(entry)):
+                    raise AssertionError(
+                        f"{rel} {key}: {entry!r} resolves outside .github/"
+                    )
+        steps = runs.get("steps")
+        if isinstance(steps, list):
+            for step in steps:
+                _assert_step_attack_surface(
+                    step,
+                    rel=rel,
+                    job_id="runs",
+                    root=root,
+                    seen=seen,
+                )
+
+
+def _assert_workflow_attack_surface(
+    body: str, *, rel: str, root: Path | None = None
+) -> None:
+    """S24: every workflow file, not just ci.yml."""
+    _assert_gha_file_surface(
+        body,
+        rel=rel,
+        root=REPO_ROOT if root is None else root,
+        seen=set(),
+        require_workflow=True,
+    )
+
+
+def _assert_read_only_token_and_checkouts(
+    text: str, repo_root: Path | None = None
+) -> None:
+    """B4b/S24: contents: read; no job write; drop GITHUB_TOKEN; all workflows."""
+    root = REPO_ROOT if repo_root is None else repo_root
+    if _workflow_permissions_block(text) != PACK_GUARD_PERMISSIONS_BLOCK:
+        raise AssertionError(
+            "ci.yml top-level permissions: must be exactly "
+            f"{PACK_GUARD_PERMISSIONS_BLOCK!r}"
+        )
+    _assert_uses_pinned_and_allowlisted(text, root)
+    for path in _workflow_yaml_paths(root):
+        rel = str(path.relative_to(root))
+        body = (
+            text
+            if path.name == "ci.yml" and path.parent.name == "workflows"
+            else path.read_text(encoding="utf-8")
+        )
+        _assert_workflow_attack_surface(body, rel=rel, root=root)
+
+
+def _assert_pack_guard_context(text: str) -> dict[str, object]:
+    """S4/S6/S7/S8/S16/S17: pack-guard allowlists, unique names, pinned uses."""
+    _assert_ci_yml_strict(text)
+    top_keys = _workflow_top_level_keys(text)
+    if set(top_keys) != PACK_GUARD_WORKFLOW_KEYS:
+        raise AssertionError(
+            f"workflow keys {top_keys} != {sorted(PACK_GUARD_WORKFLOW_KEYS)}"
+        )
+    on_block = _workflow_on_block(text)
+    if on_block != PACK_GUARD_ON_BLOCK:
+        raise AssertionError(
+            "workflow on: must equal main's trigger block; "
+            f"got {on_block!r}"
+        )
+    _assert_read_only_token_and_checkouts(text)
+    _assert_pack_guard_names_unique()
+    _assert_pack_guard_check_name_unique(text)
+    _assert_uses_pinned_and_allowlisted(text)
+    _assert_tests_do_not_write_runner_env()
+    _assert_job_keys_exact(text, PACK_GUARD_JOB)
+    pack_keys = _job_keys_from_text(text, job=PACK_GUARD_JOB)
+    banned = pack_keys & PACK_GUARD_JOB_FORBIDDEN_KEYS
+    if banned:
+        raise AssertionError(
+            f"pack-guard job has forbidden keys {sorted(banned)} "
+            "(no if:/continue-on-error/needs:/strategy/name:)"
+        )
+    pack_doc = _load_workflow_yaml(text)
+    if not isinstance(pack_doc, dict):
+        raise AssertionError("ci.yml is not a YAML mapping")
+    pack_jobs = pack_doc.get("jobs")
+    if not isinstance(pack_jobs, dict):
+        raise AssertionError("ci.yml jobs: is not a mapping")
+    pack_job = pack_jobs.get(PACK_GUARD_JOB)
+    if not isinstance(pack_job, dict):
+        raise AssertionError(f"missing job {PACK_GUARD_JOB!r}")
+    if pack_job.get("runs-on") != PACK_GUARD_RUNS_ON:
+        raise AssertionError(
+            f"pack-guard runs-on must be {PACK_GUARD_RUNS_ON!r}, "
+            f"got {pack_job.get('runs-on')!r}"
+        )
+    _assert_job_keys_exact(text, DOTTIE_OS_SMOKE_JOB)
+    _assert_smoke_job_has_no_hollowing_steps(text)
+    blocks = _job_step_blocks_from_text(text)
+    if len(blocks) != 2:
+        raise AssertionError(
+            f"job {PACK_GUARD_JOB!r} must have exactly 2 steps "
+            f"(pinned checkout, then the guard); got {len(blocks)}"
+        )
+    steps = [_parse_gha_step_lines(block) for block in blocks]
+    checkout, guard = steps[0], steps[1]
+    if set(checkout) != PACK_GUARD_CHECKOUT_KEYS:
+        raise AssertionError(
+            f"pack-guard checkout keys {sorted(checkout)} != "
+            f"{sorted(PACK_GUARD_CHECKOUT_KEYS)}"
+        )
+    uses = str(checkout.get("uses") or "")
+    if not PACK_GUARD_CHECKOUT_USES_RE.fullmatch(uses):
+        raise AssertionError(
+            "pack-guard actions/checkout must be pinned to a 40-hex sha; "
+            f"got {uses!r}"
+        )
+    if uses != PACK_GUARD_CHECKOUT_PIN:
+        raise AssertionError(
+            f"pack-guard checkout uses {uses!r} != {PACK_GUARD_CHECKOUT_PIN!r}"
+        )
+    with_ = checkout.get("with")
+    if with_ != PACK_GUARD_CHECKOUT_WITH:
+        raise AssertionError(
+            "pack-guard checkout with: must be exactly "
+            f"{PACK_GUARD_CHECKOUT_WITH} and nothing else; got {with_!r}"
+        )
+    if guard.get("name") != PACK_GUARD_STEP_NAME:
+        raise AssertionError(
+            f"first step after checkout must be {PACK_GUARD_STEP_NAME!r}, "
+            f"got {guard.get('name')!r}"
+        )
+    if set(guard) != PACK_GUARD_STEP_KEYS:
+        raise AssertionError(
+            f"pack-guard step keys {sorted(guard)} != "
+            f"{sorted(PACK_GUARD_STEP_KEYS)}"
+        )
+    shell = str(guard.get("shell") or "")
+    if PACK_GUARD_SHELL_EUO not in shell:
+        raise AssertionError(
+            "pack-guard shell must include -euo pipefail "
+            f"(bash --noprofile --norc -euo pipefail); got {shell!r}"
+        )
+    if "--noprofile" not in shell or "--norc" not in shell:
+        raise AssertionError(
+            "pack-guard shell must include --noprofile --norc; "
+            f"got {shell!r}"
+        )
+    if guard.get("shell") != PACK_GUARD_SHELL:
+        raise AssertionError(
+            f"pack-guard shell {guard.get('shell')!r} != {PACK_GUARD_SHELL!r}"
+        )
+    run_text = str(guard.get("run") or "")
+    if f"PATH={PACK_GUARD_ENV_PATH}" not in run_text:
+        raise AssertionError(
+            f"pack-guard PATH must be exactly {PACK_GUARD_ENV_PATH!r}"
+        )
+    if f"HOME={PACK_GUARD_ENV_HOME}" not in run_text:
+        raise AssertionError(
+            f"pack-guard HOME must be exactly {PACK_GUARD_ENV_HOME!r}"
+        )
+    if f"LC_ALL={PACK_GUARD_ENV_LC_ALL} " not in run_text:
+        raise AssertionError(
+            f"pack-guard LC_ALL must be exactly {PACK_GUARD_ENV_LC_ALL!r}"
+        )
+    if PACK_GUARD_ENV_SCRUB_RE.search(run_text) is None:
+        raise AssertionError(
+            "pack-guard git_scrub env pin must be "
+            f"PATH={PACK_GUARD_ENV_PATH} HOME={PACK_GUARD_ENV_HOME} "
+            f"LC_ALL={PACK_GUARD_ENV_LC_ALL}"
+        )
+    if PACK_GUARD_ENV_INLINE not in run_text:
+        raise AssertionError(
+            "pack-guard env -i pin must be "
+            f"{PACK_GUARD_ENV_INLINE}"
+        )
+    if "LC_ALL=C.UTF-8" in run_text:
+        raise AssertionError("pack-guard LC_ALL=C.UTF-8 is forbidden")
+    if 'HOME="$HOME"' in run_text or "HOME=$HOME" in run_text:
+        raise AssertionError("pack-guard must not keep the runner HOME")
+    if PACK_GUARD_GREP_RE not in run_text:
+        raise AssertionError(
+            f"pack-guard path match must include {PACK_GUARD_GREP_RE!r}"
+        )
+    if PACK_GUARD_PATH_RE not in run_text:
+        raise AssertionError(
+            f"pack-guard path match must include {PACK_GUARD_PATH_RE!r}"
+        )
+    scrub_m = re.search(r"git_scrub\(\) \{\n(.*?)\n\s*\}", run_text, re.S)
+    if scrub_m is None:
+        raise AssertionError("pack-guard missing git_scrub function")
+    scrub = scrub_m.group(1)
+    for pin in (
+        "/usr/bin/env -i",
+        f"PATH={PACK_GUARD_ENV_PATH}",
+        f"HOME={PACK_GUARD_ENV_HOME}",
+        f"LC_ALL={PACK_GUARD_ENV_LC_ALL} ",
+        "GIT_CONFIG_NOSYSTEM=1",
+        "GIT_CONFIG_GLOBAL=/dev/null",
+        "GIT_NO_REPLACE_OBJECTS=1",
+        "--no-replace-objects",
+        "core.fsmonitor=false",
+        "core.untrackedCache=false",
+        "core.hooksPath=/dev/null",
+        "core.quotePath=false",
+    ):
+        if pin not in scrub:
+            raise AssertionError(f"git_scrub must pin {pin!r}")
+    return guard
+
+
 def _pack_guard_git_env() -> dict[str, str]:
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith("GIT_")
+        if not key.startswith("GIT_") and key != "GITHUB_SHA"
     }
     env.update(
         {
@@ -4603,9 +6855,85 @@ def _commit_pack_guard_paths(
     )
 
 
+def _seed_pack_guard_floor(repo: Path) -> None:
+    """Plant ci.yml plus filler so a temp repo meets PACK_GUARD_LS_FILES_FLOOR."""
+    ci = repo / ".github" / "workflows" / "ci.yml"
+    ci.parent.mkdir(parents=True, exist_ok=True)
+    if not ci.exists():
+        ci.write_text("name: CI\n", encoding="utf-8")
+    floor_dir = repo / "_pack_guard_floor"
+    floor_dir.mkdir(exist_ok=True)
+    need = PACK_GUARD_LS_FILES_FLOOR - 1
+    for idx in range(need):
+        (floor_dir / f"{idx:04d}").write_text(".\n", encoding="utf-8")
+
+
+def _commit_pack_guard_tree(repo: Path, env: dict[str, str], message: str) -> None:
+    subprocess.run(
+        ["git", "add", "-f", "-A"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+
+
+def _head_blob_sizes(repo: Path) -> list[tuple[int, str]]:
+    """HEAD blob sizes from `git ls-tree -r -l` (skips gitlinks)."""
+    proc = subprocess.run(
+        ["git", "ls-tree", "-r", "-l", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_pack_guard_git_env(),
+    )
+    rows: list[tuple[int, str]] = []
+    for line in proc.stdout.splitlines():
+        meta, path = line.split("\t", 1)
+        parts = meta.split()
+        if len(parts) < 4 or parts[3] == "-":
+            continue
+        rows.append((int(parts[3]), path))
+    return rows
+
+
+def _jsonl_parent_dir(path: str) -> str | None:
+    folded = path.casefold()
+    if not (
+        folded.endswith((".jsonl", ".ndjson", ".gz"))
+        or ".jsonl." in folded
+        or ".ndjson." in folded
+    ):
+        return None
+    return path[: path.rfind("/")] if "/" in path else ""
+
+
 def _run_pack_guard_script(
-    repo: Path, run_script: str, env: dict[str, str]
+    repo: Path,
+    run_script: str,
+    env: dict[str, str],
+    *,
+    pin_github_sha: bool = True,
 ) -> subprocess.CompletedProcess[str]:
+    env = dict(env)
+    if pin_github_sha and "GITHUB_SHA" not in env:
+        pin = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            env=_pack_guard_git_env(),
+            capture_output=True,
+            text=True,
+        )
+        if pin.returncode == 0:
+            env["GITHUB_SHA"] = pin.stdout.strip()
     return subprocess.run(
         ["bash", "-c", run_script],
         cwd=repo,
@@ -4616,10 +6944,14 @@ def _run_pack_guard_script(
 
 
 class TrackedPackArtifactGuardTests(unittest.TestCase):
-    """CI pack guard is the real dottie-os-smoke step, executed with bash."""
+    """CI pack-guard job is the real extracted step, executed with bash."""
 
     def _run_block(self, text: str | None = None) -> str:
-        step = _load_pack_guard_step(text)
+        raw = CI_WORKFLOW.read_text(encoding="utf-8") if text is None else text
+        context_step = _assert_pack_guard_context(raw)
+        step = _load_pack_guard_step(raw)
+        self.assertEqual(set(context_step), PACK_GUARD_STEP_KEYS)
+        self.assertEqual(set(step), PACK_GUARD_STEP_KEYS)
         self.assertNotIn("if", step, "pack-guard step must not have if:")
         self.assertNotIn(
             "continue-on-error",
@@ -4633,17 +6965,433 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
 
     def test_ci_pack_guard_step_is_unconditional(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")
+        context_step = _assert_pack_guard_context(text)
         step = _load_pack_guard_step(text)
+        self.assertEqual(set(context_step), PACK_GUARD_STEP_KEYS)
+        self.assertEqual(set(step), PACK_GUARD_STEP_KEYS)
         self.assertEqual(step.get("name"), PACK_GUARD_STEP_NAME)
         self.assertNotIn("if", step)
         self.assertNotIn("continue-on-error", step)
+        self.assertEqual(step.get("shell"), PACK_GUARD_SHELL)
+        self.assertIn(PACK_GUARD_SHELL_EUO, str(step.get("shell")))
+        self.assertIn("--noprofile", str(step.get("shell")))
+        self.assertIn("--norc", str(step.get("shell")))
+        self.assertNotIn("if", _job_keys_from_text(text))
+        self.assertNotIn("continue-on-error", _job_keys_from_text(text))
+        self.assertNotIn("needs", _job_keys_from_text(text))
+        self.assertNotIn("strategy", _job_keys_from_text(text))
+        self.assertNotIn("name", _job_keys_from_text(text))
+        self.assertNotIn("working-directory", step)
+        self.assertNotIn("env", step)
         self.assertIsInstance(step.get("run"), str)
+        self.assertEqual(_job_keys_from_text(text), PACK_GUARD_JOB_KEYS)
+        self.assertEqual(
+            _job_keys_from_text(text, job=DOTTIE_OS_SMOKE_JOB),
+            PACK_GUARD_JOB_KEYS,
+        )
+        self.assertEqual(
+            set(_workflow_top_level_keys(text)), PACK_GUARD_WORKFLOW_KEYS
+        )
+        self.assertEqual(_workflow_on_block(text), PACK_GUARD_ON_BLOCK)
+        self.assertIn(f"PACK_GUARD_LS_FILES_FLOOR={PACK_GUARD_LS_FILES_FLOOR}", str(step.get("run")))
+        self.assertIn("/usr/bin/git", str(step.get("run")))
+        self.assertIn("/usr/bin/python3 -I -c", str(step.get("run")))
+        run_text = str(step.get("run"))
+        self.assertIn(f"PATH={PACK_GUARD_ENV_PATH}", run_text)
+        self.assertIn(f"HOME={PACK_GUARD_ENV_HOME}", run_text)
+        self.assertIn(f"LC_ALL={PACK_GUARD_ENV_LC_ALL} ", run_text)
+        self.assertIn(PACK_GUARD_ENV_INLINE, run_text)
+        self.assertRegex(run_text, PACK_GUARD_ENV_SCRUB_RE)
+        self.assertNotIn("LC_ALL=C.UTF-8", run_text)
+        self.assertNotIn('HOME="$HOME"', run_text)
+        self.assertNotIn("HOME=$HOME", run_text)
+        self.assertIn(PACK_GUARD_PATH_RE, run_text)
+        self.assertIn(PACK_GUARD_GREP_RE, run_text)
+        self.assertIn("git_scrub ls-files -z", run_text)
+        self.assertIn(
+            'ls-tree -r -z --full-tree --name-only "$GITHUB_SHA"', run_text
+        )
+        self.assertNotIn("merge-base", run_text)
+        self.assertNotIn("git diff ", run_text)
+        self.assertNotIn("git diff-tree", run_text)
+        self.assertIn('cat-file -t "$GITHUB_SHA"', run_text)
+        self.assertNotIn("^{commit}", run_text)
+        self.assertIn("GIT_NO_REPLACE_OBJECTS=1", run_text)
+        self.assertIn("--no-replace-objects", run_text)
+        self.assertIn("core.fsmonitor=false", run_text)
+        self.assertIn("core.hooksPath=/dev/null", run_text)
+        self.assertIn("/usr/bin/env -i", run_text)
+        self.assertNotIn("ls-tree -r --name-only -z HEAD", run_text)
         stdlib_step = _pack_guard_step_from_text(text)
+        self.assertEqual(set(stdlib_step), PACK_GUARD_STEP_KEYS)
         self.assertEqual(stdlib_step.get("name"), step.get("name"))
         self.assertEqual(stdlib_step.get("run"), step.get("run"))
         self.assertEqual("if" in stdlib_step, "if" in step)
         self.assertEqual(
             "continue-on-error" in stdlib_step, "continue-on-error" in step
+        )
+        if yaml is not None:
+            doc = yaml.safe_load(text)
+            self.assertIsInstance(doc, dict)
+            self.assertNotIn("defaults", doc)
+            jobs = doc.get("jobs")
+            self.assertIsInstance(jobs, dict)
+            job = jobs.get(PACK_GUARD_JOB)
+            self.assertIsInstance(job, dict)
+            self.assertEqual(set(job), PACK_GUARD_JOB_KEYS)
+            self.assertEqual(job.get("runs-on"), PACK_GUARD_RUNS_ON)
+
+    def test_codeowners_cover_github_and_guard_tests(self) -> None:
+        path = REPO_ROOT / ".github" / "CODEOWNERS"
+        raw = path.read_text(encoding="utf-8")
+        owned = [
+            line.split()[0]
+            for line in raw.splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+        self.assertIn(PACK_GUARD_CODEOWNERS_GITHUB, owned)
+        self.assertIn(PACK_GUARD_CODEOWNERS_TESTS, owned)
+        self.assertIn(PACK_GUARD_CODEOWNERS_FACTORY, raw)
+        self.assertIn(PACK_GUARD_CODEOWNERS_CRITIC, raw)
+        for required in (
+            PACK_GUARD_CODEOWNERS_GITHUB,
+            PACK_GUARD_CODEOWNERS_TESTS,
+            PACK_GUARD_CODEOWNERS_FACTORY,
+            PACK_GUARD_CODEOWNERS_CRITIC,
+        ):
+            for line in raw.splitlines():
+                if line.strip().startswith("#") or not line.strip():
+                    continue
+                parts = line.split()
+                if parts[0] == required:
+                    self.assertIn(PACK_GUARD_CODEOWNERS_OWNER, parts)
+                    break
+            else:
+                self.fail(f"CODEOWNERS missing {required} @jcdavis131")
+
+    def test_pack_guard_check_name_spoofs_are_red(self) -> None:
+        """B4/S20: YAML uniqueness refuses spoofed required-check names."""
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+        spoofs = (
+            (
+                "4space",
+                "zz-spoof.yml",
+                "name: x\non:\n    pull_request:\n        branches: [main]\n"
+                "jobs:\n    pack-guard:\n        runs-on: ubuntu-latest\n"
+                "        steps:\n            - run: echo ok\n",
+            ),
+            (
+                "flow",
+                "zz-spoof.yml",
+                "name: x\non: [pull_request]\n"
+                "jobs: {pack-guard: {runs-on: ubuntu-latest, "
+                "steps: [{run: echo ok}]}}\n",
+            ),
+            (
+                "Pack-Guard",
+                "zz-spoof.yml",
+                "name: x\non:\n  pull_request:\n    branches: [main]\njobs:\n"
+                "  spoof:\n    name: Pack-Guard\n    runs-on: ubuntu-latest\n"
+                "    steps:\n      - run: echo ok\n",
+            ),
+            (
+                "expr",
+                "zz-spoof.yml",
+                "name: x\non:\n  pull_request:\n    branches: [main]\njobs:\n"
+                "  spoof:\n    name: ${{ 'pack-guard' }}\n"
+                "    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n",
+            ),
+            (
+                "yaml_ext",
+                "zz-spoof.yaml",
+                "name: x\non:\n  pull_request:\n    branches: [main]\njobs:\n"
+                "  pack-guard:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n      - run: echo ok\n",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wf = root / ".github" / "workflows"
+            wf.mkdir(parents=True)
+            (wf / "ci.yml").write_text(text, encoding="utf-8")
+            _assert_pack_guard_check_name_unique(text, root)
+            for mid, filename, body in spoofs:
+                path = wf / filename
+                path.write_text(body, encoding="utf-8")
+                with self.subTest(mutation=mid):
+                    with self.assertRaises(AssertionError):
+                        _assert_pack_guard_check_name_unique(text, root)
+                path.unlink()
+            (wf / "zz-spoof.yml").write_text(":\n  [ unterminated\n", encoding="utf-8")
+            with self.assertRaises(AssertionError):
+                _assert_pack_guard_check_name_unique(text, root)
+        smoke = "  dottie-os-smoke:\n    runs-on: ubuntu-latest\n"
+        lookalike = (
+            "  pack_guard:\n    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: echo ok\n\n" + smoke
+        )
+        mutated = text.replace(smoke, lookalike, 1)
+        self.assertNotEqual(mutated, text)
+        with self.assertRaises(AssertionError):
+            _assert_pack_guard_check_name_unique(mutated)
+
+    def test_vendored_loader_refuses_escape_and_alias_spoofs(self) -> None:
+        """B4a: 7 GitHub-resolved pack-guard forms are red on the CI loader."""
+        hdr = "name: x\non:\n  pull_request:\n    branches: [main]\njobs:\n"
+        steps = "    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
+        spoofs = {
+            "alias_from_workflow_name": (
+                "name: &n pack-guard\non: [pull_request]\njobs:\n  b:\n"
+                "    name: *n\n" + steps
+            ),
+            "alias_from_env_block": (
+                "name: x\nenv:\n  N: &n pack-guard\non: [pull_request]\n"
+                "jobs:\n  b:\n    name: *n\n" + steps
+            ),
+            "dq_hex_escape_name": hdr + '  b:\n    name: "pack\\x2dguard"\n' + steps,
+            "dq_u4_escape_name": hdr + '  b:\n    name: "\\u0070ack-guard"\n' + steps,
+            "dq_U8_escape_name": hdr
+            + '  b:\n    name: "pack\\U0000002dguard"\n'
+            + steps,
+            "dq_hex_escape_job_id": hdr + '  "pack\\x2dguard":\n' + steps,
+            "dq_u4_escape_job_id": hdr + '  "\\u0070ack-guard":\n' + steps,
+        }
+        self.assertEqual(len(spoofs), 7)
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+        global yaml
+        saved_yaml = yaml
+        try:
+            yaml = None
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                wf = root / ".github" / "workflows"
+                wf.mkdir(parents=True)
+                (wf / "ci.yml").write_text(text, encoding="utf-8")
+                for cid, body in spoofs.items():
+                    path = wf / "zz-spoof.yml"
+                    path.write_text(body, encoding="utf-8")
+                    with self.subTest(case=cid):
+                        with self.assertRaises(AssertionError):
+                            _assert_pack_guard_check_name_unique(text, root)
+                    path.unlink()
+        finally:
+            globals()["yaml"] = saved_yaml
+
+    def test_ci_permissions_and_checkout_token_are_pinned(self) -> None:
+        """B4b: contents: read; every checkout drops credentials."""
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+        self.assertEqual(
+            _workflow_permissions_block(text), PACK_GUARD_PERMISSIONS_BLOCK
+        )
+        _assert_read_only_token_and_checkouts(text)
+        widened = text.replace(
+            PACK_GUARD_PERMISSIONS_BLOCK,
+            "permissions:\n  contents: read\n  checks: write\n",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            _assert_read_only_token_and_checkouts(widened)
+        dropped = text.replace(
+            "          persist-credentials: false\n",
+            "",
+            1,
+        )
+        self.assertNotEqual(dropped, text)
+        with self.assertRaises(AssertionError):
+            _assert_read_only_token_and_checkouts(dropped)
+        job_widen = text.replace(
+            "  lint-and-test:\n    runs-on: ubuntu-latest\n",
+            "  lint-and-test:\n    permissions:\n"
+            "      checks: write\n      statuses: write\n"
+            "    runs-on: ubuntu-latest\n",
+            1,
+        )
+        self.assertNotEqual(job_widen, text)
+        with self.assertRaises(AssertionError):
+            _assert_read_only_token_and_checkouts(job_widen)
+
+    def test_pack_guard_path_pattern_refuses_fourteen_allows_three(self) -> None:
+        """S21: shared segment-normalize rule, 22 refused + 3 prod allowlisted."""
+        run = self._run_block()
+        self.assertIn(PACK_GUARD_PATH_PY, run)
+        must_catch = [
+            "apps/x/curated_pack.jsonl",
+            "apps/x/curatedpack.jsonl",
+            "apps/x/curated.pack.jsonl",
+            "apps/x/curated pack.jsonl",
+            "apps/x/curated__pack.jsonl",
+            "apps/x/curated/pack.jsonl",
+            "apps/x/ultradata_harvest.jsonl",
+            "apps/x/ultradata-harvest.jsonl",
+            "scripts/ultradata_harvest_rows.jsonl",
+            "apps/x/run_ultradata_harvest.jsonl",
+            "scripts/run_ultradata_harvest.jsonl",
+            "apps/dottie-os/scripts/lab/run_ultradata_harvest.jsonl",
+            "apps/x/v2_ultradata_harvest.jsonl",
+            "apps/x/x-ultradata-harvest.jsonl",
+            "apps/x/mycurated_pack.jsonl",
+            "apps/x/2curated_pack.jsonl",
+            "apps/x/curated_packv2.jsonl",
+            "apps/x/curatedpackrows.jsonl",
+            "apps/x/curated+pack.jsonl",
+            "apps/x/curated~pack.jsonl",
+            "apps/x/curated,pack.jsonl",
+            "apps/x/ultradata+harvest.jsonl",
+        ]
+        must_pass = [
+            "docs/curated-packing-notes.md",
+            "scripts/run_ultradata_harvest.py",
+            "apps/dottie-os/scripts/lab/run_ultradata_harvest.py",
+        ]
+        test_only = "apps/x/uncurated_package.py"
+        self.assertEqual(len(must_catch), 22)
+        self.assertEqual(len(must_pass), 3)
+        for name in must_catch:
+            self.assertTrue(_pack_guard_path_is_banned(name), name)
+        for name in must_pass:
+            self.assertFalse(_pack_guard_path_is_banned(name), name)
+        self.assertTrue(_pack_guard_path_is_banned(test_only), test_only)
+        self.assertFalse(
+            _pack_guard_path_is_banned(
+                test_only, extra_allow=PACK_GUARD_PATH_ALLOWLIST_TEST
+            ),
+            test_only,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            for name in must_catch:
+                repo = base / hashlib.sha256(name.encode()).hexdigest()[:12]
+                env = _init_pack_guard_repo(repo)
+                _seed_pack_guard_floor(repo)
+                path = repo / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("{}\n", encoding="utf-8")
+                _commit_pack_guard_tree(repo, env, "pack")
+                proc = _run_pack_guard_script(repo, run, env)
+                self.assertNotEqual(proc.returncode, 0, msg=name)
+            for name in must_pass:
+                repo = base / ("ok-" + hashlib.sha256(name.encode()).hexdigest()[:12])
+                env = _init_pack_guard_repo(repo)
+                _seed_pack_guard_floor(repo)
+                path = repo / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("ok\n", encoding="utf-8")
+                _commit_pack_guard_tree(repo, env, "ok")
+                proc = _run_pack_guard_script(repo, run, env)
+                self.assertEqual(
+                    proc.returncode,
+                    0,
+                    msg=f"{name} stdout={proc.stdout!r}",
+                )
+
+    def test_donewhen_mutations_go_red(self) -> None:
+        """Critic done-when: shell -euo, unique pack-guard name, checkout with:."""
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+        shell_line = (
+            '        shell: "/usr/bin/bash --noprofile --norc -p '
+            '-euo pipefail {0}"'
+        )
+        self.assertIn(shell_line, text)
+        cases = (
+            (
+                "shell_drops_euo_pipefail",
+                text.replace(
+                    shell_line,
+                    '        shell: "/usr/bin/bash --noprofile --norc -p {0}"',
+                    1,
+                ),
+            ),
+            (
+                "job_name_override",
+                text.replace(
+                    "  pack-guard:\n    runs-on: ubuntu-latest\n",
+                    "  pack-guard:\n    name: pack-guard-ci\n"
+                    "    runs-on: ubuntu-latest\n",
+                    1,
+                ),
+            ),
+            (
+                "checkout_with_ref",
+                text.replace(
+                    "        with:\n"
+                    "          persist-credentials: false\n"
+                    "      - name: Refuse tracked pack artifacts\n",
+                    "        with:\n"
+                    "          persist-credentials: false\n"
+                    "          ref: main\n"
+                    "      - name: Refuse tracked pack artifacts\n",
+                    1,
+                ),
+            ),
+        )
+        for mid, mutated in cases:
+            with self.subTest(mutation=mid):
+                self.assertNotEqual(mutated, text, f"{mid} did not change ci.yml")
+                with self.assertRaises(AssertionError):
+                    _assert_pack_guard_context(mutated)
+
+    def test_critic_91_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_mutations.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_MUTATIONS_SHA256,
+        )
+
+    def test_critic_91_136f_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_136f.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_136F_SHA256,
+        )
+
+    def test_critic_91_af2d_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_af2d.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_AF2D_SHA256,
+        )
+
+    def test_critic_91_50d2_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_50d2.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_50D2_SHA256,
+        )
+
+    def test_critic_91_ce30_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_ce30.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_CE30_SHA256,
+        )
+
+    def test_critic_91_f8f1_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_f8f1.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_F8F1_SHA256,
+        )
+
+    def test_critic_91_0b05_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_0b05.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_0B05_SHA256,
+        )
+
+    def test_critic_91_0ac5_suite_is_vendored(self) -> None:
+        path = TESTS / "test_critic_91_0ac5.py"
+        self.assertTrue(path.is_file())
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            CRITIC_91_0AC5_SHA256,
         )
 
     def test_ci_pack_guard_run_block_trips_on_tracked_packs(self) -> None:
@@ -4651,8 +7399,9 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             clean = Path(tmp) / "clean"
             env = _init_pack_guard_repo(clean)
+            _seed_pack_guard_floor(clean)
             (clean / "README").write_text("ok\n", encoding="utf-8")
-            _commit_pack_guard_paths(clean, env, ["README"], "clean")
+            _commit_pack_guard_tree(clean, env, "clean")
             clean_proc = _run_pack_guard_script(clean, run, env)
             self.assertEqual(
                 clean_proc.returncode,
@@ -4662,12 +7411,11 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
 
             root = Path(tmp) / "root"
             env = _init_pack_guard_repo(root)
+            _seed_pack_guard_floor(root)
             (root / PACK_GUARD_ROOT_PACK).write_text(
                 '{"eval_only": true}\n', encoding="utf-8"
             )
-            _commit_pack_guard_paths(
-                root, env, [PACK_GUARD_ROOT_PACK], "root pack jsonl"
-            )
+            _commit_pack_guard_tree(root, env, "root pack jsonl")
             root_proc = _run_pack_guard_script(root, run, env)
             self.assertNotEqual(
                 root_proc.returncode,
@@ -4677,12 +7425,11 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
 
             nested = Path(tmp) / "fixtures"
             env = _init_pack_guard_repo(nested)
+            _seed_pack_guard_floor(nested)
             pack = nested / PACK_GUARD_FIXTURES_PACK
             pack.parent.mkdir(parents=True, exist_ok=True)
             pack.write_text('{"eval_only": true}\n', encoding="utf-8")
-            _commit_pack_guard_paths(
-                nested, env, [PACK_GUARD_FIXTURES_PACK], "fixtures pack jsonl"
-            )
+            _commit_pack_guard_tree(nested, env, "fixtures pack jsonl")
             nested_proc = _run_pack_guard_script(nested, run, env)
             self.assertNotEqual(
                 nested_proc.returncode,
@@ -4693,8 +7440,64 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
                 ),
             )
 
+            dashed = Path(tmp) / "dashed"
+            env = _init_pack_guard_repo(dashed)
+            _seed_pack_guard_floor(dashed)
+            dash_pack = dashed / "apps" / "x" / "curated-pack-v2.jsonl"
+            dash_pack.parent.mkdir(parents=True, exist_ok=True)
+            dash_pack.write_text('{"eval_only": true}\n', encoding="utf-8")
+            _commit_pack_guard_tree(dashed, env, "curated-pack jsonl")
+            dash_proc = _run_pack_guard_script(dashed, run, env)
+            self.assertNotEqual(
+                dash_proc.returncode,
+                0,
+                msg=(
+                    "curated-pack-v2.jsonl must trip the guard; "
+                    f"stdout={dash_proc.stdout!r}"
+                ),
+            )
+
     def test_this_tree_has_no_tracked_pack_artifacts(self) -> None:
+        """S26: exact pins + KNOWN_LEGACY must keep this HEAD tree green."""
+        blobs = _head_blob_sizes(REPO_ROOT)
+        self.assertGreaterEqual(len(blobs), PACK_GUARD_LS_FILES_FLOOR)
+        over = [(sz, path) for sz, path in blobs if sz > PACK_GUARD_BLOB_MAX]
+        self.assertEqual(
+            over,
+            [],
+            f"tracked blobs exceed CAP={PACK_GUARD_BLOB_MAX}: {over}",
+        )
+        largest_sz, largest_path = max(blobs)
+        self.assertGreater(
+            largest_sz,
+            2 * 1024 * 1024,
+            f"expected the ~2.58 MiB tracked file, got {largest_sz} {largest_path}",
+        )
+        self.assertLessEqual(largest_sz, PACK_GUARD_BLOB_MAX)
         run = self._run_block()
+        self.assertIn(f"CAP={PACK_GUARD_BLOB_MAX}", run)
+        self.assertIn("PIN=frozenset", run)
+        self.assertIn("LEG=frozenset", run)
+        self.assertNotIn("OK=frozenset", run)
+        corpus = (
+            "apps/ava-factory/data/orchestration/corpus.jsonl"
+        )
+        repair = (
+            "tasks/artifacts/corpus_proposals/repair_transcripts/"
+            "repair_sft_unified.jsonl"
+        )
+        self.assertTrue(
+            any(path == corpus for path, _digest in PACK_GUARD_KNOWN_LEGACY)
+        )
+        self.assertTrue(
+            any(path == repair for path, _digest in PACK_GUARD_KNOWN_LEGACY)
+        )
+        self.assertFalse(
+            any(path == corpus for path, _digest in PACK_GUARD_BLOB_PIN)
+        )
+        self.assertFalse(
+            any(path == repair for path, _digest in PACK_GUARD_BLOB_PIN)
+        )
         env = _pack_guard_git_env()
         proc = _run_pack_guard_script(REPO_ROOT, run, env)
         self.assertEqual(
@@ -4702,6 +7505,315 @@ class TrackedPackArtifactGuardTests(unittest.TestCase):
             0,
             msg=f"stdout={proc.stdout!r} stderr={proc.stderr!r}",
         )
+
+    def test_known_legacy_pins_exact_path_and_hash(self) -> None:
+        """KNOWN_LEGACY: exact path+hash pass; copy or edit is refused."""
+        run = self._run_block()
+        pairs = sorted(PACK_GUARD_KNOWN_LEGACY)
+        self.assertEqual(len(pairs), 2)
+        blobs = {
+            path: (REPO_ROOT / path).read_bytes() for path, _digest in pairs
+        }
+        for path, digest in pairs:
+            self.assertEqual(hashlib.sha256(blobs[path]).hexdigest(), digest)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "legacy-ok"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            for path, data in blobs.items():
+                dest = repo / path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(data)
+            _commit_pack_guard_tree(repo, env, "legacy exact")
+            proc = _run_pack_guard_script(repo, run, env)
+            self.assertEqual(
+                proc.returncode,
+                0,
+                msg=f"pinned legacy must pass; stdout={proc.stdout!r}",
+            )
+
+        for path, data in blobs.items():
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "legacy-copy"
+                env = _init_pack_guard_repo(repo)
+                _seed_pack_guard_floor(repo)
+                copy = repo / "apps" / "x" / Path(path).name
+                copy.parent.mkdir(parents=True, exist_ok=True)
+                copy.write_bytes(data)
+                _commit_pack_guard_tree(repo, env, "legacy copy")
+                proc = _run_pack_guard_script(repo, run, env)
+                self.assertNotEqual(
+                    proc.returncode,
+                    0,
+                    msg=f"copy of {path} must be refused; stdout={proc.stdout!r}",
+                )
+                self.assertIn(str(copy.relative_to(repo)), proc.stdout)
+
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "legacy-edit"
+                env = _init_pack_guard_repo(repo)
+                _seed_pack_guard_floor(repo)
+                dest = repo / path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(data + b"\n")
+                _commit_pack_guard_tree(repo, env, "legacy edit")
+                proc = _run_pack_guard_script(repo, run, env)
+                self.assertNotEqual(
+                    proc.returncode,
+                    0,
+                    msg=f"edited {path} must be refused; stdout={proc.stdout!r}",
+                )
+                self.assertIn(path, proc.stdout)
+
+    def test_csv_header_tripwire_warns_only(self) -> None:
+        """Pinned paper-skill CSVs are silent; extras warn; never fails CI."""
+        run = self._run_block()
+        self.assertIn(PACK_GUARD_CSV_TRIPWIRE_PY, run)
+        self.assertEqual(len(PACK_GUARD_CSV_PIN), 4)
+        extras: list[str] = []
+        for path, digest in sorted(PACK_GUARD_CSV_PIN):
+            blob = REPO_ROOT / path
+            self.assertTrue(blob.is_file(), path)
+            self.assertEqual(hashlib.sha256(blob.read_bytes()).hexdigest(), digest)
+        env = _pack_guard_git_env()
+        proc = _run_pack_guard_script(REPO_ROOT, run, env)
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"csv tripwire must not fail CI; stdout={proc.stdout!r}",
+        )
+        for rec in subprocess.check_output(
+            ["git", "ls-files", "-z"], cwd=REPO_ROOT
+        ).split(b"\0"):
+            if not rec:
+                continue
+            rel = rec.decode("utf-8", "surrogateescape")
+            if not rel.casefold().endswith(".csv"):
+                continue
+            digest = hashlib.sha256((REPO_ROOT / rel).read_bytes()).hexdigest()
+            if (rel, digest) not in PACK_GUARD_CSV_PIN:
+                extras.append(rel)
+        if extras:
+            print("WARN csv tripwire extras:", extras)
+
+    def test_pack_guard_refuses_blob_over_size_cap(self) -> None:
+        """S26 size cap fails closed one byte over 3 MiB, neutral name."""
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            blob = repo / "apps" / "x" / "weights.bin"
+            blob.parent.mkdir(parents=True, exist_ok=True)
+            blob.write_bytes(b"A" * (PACK_GUARD_BLOB_MAX + 1))
+            _commit_pack_guard_tree(repo, env, "oversize")
+            proc = _run_pack_guard_script(repo, run, env)
+        self.assertNotEqual(
+            proc.returncode,
+            0,
+            msg=f"oversize blob must trip; stdout={proc.stdout!r}",
+        )
+        self.assertIn("apps/x/weights.bin", proc.stdout)
+
+    def test_pack_guard_fails_closed_outside_git_repo(self) -> None:
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            outside = Path(tmp) / "not-a-repo"
+            outside.mkdir()
+            proc = _run_pack_guard_script(outside, run, _pack_guard_git_env())
+        self.assertNotEqual(
+            proc.returncode,
+            0,
+            msg=(
+                "guard must not fail open outside a git repo; "
+                f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            ),
+        )
+
+    def test_pack_guard_fails_closed_with_null_index(self) -> None:
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            (repo / PACK_GUARD_ROOT_PACK).write_text(
+                '{"eval_only": true}\n', encoding="utf-8"
+            )
+            _commit_pack_guard_tree(repo, env, "root pack")
+            env = dict(env)
+            env["GIT_INDEX_FILE"] = "/dev/null"
+            proc = _run_pack_guard_script(repo, run, env)
+        self.assertNotEqual(
+            proc.returncode,
+            0,
+            msg=(
+                "guard must still see a pack when GIT_INDEX_FILE=/dev/null; "
+                f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            ),
+        )
+        self.assertIn(PACK_GUARD_ROOT_PACK, proc.stdout)
+
+    def test_pack_guard_from_subdirectory_catches_root_pack(self) -> None:
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            (repo / PACK_GUARD_ROOT_PACK).write_text(
+                '{"eval_only": true}\n', encoding="utf-8"
+            )
+            _commit_pack_guard_tree(repo, env, "root pack jsonl")
+            sub = repo / "apps" / "nested"
+            sub.mkdir(parents=True)
+            proc = _run_pack_guard_script(sub, run, env)
+        self.assertNotEqual(
+            proc.returncode,
+            0,
+            msg=(
+                "subdirectory must still catch a root pack; "
+                f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            ),
+        )
+        self.assertIn(PACK_GUARD_ROOT_PACK, proc.stdout)
+
+    def test_pack_guard_github_sha_pack_survives_head_reset(self) -> None:
+        """HEAD moved by reset --hard older; pack still at GITHUB_SHA is red."""
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            _commit_pack_guard_tree(repo, env, "older")
+            older = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            pack = repo / "apps" / "x" / "curated_pack_v2.jsonl"
+            pack.parent.mkdir(parents=True, exist_ok=True)
+            pack.write_text('{"eval_only": true}\n', encoding="utf-8")
+            _commit_pack_guard_tree(repo, env, "with pack")
+            newer = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            subprocess.run(
+                ["git", "reset", "--hard", older],
+                cwd=repo,
+                env=env,
+                check=True,
+                capture_output=True,
+            )
+            env = dict(env)
+            env["GITHUB_SHA"] = newer
+            proc = _run_pack_guard_script(repo, run, env)
+        self.assertNotEqual(
+            proc.returncode,
+            0,
+            msg=(
+                "pack at GITHUB_SHA must trip after reset --hard older; "
+                f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            ),
+        )
+        self.assertTrue(
+            "curated_pack_v2.jsonl" in proc.stdout
+            or "HEAD" in proc.stdout,
+            msg=(
+                "reset --hard older must trip (pack at GITHUB_SHA or HEAD "
+                f"mismatch); stdout={proc.stdout!r}"
+            ),
+        )
+
+    def test_pack_guard_ls_tree_without_dash_r_misses_nested_pack(self) -> None:
+        """Nested pack unstaged from the index is still red; dropping -r is not."""
+        run = self._run_block()
+        self.assertIn('ls-tree -r -z --full-tree --name-only "$GITHUB_SHA"', run)
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            pack = repo / PACK_GUARD_FIXTURES_PACK
+            pack.parent.mkdir(parents=True, exist_ok=True)
+            pack.write_text('{"eval_only": true}\n', encoding="utf-8")
+            _commit_pack_guard_tree(repo, env, "nested pack")
+            subprocess.run(
+                ["git", "rm", "-q", "--cached", "-r", "--", "apps"],
+                cwd=repo,
+                env=env,
+                check=True,
+                capture_output=True,
+            )
+            proc = _run_pack_guard_script(repo, run, env)
+            self.assertNotEqual(
+                proc.returncode,
+                0,
+                msg=(
+                    "nested pack in GITHUB_SHA tree must trip; "
+                    f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+                ),
+            )
+            weak = run.replace("ls-tree -r -z", "ls-tree -z", 1)
+            self.assertNotEqual(weak, run)
+            weak_proc = _run_pack_guard_script(repo, weak, env)
+        self.assertNotEqual(
+            weak_proc.returncode,
+            0,
+            msg=(
+                "ls-tree without -r must go red (nested ci.yml/pack unseen); "
+                f"stdout={weak_proc.stdout!r} stderr={weak_proc.stderr!r}"
+            ),
+        )
+
+    def test_pack_guard_github_sha_unset_or_bogus_is_red(self) -> None:
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            env = _init_pack_guard_repo(repo)
+            _seed_pack_guard_floor(repo)
+            _commit_pack_guard_tree(repo, env, "clean")
+            unset_env = dict(env)
+            unset_env.pop("GITHUB_SHA", None)
+            unset_proc = _run_pack_guard_script(
+                repo, run, unset_env, pin_github_sha=False
+            )
+            self.assertNotEqual(
+                unset_proc.returncode,
+                0,
+                msg=(
+                    "unset GITHUB_SHA must fail closed; "
+                    f"stdout={unset_proc.stdout!r} stderr={unset_proc.stderr!r}"
+                ),
+            )
+            bogus = dict(env)
+            bogus["GITHUB_SHA"] = "not-a-sha"
+            bogus_proc = _run_pack_guard_script(repo, run, bogus)
+            self.assertNotEqual(
+                bogus_proc.returncode,
+                0,
+                msg=(
+                    "non-hex GITHUB_SHA must fail closed; "
+                    f"stdout={bogus_proc.stdout!r} stderr={bogus_proc.stderr!r}"
+                ),
+            )
+            missing = dict(env)
+            missing["GITHUB_SHA"] = "0" * 40
+            missing_proc = _run_pack_guard_script(repo, run, missing)
+            self.assertNotEqual(
+                missing_proc.returncode,
+                0,
+                msg=(
+                    "GITHUB_SHA that is not a commit must fail closed; "
+                    f"stdout={missing_proc.stdout!r} stderr={missing_proc.stderr!r}"
+                ),
+            )
 
 
 class HelperFtLeakGateSyntheticTests(unittest.TestCase):
