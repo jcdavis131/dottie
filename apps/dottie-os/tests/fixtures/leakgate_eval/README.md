@@ -3,12 +3,40 @@
 **eval-only / `not_for_train: true`.** These packs exist to score the leak gate.
 Do not train, GPU-kick, or score a checkpoint on them.
 
-Each mini-pack under packs/<case_id>/ is a runnable curated_pack_v2 (pack/train/holdout[/sidecar]).
+Packs are **not tracked**. `gen.py` rebuilds them into a temp dir at test time
+from Mill's synthetic `source.json` (16 BASE rows, wrapper
+`{"synthetic": true, "rows": [...]}`). Timestamp pins:
+`--ts 20261018-230457` and `--produced-at 2026-10-18T23:04:57-05:00`
+(Mill's production clock).
+
+## Generator provenance
+
+`gen.py`, `source.json`, and `validate.py` are Mill's canonical files
+(authored by Mill). `source.json` is fully synthetic placeholder rows:
+no UltraData text and no real uuids. `validate.py` is a **reference
+detector** for the build-against set; it is not the `kick()` leak gate.
+
+Pinned sha256:
+
+- `gen.py` `d2df1fbfd45081aebf01261517c59eaccb9e4b93a11e372ed12f88a39207eb74`
+- `source.json` `8cd184c53874dea20b858dc11fdb30f0193fa8c72744901b4215e8c23718cfe3`
+- `validate.py` `f7fb4e2101040923fd7e08e318d1294c2f9a4204c745700ffdb0eb3e5a90c425`
+- `fixtures.jsonl` `3562f36139c6c70a270d9689ad5ec0071e480ea82cc0b26daed997d8663307dc`
+- `MANIFEST.json` `81209b912e35e7c9850e09a155d25595e76cd3b67051a464a4f92a7f4b9adb56`
+
+Regen (from this directory):
+
+```
+python3 gen.py --src source.json --out <empty-dir> --ts 20261018-230457 --produced-at 2026-10-18T23:04:57-05:00
+python3 validate.py <out-dir>
+```
+
+Each generated mini-pack under packs/<case_id>/ is a runnable curated_pack_v2 (pack/train/holdout[/sidecar]).
 A leak = a NON-message field whose VALUE predicts the gold label (action for L3, domain for L2) across the whole pack.
 Detection must be VALUE-based and PACK-level: refuse when a field's values predict gold across rows; accept when the
 same key exists but its values are constant/mixed/uncorrelated. Single-row coincidences must ACCEPT.
 
-Base rows: 16 real rows from ultradata_l3halt_lenmatch_20261018-224530 (golds: {'execute': 5, 'halt': 4, 'escalate': 1, 'tool': 3, 'web': 1, 'algo': 1, 'other': 1}).
+Base rows: 16 synthetic rows authored by Mill (golds: {'execute': 5, 'halt': 4, 'escalate': 1, 'tool': 3, 'web': 1, 'algo': 1, 'other': 1}).
 
 ## Cases
 - `leak_meta_risk_hint` [refuse] (twin_of twin_meta_risk_hint): exact key state.meta.risk_hint = gold action/domain (classic leak)
