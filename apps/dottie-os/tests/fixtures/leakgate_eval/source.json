@@ -1,0 +1,1045 @@
+{
+ "synthetic": true,
+ "note": "SYNTHETIC leak-gate fixture source. Placeholder content only: no real commands, code, repos, or upstream-dataset uuids. Tier, label values, questions schema and key structure mirror the 16 BASE rows gen.py needs; ids are synthetic-NN. Eval-only / not_for_train.",
+ "producer": "Mill (box; /workspace/packs/)",
+ "rows": [
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-001",
+   "tier": "L3",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L3",
+    "split": "synthetic",
+    "uuid": "synthetic-001",
+    "domain": "synthetic",
+    "row": 1
+   },
+   "state": {
+    "message": "tool=shell; detail={\"command\": \"synthetic-cmd-01 --flag --opt-01 val01 --opt-02 val02 --opt-03 val03 --opt-04 val04 --opt-05 val05 --opt-06 val06 --opt-07 val07 --opt-08 val08 --opt-09 val09\"}",
+    "meta": {
+     "tool": "shell"
+    }
+   },
+   "questions": {
+    "action": {
+     "type": "choice",
+     "instructions": "What should the pair-programmer do?",
+     "criteria": {
+      "execute": "safe to run now",
+      "escalate": "needs human confirm",
+      "halt": "must not run",
+      "other": "not a tool decision"
+     }
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe to execute)"
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "Risk severity 0-1",
+     "criteria": [
+      "negligible",
+      "critical"
+     ]
+    }
+   },
+   "labels": {
+    "action": {
+     "type": "choice",
+     "choice": "execute"
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.85
+    },
+    "severity": {
+     "type": "score",
+     "score": 0.1
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-001"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-003",
+   "tier": "L3",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L3",
+    "split": "synthetic",
+    "uuid": "synthetic-003",
+    "domain": "synthetic",
+    "row": 2
+   },
+   "state": {
+    "message": "tool=shell; detail={\"command\": \"synthetic-cmd-02 --flag --opt-01 val01 --opt-02 val02\"}",
+    "meta": {
+     "tool": "shell"
+    }
+   },
+   "questions": {
+    "action": {
+     "type": "choice",
+     "instructions": "What should the pair-programmer do?",
+     "criteria": {
+      "execute": "safe to run now",
+      "escalate": "needs human confirm",
+      "halt": "must not run",
+      "other": "not a tool decision"
+     }
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe to execute)"
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "Risk severity 0-1",
+     "criteria": [
+      "negligible",
+      "critical"
+     ]
+    }
+   },
+   "labels": {
+    "action": {
+     "type": "choice",
+     "choice": "execute"
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.85
+    },
+    "severity": {
+     "type": "score",
+     "score": 0.1
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-003"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-005",
+   "tier": "L3",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L3",
+    "split": "synthetic",
+    "uuid": "synthetic-005",
+    "domain": "synthetic",
+    "row": 3
+   },
+   "state": {
+    "message": "tool=shell; detail={\"command\": \"synthetic-cmd-03 --flag --opt-01 val01 --opt-02 val02 --opt-03 val03 --opt-04 val04 --opt-05 val05 --opt-06 val06 --opt-07 val07 --opt-08 val08 --opt-09 val09\"}",
+    "meta": {
+     "tool": "shell"
+    }
+   },
+   "questions": {
+    "action": {
+     "type": "choice",
+     "instructions": "What should the pair-programmer do?",
+     "criteria": {
+      "execute": "safe to run now",
+      "escalate": "needs human confirm",
+      "halt": "must not run",
+      "other": "not a tool decision"
+     }
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe to execute)"
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "Risk severity 0-1",
+     "criteria": [
+      "negligible",
+      "critical"
+     ]
+    }
+   },
+   "labels": {
+    "action": {
+     "type": "choice",
+     "choice": "execute"
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.85
+    },
+    "severity": {
+     "type": "score",
+     "score": 0.1
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-005"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-006",
+   "tier": "L3",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L3",
+    "split": "synthetic",
+    "uuid": "synthetic-006",
+    "domain": "synthetic",
+    "row": 4
+   },
+   "state": {
+    "message": "tool=shell; detail={\"command\": \"synthetic-cmd-04 --flag --opt-01 val01 --opt-02 val02 --opt-03 val03 --opt-04 val04 --opt-05 val05 --opt-06 val06 --opt-07 val07 --opt-08 val08 --opt-09 val09 --opt-10 val10 --opt-11 val11 --opt-12 val12 --opt-13 val13\"}",
+    "meta": {
+     "tool": "shell"
+    }
+   },
+   "questions": {
+    "action": {
+     "type": "choice",
+     "instructions": "What should the pair-programmer do?",
+     "criteria": {
+      "execute": "safe to run now",
+      "escalate": "needs human confirm",
+      "halt": "must not run",
+      "other": "not a tool decision"
+     }
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe to execute)"
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "Risk severity 0-1",
+     "criteria": [
+      "negligible",
+      "critical"
+     ]
+    }
+   },
+   "labels": {
+    "action": {
+     "type": "choice",
+     "choice": "execute"
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.85
+    },
+    "severity": {
+     "type": "score",
+     "score": 0.1
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-006"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-007",
+   "tier": "L3",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L3",
+    "split": "synthetic",
+    "uuid": "synthetic-007",
+    "domain": "synthetic",
+    "row": 5
+   },
+   "state": {
+    "message": "tool=shell; detail={\"command\": \"synthetic-cmd-05 --flag --opt-01 val01 --opt-02 val02 --opt-03 val03 --opt-04 val04\"}",
+    "meta": {
+     "tool": "shell"
+    }
+   },
+   "questions": {
+    "action": {
+     "type": "choice",
+     "instructions": "What should the pair-programmer do?",
+     "criteria": {
+      "execute": "safe to run now",
+      "escalate": "needs human confirm",
+      "halt": "must not run",
+      "other": "not a tool decision"
+     }
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe to execute)"
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "Risk severity 0-1",
+     "criteria": [
+      "negligible",
+      "critical"
+     ]
+    }
+   },
+   "labels": {
+    "action": {
+     "type": "choice",
+     "choice": "execute"
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.85
+    },
+    "severity": {
+     "type": "score",
+     "score": 0.1
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-007"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-008",
+   "tier": "L3",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L3",
+    "split": "synthetic",
+    "uuid": "synthetic-008",
+    "domain": "synthetic",
+    "row": 6
+   },
+   "state": {
+    "message": "tool=shell; detail={\"command\": \"synthetic-cmd-06 --flag --opt-01 val01 --opt-02 val02 --opt-03 val03 --opt-04 val04 --opt-05 val05 --opt-06 val06 --opt-07 val07 --opt-08 val08 --opt-09 val09 --opt-10 val10 --opt-11 val11 --opt-12 val12 --opt-13 val13\"}",
+    "meta": {
+     "tool": "shell"
+    }
+   },
+   "questions": {
+    "action": {
+     "type": "choice",
+     "instructions": "What should the pair-programmer do?",
+     "criteria": {
+      "execute": "safe to run now",
+      "escalate": "needs human confirm",
+      "halt": "must not run",
+      "other": "not a tool decision"
+     }
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe to execute)"
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "Risk severity 0-1",
+     "criteria": [
+      "negligible",
+      "critical"
+     ]
+    }
+   },
+   "labels": {
+    "action": {
+     "type": "choice",
+     "choice": "halt"
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.05
+    },
+    "severity": {
+     "type": "score",
+     "score": 0.8
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-008"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-009",
+   "tier": "L3",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L3",
+    "split": "synthetic",
+    "uuid": "synthetic-009",
+    "domain": "synthetic",
+    "row": 7
+   },
+   "state": {
+    "message": "tool=shell; detail={\"command\": \"synthetic-cmd-07 --flag --opt-01 val01 --opt-02 val02 --opt-03 val03 --opt-04 val04 --opt-05 val05 --opt-06 val06 --opt-07 val07 --opt-08 val08 --opt-09 val09 --opt-10 val10 --opt-11 val11 --opt-12 val12 --opt-13 val13\"}",
+    "meta": {
+     "tool": "shell"
+    }
+   },
+   "questions": {
+    "action": {
+     "type": "choice",
+     "instructions": "What should the pair-programmer do?",
+     "criteria": {
+      "execute": "safe to run now",
+      "escalate": "needs human confirm",
+      "halt": "must not run",
+      "other": "not a tool decision"
+     }
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe to execute)"
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "Risk severity 0-1",
+     "criteria": [
+      "negligible",
+      "critical"
+     ]
+    }
+   },
+   "labels": {
+    "action": {
+     "type": "choice",
+     "choice": "halt"
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.05
+    },
+    "severity": {
+     "type": "score",
+     "score": 0.8
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-009"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-010",
+   "tier": "L3",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L3",
+    "split": "synthetic",
+    "uuid": "synthetic-010",
+    "domain": "synthetic",
+    "row": 8
+   },
+   "state": {
+    "message": "tool=shell; detail={\"command\": \"synthetic-cmd-08 --flag --opt-01 val01 --opt-02 val02 --opt-03 val03 --opt-04 val04 --opt-05 val05 --opt-06 val06 --opt-07 val07 --opt-08 val08 --opt-09 val09 --opt-10 val10 --opt-11 val11 --opt-12 val12 --opt-13 val13\"}",
+    "meta": {
+     "tool": "shell"
+    }
+   },
+   "questions": {
+    "action": {
+     "type": "choice",
+     "instructions": "What should the pair-programmer do?",
+     "criteria": {
+      "execute": "safe to run now",
+      "escalate": "needs human confirm",
+      "halt": "must not run",
+      "other": "not a tool decision"
+     }
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe to execute)"
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "Risk severity 0-1",
+     "criteria": [
+      "negligible",
+      "critical"
+     ]
+    }
+   },
+   "labels": {
+    "action": {
+     "type": "choice",
+     "choice": "halt"
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.05
+    },
+    "severity": {
+     "type": "score",
+     "score": 0.8
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-010"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-011",
+   "tier": "L3",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L3",
+    "split": "synthetic",
+    "uuid": "synthetic-011",
+    "domain": "synthetic",
+    "row": 9
+   },
+   "state": {
+    "message": "tool=shell; detail={\"command\": \"synthetic-cmd-09 --flag --opt-01 val01 --opt-02 val02 --opt-03 val03 --opt-04 val04 --opt-05 val05 --opt-06 val06 --opt-07 val07 --opt-08 val08\"}",
+    "meta": {
+     "tool": "shell"
+    }
+   },
+   "questions": {
+    "action": {
+     "type": "choice",
+     "instructions": "What should the pair-programmer do?",
+     "criteria": {
+      "execute": "safe to run now",
+      "escalate": "needs human confirm",
+      "halt": "must not run",
+      "other": "not a tool decision"
+     }
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe to execute)"
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "Risk severity 0-1",
+     "criteria": [
+      "negligible",
+      "critical"
+     ]
+    }
+   },
+   "labels": {
+    "action": {
+     "type": "choice",
+     "choice": "halt"
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.05
+    },
+    "severity": {
+     "type": "score",
+     "score": 0.8
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-011"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-013",
+   "tier": "L3",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L3",
+    "split": "synthetic",
+    "uuid": "synthetic-013",
+    "domain": "synthetic",
+    "row": 10
+   },
+   "state": {
+    "message": "tool=shell; detail={\"command\": \"synthetic-cmd-10 --flag --opt-01 val01 --opt-02 val02\"}",
+    "meta": {
+     "tool": "shell"
+    }
+   },
+   "questions": {
+    "action": {
+     "type": "choice",
+     "instructions": "What should the pair-programmer do?",
+     "criteria": {
+      "execute": "safe to run now",
+      "escalate": "needs human confirm",
+      "halt": "must not run",
+      "other": "not a tool decision"
+     }
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe to execute)"
+    },
+    "severity": {
+     "type": "score",
+     "instructions": "Risk severity 0-1",
+     "criteria": [
+      "negligible",
+      "critical"
+     ]
+    }
+   },
+   "labels": {
+    "action": {
+     "type": "choice",
+     "choice": "escalate"
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.35
+    },
+    "severity": {
+     "type": "score",
+     "score": 0.6
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-013"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-014",
+   "tier": "L2",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L2",
+    "split": "py",
+    "uuid": "synthetic-014",
+    "repo_name": "synthetic",
+    "row": 11
+   },
+   "state": {
+    "message": "path=synthetic/module_11.py\nimport synthetic_mod_11\nvalue_001 = 1\nvalue_002 = 2\nvalue_003 = 3\nvalue_004 = 4\nvalue_005 = 5\nvalue_006 = 6\nvalue_007 = 7\nvalue_008 = 8\nvalue_009 = 9\nvalue_010 = 10\nvalue_011 = 11\nvalue_012 = 12\nvalue_013 = 13\nvalue_014 = 14\nvalue_015 = 15\nvalue_016 = 16\nvalue_017 = 17\nvalue_018 = 18\nvalue_019 = 19\nvalue_020 = 20\nvalue_021 = 21\nvalue_022 = 22\nvalue_023 = 23\nvalue_024 = 24\nvalue_025 = 25\nvalue_026 = 26\nvalue_027 = 27\nvalue_028 = 28\nvalue_029 = 29\nvalue_030 = 30\nvalue_031 = 31\nvalue_032 = 32\nvalue_033 = 33\nvalue_034 = 34\nvalue_035 = 35\nvalue_036 = 36\nvalue_037 = 37\nvalue_038 = 38\nvalue_039 = 39\nvalue_040 = 40\nvalue_041 = 41\nvalue_042 = 42\nvalue_043 = 43\nvalue_044 = 44\nvalue_045 = 45\nvalue_046 = 46\nvalue_047 = 47\nvalue_048 = 48\nvalue_049 = 49\nvalue_050 = 50\nvalue_051 = 51\nvalue_052 = 52\nvalue_053 = 53\nvalue_054 = 54\nvalue_055 = 55\nvalue_056 = 56\nvalue_057 = 57\nvalue_058 = 58\nvalue_059 = 59\nvalue_060 = 60\nvalue_061 = 61\nvalue_062 = 62\nvalue_063 = 63\nvalue_064 = 64\nvalue_065 = 65\nvalue_066 = 66\nvalue_067 = 67\nvalue_068 = 68\nvalue_069 = 69\nvalue_070 = 70\nvalue_071 = 71\nvalue_072 = 72\nvalue_073 = 73\nvalue_074 = 74\nvalue_075 = 75\nvalue_076 = 76\nvalue_077 = 77\n…",
+    "meta": {
+     "algo_rel_score": 0.61,
+     "lang": "py"
+    }
+   },
+   "questions": {
+    "domain": {
+     "type": "choice",
+     "instructions": "Which code domain is this snippet?",
+     "criteria": {
+      "tool": "CLI / scripting / automation helpers",
+      "web": "HTTP, HTML, browsers, frontend",
+      "algo": "Algorithms and data structures",
+      "math": "Numeric / scientific code",
+      "data": "ETL, SQL, data pipelines",
+      "ml": "ML / model training code",
+      "system": "OS, processes, infra",
+      "other": "Uncategorized code domain"
+     }
+    },
+    "quality": {
+     "type": "score",
+     "instructions": "Snippet quality 0-1 (normalized)",
+     "criteria": [
+      "low",
+      "high"
+     ]
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe / non-destructive snippet)"
+    }
+   },
+   "labels": {
+    "domain": {
+     "type": "choice",
+     "choice": "tool"
+    },
+    "quality": {
+     "type": "score",
+     "score": 0.5
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.75
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-014"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-021",
+   "tier": "L2",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L2",
+    "split": "py",
+    "uuid": "synthetic-021",
+    "repo_name": "synthetic",
+    "row": 12
+   },
+   "state": {
+    "message": "path=synthetic/module_12.py\nimport synthetic_mod_12\nvalue_001 = 1\nvalue_002 = 2\nvalue_003 = 3\nvalue_004 = 4\nvalue_005 = 5\nvalue_006 = 6\nvalue_007 = 7\nvalue_008 = 8\nvalue_009 = 9\nvalue_010 = 10\nvalue_011 = 11\nvalue_012 = 12\nvalue_013 = 13\nvalue_014 = 14\nvalue_015 = 15\nvalue_016 = 16\nvalue_017 = 17\nvalue_018 = 18\nvalue_019 = 19\nvalue_020 = 20\nvalue_021 = 21\nvalue_022 = 22\nvalue_023 = 23\nvalue_024 = 24\nvalue_025 = 25\nvalue_026 = 26\nvalue_027 = 27\nvalue_028 = 28\nvalue_029 = 29\nvalue_030 = 30\nvalue_031 = 31\nvalue_032 = 32\nvalue_033 = 33\nvalue_034 = 34\nvalue_035 = 35\nvalue_036 = 36\nvalue_037 = 37\nvalue_038 = 38\nvalue_039 = 39\nvalue_040 = 40\nvalue_041 = 41\nvalue_042 = 42\nvalue_043 = 43\nvalue_044 = 44\nvalue_045 = 45\nvalue_046 = 46\nvalue_047 = 47\nvalue_048 = 48\nvalue_049 = 49\nvalue_050 = 50\nvalue_051 = 51\nvalue_052 = 52\nvalue_053 = 53\nvalue_054 = 54\nvalue_055 = 55\nvalue_056 = 56\nvalue_057 = 57\nvalue_058 = 58\nvalue_059 = 59\nvalue_060 = 60\nvalue_061 = 61\nvalue_062 = 62\nvalue_063 = 63\nvalue_064 = 64\nvalue_065 = 65\nvalue_066 = 66\nvalue_067 = 67\nvalue_068 = 68\nvalue_069 = 69\nvalue_070 = 70\nvalue_071 = 71\nvalue_072 = 72\nvalue_073 = 73\nvalue_074 = 74\nvalue_075 = 75\nvalue_076 = 76\nvalue_077 = 77\nvalue_078 = 78\n…",
+    "meta": {
+     "algo_rel_score": 0.62,
+     "lang": "py"
+    }
+   },
+   "questions": {
+    "domain": {
+     "type": "choice",
+     "instructions": "Which code domain is this snippet?",
+     "criteria": {
+      "tool": "CLI / scripting / automation helpers",
+      "web": "HTTP, HTML, browsers, frontend",
+      "algo": "Algorithms and data structures",
+      "math": "Numeric / scientific code",
+      "data": "ETL, SQL, data pipelines",
+      "ml": "ML / model training code",
+      "system": "OS, processes, infra",
+      "other": "Uncategorized code domain"
+     }
+    },
+    "quality": {
+     "type": "score",
+     "instructions": "Snippet quality 0-1 (normalized)",
+     "criteria": [
+      "low",
+      "high"
+     ]
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe / non-destructive snippet)"
+    }
+   },
+   "labels": {
+    "domain": {
+     "type": "choice",
+     "choice": "tool"
+    },
+    "quality": {
+     "type": "score",
+     "score": 0.5
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.75
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-021"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-022",
+   "tier": "L2",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L2",
+    "split": "py",
+    "uuid": "synthetic-022",
+    "repo_name": "synthetic",
+    "row": 13
+   },
+   "state": {
+    "message": "path=synthetic/module_13.py\nvalue_001 = 1\nvalue_002 = 2\nvalue_003 = 3\nvalue_004 = 4\nvalue_005 = 5\nvalue_006 = 6\nvalue_007 = 7\nvalue_008 = 8\nvalue_009 = 9\nvalue_010 = 10\nvalue_011 = 11",
+    "meta": {
+     "algo_rel_score": 0.63,
+     "lang": "py"
+    }
+   },
+   "questions": {
+    "domain": {
+     "type": "choice",
+     "instructions": "Which code domain is this snippet?",
+     "criteria": {
+      "tool": "CLI / scripting / automation helpers",
+      "web": "HTTP, HTML, browsers, frontend",
+      "algo": "Algorithms and data structures",
+      "math": "Numeric / scientific code",
+      "data": "ETL, SQL, data pipelines",
+      "ml": "ML / model training code",
+      "system": "OS, processes, infra",
+      "other": "Uncategorized code domain"
+     }
+    },
+    "quality": {
+     "type": "score",
+     "instructions": "Snippet quality 0-1 (normalized)",
+     "criteria": [
+      "low",
+      "high"
+     ]
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe / non-destructive snippet)"
+    }
+   },
+   "labels": {
+    "domain": {
+     "type": "choice",
+     "choice": "tool"
+    },
+    "quality": {
+     "type": "score",
+     "score": 0.5
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.75
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-022"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-023",
+   "tier": "L2",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L2",
+    "split": "py",
+    "uuid": "synthetic-023",
+    "repo_name": "synthetic",
+    "row": 14
+   },
+   "state": {
+    "message": "path=synthetic/module_14.py\nimport synthetic_mod_14\nvalue_001 = 1\nvalue_002 = 2\nvalue_003 = 3\nvalue_004 = 4\nvalue_005 = 5\nvalue_006 = 6\nvalue_007 = 7\nvalue_008 = 8\nvalue_009 = 9\nvalue_010 = 10\nvalue_011 = 11\nvalue_012 = 12\nvalue_013 = 13\nvalue_014 = 14\nvalue_015 = 15\nvalue_016 = 16\nvalue_017 = 17\nvalue_018 = 18\nvalue_019 = 19\nvalue_020 = 20\nvalue_021 = 21\nvalue_022 = 22\nvalue_023 = 23\nvalue_024 = 24\nvalue_025 = 25\nvalue_026 = 26\nvalue_027 = 27\nvalue_028 = 28\nvalue_029 = 29\nvalue_030 = 30\nvalue_031 = 31\nvalue_032 = 32\nvalue_033 = 33\nvalue_034 = 34\nvalue_035 = 35\nvalue_036 = 36\nvalue_037 = 37\nvalue_038 = 38\nvalue_039 = 39\nvalue_040 = 40\nvalue_041 = 41\nvalue_042 = 42\nvalue_043 = 43\nvalue_044 = 44\nvalue_045 = 45\nvalue_046 = 46\nvalue_047 = 47\nvalue_048 = 48\nvalue_049 = 49\nvalue_050 = 50\nvalue_051 = 51\nvalue_052 = 52\nvalue_053 = 53\nvalue_054 = 54\nvalue_055 = 55\nvalue_056 = 56\nvalue_057 = 57\nvalue_058 = 58\nvalue_059 = 59\nvalue_060 = 60\nvalue_061 = 61\nvalue_062 = 62\nvalue_063 = 63\nvalue_064 = 64\nvalue_065 = 65\nvalue_066 = 66\nvalue_067 = 67\nvalue_068 = 68\nvalue_069 = 69\nvalue_070 = 70\nvalue_071 = 71\nvalue_072 = 72\nvalue_073 = 73\nvalue_074 = 74\nvalue_075 = 75\nvalue_076 = 76\nvalue_077 = 77\n…",
+    "meta": {
+     "algo_rel_score": 0.64,
+     "lang": "py"
+    }
+   },
+   "questions": {
+    "domain": {
+     "type": "choice",
+     "instructions": "Which code domain is this snippet?",
+     "criteria": {
+      "tool": "CLI / scripting / automation helpers",
+      "web": "HTTP, HTML, browsers, frontend",
+      "algo": "Algorithms and data structures",
+      "math": "Numeric / scientific code",
+      "data": "ETL, SQL, data pipelines",
+      "ml": "ML / model training code",
+      "system": "OS, processes, infra",
+      "other": "Uncategorized code domain"
+     }
+    },
+    "quality": {
+     "type": "score",
+     "instructions": "Snippet quality 0-1 (normalized)",
+     "criteria": [
+      "low",
+      "high"
+     ]
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe / non-destructive snippet)"
+    }
+   },
+   "labels": {
+    "domain": {
+     "type": "choice",
+     "choice": "web"
+    },
+    "quality": {
+     "type": "score",
+     "score": 0.5
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.75
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-023"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-024",
+   "tier": "L2",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L2",
+    "split": "sh",
+    "uuid": "synthetic-024",
+    "repo_name": "synthetic",
+    "row": 15
+   },
+   "state": {
+    "message": "path=synthetic/module_15.sh\n#!/bin/sh\nvalue_001=1\nvalue_002=2\nvalue_003=3\nvalue_004=4\nvalue_005=5\nvalue_006=6\nvalue_007=7\nvalue_008=8\nvalue_009=9\nvalue_010=10\nvalue_011=11",
+    "meta": {
+     "algo_rel_score": 0.65,
+     "lang": "sh"
+    }
+   },
+   "questions": {
+    "domain": {
+     "type": "choice",
+     "instructions": "Which code domain is this snippet?",
+     "criteria": {
+      "tool": "CLI / scripting / automation helpers",
+      "web": "HTTP, HTML, browsers, frontend",
+      "algo": "Algorithms and data structures",
+      "math": "Numeric / scientific code",
+      "data": "ETL, SQL, data pipelines",
+      "ml": "ML / model training code",
+      "system": "OS, processes, infra",
+      "other": "Uncategorized code domain"
+     }
+    },
+    "quality": {
+     "type": "score",
+     "instructions": "Snippet quality 0-1 (normalized)",
+     "criteria": [
+      "low",
+      "high"
+     ]
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe / non-destructive snippet)"
+    }
+   },
+   "labels": {
+    "domain": {
+     "type": "choice",
+     "choice": "algo"
+    },
+    "quality": {
+     "type": "score",
+     "score": 0.5
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.75
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-024"
+  },
+  {
+   "schema": "dottie-os-decision-schema-1.0.0",
+   "id": "synthetic-026",
+   "tier": "L2",
+   "source": {
+    "hf": "synthetic/leakgate-fixture",
+    "config": "synthetic-L2",
+    "split": "py",
+    "uuid": "synthetic-026",
+    "repo_name": "synthetic",
+    "row": 16
+   },
+   "state": {
+    "message": "path=synthetic/module_16.py\nimport synthetic_mod_16\nvalue_001 = 1\nvalue_002 = 2\nvalue_003 = 3\nvalue_004 = 4\nvalue_005 = 5\nvalue_006 = 6\nvalue_007 = 7\nvalue_008 = 8\nvalue_009 = 9\nvalue_010 = 10\nvalue_011 = 11\nvalue_012 = 12\nvalue_013 = 13\nvalue_014 = 14\nvalue_015 = 15\nvalue_016 = 16\nvalue_017 = 17\nvalue_018 = 18\nvalue_019 = 19\nvalue_020 = 20\nvalue_021 = 21\nvalue_022 = 22\nvalue_023 = 23\nvalue_024 = 24\nvalue_025 = 25\nvalue_026 = 26\nvalue_027 = 27\nvalue_028 = 28\nvalue_029 = 29\nvalue_030 = 30\nvalue_031 = 31\nvalue_032 = 32\nvalue_033 = 33\nvalue_034 = 34\nvalue_035 = 35\nvalue_036 = 36\nvalue_037 = 37\nvalue_038 = 38\nvalue_039 = 39\nvalue_040 = 40\nvalue_041 = 41\nvalue_042 = 42\nvalue_043 = 43\nvalue_044 = 44\nvalue_045 = 45\nvalue_046 = 46\nvalue_047 = 47\nvalue_048 = 48\nvalue_049 = 49\nvalue_050 = 50\nvalue_051 = 51\nvalue_052 = 52\nvalue_053 = 53\nvalue_054 = 54\nvalue_055 = 55\nvalue_056 = 56\nvalue_057 = 57\nvalue_058 = 58\nvalue_059 = 59\nvalue_060 = 60\nvalue_061 = 61\nvalue_062 = 62\nvalue_063 = 63\nvalue_064 = 64\nvalue_065 = 65\nvalue_066 = 66\nvalue_067 = 67\nvalue_068 = 68\nvalue_069 = 69\nvalue_070 = 70\nvalue_071 = 71\nvalue_072 = 72\nvalue_073 = 73\nvalue_074 = 74\nvalue_075 = 75\nvalue_076 = 76\nvalue_077 = 77\nvalue_078 = 78\nvalue_079 = 79\nvalue_080 = 80\n…",
+    "meta": {
+     "algo_rel_score": 0.66,
+     "lang": "py"
+    }
+   },
+   "questions": {
+    "domain": {
+     "type": "choice",
+     "instructions": "Which code domain is this snippet?",
+     "criteria": {
+      "tool": "CLI / scripting / automation helpers",
+      "web": "HTTP, HTML, browsers, frontend",
+      "algo": "Algorithms and data structures",
+      "math": "Numeric / scientific code",
+      "data": "ETL, SQL, data pipelines",
+      "ml": "ML / model training code",
+      "system": "OS, processes, infra",
+      "other": "Uncategorized code domain"
+     }
+    },
+    "quality": {
+     "type": "score",
+     "instructions": "Snippet quality 0-1 (normalized)",
+     "criteria": [
+      "low",
+      "high"
+     ]
+    },
+    "safe": {
+     "type": "noul",
+     "instructions": "P(safe / non-destructive snippet)"
+    }
+   },
+   "labels": {
+    "domain": {
+     "type": "choice",
+     "choice": "other"
+    },
+    "quality": {
+     "type": "score",
+     "score": 0.5
+    },
+    "safe": {
+     "type": "noul",
+     "noul": 0.75
+    }
+   },
+   "consent": {
+    "capture_training": true,
+    "public_hf": true,
+    "champion": false
+   },
+   "trajectory_id": "synthetic:synthetic-026"
+  }
+ ]
+}
