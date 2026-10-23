@@ -8,10 +8,18 @@ Signed bytes (UTF-8), byte-for-byte::
       {pack_id, sha256_pack, sha256_train, sha256_holdout,
        rows_total, rows_train, rows_holdout, recordedAt}
 
+Kicks use ``swarm-hq-pin-v2`` (Ed25519, ``key_id``, binding
+``{pack_id, run_id, lease_owner}``, ``issued_at``/``not_before``/``not_after``
+with a 24 h cap and 120 s start-side skew, ``nonce``, sha256
+pack/train/holdout, ``code_pins`` (path→sha256 for ``CODE_PINS``),
+``git_commit``, and ``expires_at``). v1 remains verify-only for history and
+is refused for kicks. Timestamps are ASCII-only strict RFC 3339.
+
 The pin JSON also carries ``cam_sig`` (base64 Ed25519 signature of those
-bytes) and ``cam_key_id``. Verify only against the public key committed at
+bytes) and ``cam_key_id`` / ``key_id``. Verify only against the public key committed at
 ``apps/dottie-os/trust/cam_pin_ed25519.pub``. Never read a key from env,
-argv, or any other path.
+argv, or any other path. The child never fetches a pin; it verifies the
+staged v2 file the server already verified.
 
 ``stampVerified`` and ``pack_matches`` are advisory only: they are never
 sufficient and never required for a pass. Trust is the Cam signature plus
@@ -25,6 +33,7 @@ HTTPS only, certificate verification on, no proxies, no redirects.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -34,8 +43,11 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+import row_fields
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -50,6 +62,10 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 CANONICAL_PREFIX = b"swarm-hq-pin-v1\n"
+PIN_FORMAT_V1 = "swarm-hq-pin-v1"
+PIN_FORMAT_V2 = "swarm-hq-pin-v2"
+CANONICAL_PREFIX_V1 = CANONICAL_PREFIX
+CANONICAL_PREFIX_V2 = b"swarm-hq-pin-v2\n"
 SIGNED_KEYS = (
     "pack_id",
     "sha256_pack",
@@ -60,6 +76,61 @@ SIGNED_KEYS = (
     "rows_holdout",
     "recordedAt",
 )
+SIGNED_KEYS_V2 = (
+    "binding",
+    "code_pins",
+    "expires_at",
+    "format",
+    "git_commit",
+    "head",
+    "issued_at",
+    "key_id",
+    "near_dup_tokenizer_sha256",
+    "near_dup_tokenizer_version",
+    "nonce",
+    "not_after",
+    "not_before",
+    "reserved_content_uuids_min_rows",
+    "reserved_content_uuids_sha256",
+    "rows_holdout",
+    "rows_total",
+    "rows_train",
+    "sha256_holdout",
+    "sha256_manifest",
+    "sha256_pack",
+    "sha256_train",
+)
+NEAR_DUP_TOKENIZER_VERSION_V1 = "v1"
+NEAR_DUP_TOKENIZER_VERSION_V2 = "v2"
+# Builder min-ref rule carried on the signed v2 pin once mill v2.2 is live.
+PINNED_NEAR_DUP_MIN_REF = {"b_ge": 16, "nchar_ge": 20}
+NEAR_DUP_FP_BUCKETS_KEY = "near_dup_fp_buckets"
+NEAR_DUP_MIN_REF_KEY = "near_dup_min_ref"
+NEAR_DUP_N_REFS_KEY = "n_refs"
+NEAR_DUP_N_REFUSED_SHORT_KEY = "n_refused_short"
+NEAR_DUP_N_CANDIDATES_KEY = "n_ref_candidates"
+SIGNED_KEYS_V2_FP = (NEAR_DUP_FP_BUCKETS_KEY, NEAR_DUP_MIN_REF_KEY)
+SIGNED_KEYS_V2_FP_COUNTS = (
+    NEAR_DUP_N_REFS_KEY,
+    NEAR_DUP_N_REFUSED_SHORT_KEY,
+    NEAR_DUP_N_CANDIDATES_KEY,
+)
+NEAR_DUP_TOKENIZER_V1_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v1.py"
+# Fail-closed v2 slot. Mill vendoring is held; do not pin a live v2 file here.
+NEAR_DUP_TOKENIZER_V2_REL = "apps/dottie-os/scripts/lab/neardup_tokens-v2.py"
+NEAR_DUP_TOKENIZER_V2_SHA256_PLACEHOLDER = (
+    "NEAR_DUP_TOKENIZER_V2_SHA256_PLACEHOLDER_NOT_A_LIVE_FILE"
+)
+BINDING_KEYS_V2 = ("lease_owner", "pack_id", "run_id")
+PIN_V2_MAX_LIFETIME = timedelta(hours=24)
+PIN_V2_NOT_BEFORE_SKEW = timedelta(seconds=120)
+NONCE_HEX_LEN = 64
+RFC3339_RE = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?"
+    r"(Z|[+-][0-9]{2}:[0-9]{2})$"
+)
+RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+LEASE_OWNER_RE = RUN_ID_RE
 # Cam sets this by PR to the production HTTPS origin, e.g. "https://hq.example".
 SWARM_HQ_ORIGIN = ""
 SWARM_HQ_AGENT_TOKEN_ENV = "SWARM_HQ_AGENT_TOKEN"
@@ -69,13 +140,38 @@ HQ_EVENTS = frozenset({"kick", "completion"})
 MAX_PIN_BYTES = 64 * 1024
 HQ_DEADLINE_SECONDS = 15.0
 SHA256_LEN = 64
+GIT_SHA_LEN = 40
 _HEX = frozenset("0123456789abcdef")
 _PLACEHOLDER_ORIGIN = frozenset({"", "unset", "placeholder", "todo", "https://unset.invalid"})
 _PUB_NAME = "cam_pin_ed25519.pub"
 _KEY_ID_NAME = "cam_pin_key_id"
+
+
+_MODULE_FILE = str(globals().get("__file__") or "")
+
+
+def _trust_dir_from_here() -> Path:
+    """apps/dottie-os/trust next to this file. Sealed /proc/fd and memfd have no tree."""
+    here_raw = _MODULE_FILE or str(globals().get("__file__") or "")
+    if not here_raw:
+        return Path("/var/empty/dottie-os-sealed-trust")
+    here = Path(here_raw).resolve()
+    posix = here.as_posix()
+    if posix.startswith("/proc/") or posix.startswith("/memfd:"):
+        return Path("/var/empty/dottie-os-sealed-trust")
+    try:
+        return here.parents[2] / "trust"
+    except IndexError:
+        return Path("/var/empty/dottie-os-sealed-trust")
+
+
 # Frozen path: apps/dottie-os/trust/cam_pin_ed25519.pub relative to this file.
-CAM_PIN_PUB_PATH = Path(__file__).resolve().parents[2] / "trust" / _PUB_NAME
-CAM_PIN_KEY_ID_PATH = Path(__file__).resolve().parents[2] / "trust" / _KEY_ID_NAME
+# Pinned-copy mode rebinds these to <copy-root>/apps/dottie-os/trust/.
+CAM_PIN_PUB_PATH = _trust_dir_from_here() / _PUB_NAME
+CAM_PIN_KEY_ID_PATH = _trust_dir_from_here() / _KEY_ID_NAME
+PINNED_COPY_ROOT: Path | None = None
+_DEFAULT_CAM_PIN_PUB_PATH = CAM_PIN_PUB_PATH
+_DEFAULT_CAM_PIN_KEY_ID_PATH = CAM_PIN_KEY_ID_PATH
 # Exact on-disk sentinel. Cam replaces both trust files in one PR.
 PLACEHOLDER_PUB_TEXT = (
     "CAM-PIN-ED25519-PLACEHOLDER\n"
@@ -93,11 +189,34 @@ RECORDED_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 B64_RE = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")
 INT32_MAX = 2**31
 # Repo-relative paths whose HEAD blobs must match the working tree.
-TRUST_RELPATHS = (
+# Server layout: apps/dottie-os/trust/ (not <copy-root>/trust/).
+TRUST_DIR_REL = "apps/dottie-os/trust"
+# Single canonical pin set. kick_helper_ft and the launcher alias this object.
+CODE_PINS = (
+    "apps/dottie-os/scripts/lab/kick_helper_ft.py",
+    "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
+    "apps/dottie-os/scripts/lab/cam_pin_spec.py",
+    "apps/dottie-os/scripts/lab/content_uuid.py",
+    "apps/dottie-os/scripts/lab/denied_field_schema.py",
+    "apps/dottie-os/scripts/lab/row_fields.py",
+    "apps/dottie-os/scripts/lab/neardup_tokens-v1.py",
+    "apps/dottie-os/scripts/lab/neardup_tokens-v1.golden.json",
     "apps/dottie-os/trust/cam_pin_ed25519.pub",
     "apps/dottie-os/trust/cam_pin_key_id",
-    "apps/dottie-os/scripts/lab/cam_pin_spec.py",
+    "apps/dottie-os/trust/reserved_content_uuids.jsonl",
+    "apps/dottie-os/trust/reserved_near_dup_fingerprints.jsonl",
 )
+REQUIRED_PINS = CODE_PINS
+TRUST_RELPATHS = CODE_PINS
+CODE_PIN_MODULE_NAMES = {
+    "kick_helper_ft": "apps/dottie-os/scripts/lab/kick_helper_ft.py",
+    "helper_ft_kickoff": "apps/dottie-os/scripts/lab/helper_ft_kickoff.py",
+    "cam_pin_spec": "apps/dottie-os/scripts/lab/cam_pin_spec.py",
+    "content_uuid": "apps/dottie-os/scripts/lab/content_uuid.py",
+    "denied_field_schema": "apps/dottie-os/scripts/lab/denied_field_schema.py",
+    "row_fields": "apps/dottie-os/scripts/lab/row_fields.py",
+    "neardup_tokens_v1": "apps/dottie-os/scripts/lab/neardup_tokens-v1.py",
+}
 ORIGIN_MAIN_REF = "origin/main"
 # Twisted Edwards Ed25519 (RFC 8032). Cofactor and canonical checks run in
 # this module before cryptography's verify. Not a hardcoded encoding list.
@@ -129,6 +248,47 @@ HQ_PIN_ALLOWED_KEYS = frozenset(
         "pack_matches",
     )
 )
+V2_PIN_REQUIRED_KEYS = (
+    *SIGNED_KEYS_V2,
+    "cam_sig",
+)
+V2_PIN_ALLOWED_KEYS = frozenset(
+    (
+        *V2_PIN_REQUIRED_KEYS,
+        "recordedBy",
+        "stampVerified",
+        "verified",
+        "pack_matches",
+        "kid",
+        "cam_key_id",
+        "recordedAt",
+        "pack_id",
+        "run_id",
+        "lease_owner",
+        "source",
+        NEAR_DUP_FP_BUCKETS_KEY,
+        NEAR_DUP_MIN_REF_KEY,
+        NEAR_DUP_N_REFS_KEY,
+        NEAR_DUP_N_REFUSED_SHORT_KEY,
+        NEAR_DUP_N_CANDIDATES_KEY,
+    )
+)
+
+
+def signed_keys_v2() -> tuple[str, ...]:
+    """v2 signed keys. Fingerprint count fields join the signature once mill file checks are live."""
+    keys = SIGNED_KEYS_V2
+    if row_fields.mill_fp_pad_ready():
+        keys = keys + SIGNED_KEYS_V2_FP
+    if row_fields.mill_fp_file_ready():
+        cand = row_fields.mill_n_candidates_key()
+        extra = (
+            NEAR_DUP_N_REFS_KEY,
+            NEAR_DUP_N_REFUSED_SHORT_KEY,
+            cand,
+        )
+        keys = keys + extra
+    return keys
 
 
 class CamPinError(Exception):
@@ -198,13 +358,473 @@ def require_b64(field: str, value: object, decoded_len: int) -> bytes:
 
 
 def canonical_pin_bytes(fields: dict[str, Any]) -> bytes:
-    """Exact signed payload. Swarm HQ must match this byte for byte."""
+    """v1 signed payload (history / verify-only). Swarm HQ v1 must match byte for byte."""
     missing = [key for key in SIGNED_KEYS if key not in fields]
     if missing:
         _refuse(f"cam-pin.{missing[0]}", "present", "missing")
     body = {key: fields[key] for key in SIGNED_KEYS}
     packed = json.dumps(body, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
     return CANONICAL_PREFIX + packed.encode("utf-8")
+
+
+def canonical_pin_bytes_v2(fields: dict[str, Any]) -> bytes:
+    """v2 signed payload. r6 / kicks must match this byte for byte."""
+    keys = signed_keys_v2()
+    missing = [key for key in keys if key not in fields]
+    if missing:
+        _refuse(f"cam-pin.{missing[0]}", "present", "missing")
+    body = {key: fields[key] for key in keys}
+    packed = json.dumps(body, separators=(",", ":"), sort_keys=True, ensure_ascii=True)
+    return CANONICAL_PREFIX_V2 + packed.encode("ascii")
+
+
+def require_rfc3339(field: str, value: object) -> datetime:
+    """ASCII-only strict RFC 3339 with timezone. No space-separated form."""
+    if type(value) is not str or not value:
+        _refuse(field, "present", "missing")
+    if not value.isascii():
+        _refuse(field, "ASCII-only RFC 3339", "non-ascii")
+    if RFC3339_RE.fullmatch(value) is None:
+        _refuse(field, "strict RFC 3339", value)
+    text = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        _refuse(field, "strict RFC 3339", value)
+        raise AssertionError("unreachable")
+    if parsed.tzinfo is None:
+        _refuse(field, "RFC 3339 with timezone", value)
+    return parsed.astimezone(timezone.utc)
+
+
+def require_run_id(field: str, value: object) -> str:
+    if type(value) is not str or not value:
+        _refuse(field, "present", "missing")
+    if RUN_ID_RE.fullmatch(value) is None:
+        _refuse(field, "ASCII [A-Za-z0-9._:-]{1,128}", value)
+    return value
+
+
+def require_lease_owner(field: str, value: object) -> str:
+    if type(value) is not str or not value:
+        _refuse(field, "present", "missing")
+    if LEASE_OWNER_RE.fullmatch(value) is None:
+        _refuse(field, "ASCII [A-Za-z0-9._:-]{1,128}", value)
+    return value
+
+
+def require_nonce(field: str, value: object) -> str:
+    return require_sha256_hex(field, value)
+
+
+def require_git_commit(field: str, value: object) -> str:
+    if type(value) is not str or len(value) != GIT_SHA_LEN or any(ch not in _HEX for ch in value):
+        _refuse(field, "40-char lowercase hex", value)
+    return value
+
+
+def _require_fp_buckets(value: object) -> list[int]:
+    if not isinstance(value, list) or not value:
+        _refuse(
+            f"cam-pin.{NEAR_DUP_FP_BUCKETS_KEY}",
+            "non-empty list of bucket sizes",
+            "missing" if value is None else type(value).__name__,
+        )
+    buckets: list[int] = []
+    for item in value:
+        if type(item) is not int or item < 1:
+            _refuse(f"cam-pin.{NEAR_DUP_FP_BUCKETS_KEY}", "positive int buckets", "invalid")
+        buckets.append(item)
+    return buckets
+
+
+def _require_min_ref(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        _refuse(
+            f"cam-pin.{NEAR_DUP_MIN_REF_KEY}",
+            "nchar>=20 OR |B|>=16",
+            "missing" if value is None else type(value).__name__,
+        )
+    nchar = value.get("nchar_ge")
+    b_ge = value.get("b_ge")
+    if type(nchar) is not int or type(b_ge) is not int:
+        _refuse(f"cam-pin.{NEAR_DUP_MIN_REF_KEY}", "nchar>=20 OR |B|>=16", "invalid")
+    return {"b_ge": b_ge, "nchar_ge": nchar}
+
+
+def require_code_pins(value: object) -> dict[str, str]:
+    """Exact CODE_PINS keys, each a 64-char lowercase sha256. No extra paths."""
+    if not isinstance(value, dict) or not value:
+        _refuse(
+            "cam-pin.code_pins",
+            "path→sha256 object",
+            type(value).__name__ if not isinstance(value, dict) else "empty",
+        )
+    extra = [key for key in value if key not in CODE_PINS]
+    if extra:
+        _refuse("cam-pin.code_pins", "CODE_PINS paths", f"unknown {extra[0]}")
+    pins: dict[str, str] = {}
+    for rel in CODE_PINS:
+        if rel not in value:
+            _refuse("cam-pin.code_pins", f"pin covering {rel}", "missing")
+        pins[rel] = require_sha256_hex(f"cam-pin.code_pins.{rel}", value.get(rel))
+    return pins
+
+
+def code_pins_root() -> Path:
+    """Repo or pinned-copy root that holds CODE_PINS paths."""
+    if PINNED_COPY_ROOT is not None:
+        return Path(PINNED_COPY_ROOT)
+    return Path(__file__).resolve().parents[4]
+
+
+def sha256_file_bytes(path: Path) -> tuple[bytes, str]:
+    """One read: return file bytes and sha256. Caller must not re-open the path."""
+    flags = os.O_RDONLY
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        _refuse(str(path), "readable regular file", f"OSError:{exc.errno}")
+        raise AssertionError("unreachable") from exc
+    try:
+        chunks: list[bytes] = []
+        while True:
+            block = os.read(fd, 1 << 20)
+            if not block:
+                break
+            chunks.append(block)
+        buf = b"".join(chunks)
+    except OSError as exc:
+        _refuse(str(path), "readable regular file", f"OSError:{exc.errno}")
+        raise AssertionError("unreachable") from exc
+    finally:
+        os.close(fd)
+    return buf, hashlib.sha256(buf).hexdigest()
+
+
+def live_code_pins(*, root: Path | None = None) -> dict[str, str]:
+    """sha256 of each CODE_PINS path under ``root`` (repo or pinned-copy)."""
+    base = Path(root).resolve() if root is not None else code_pins_root().resolve()
+    pins: dict[str, str] = {}
+    for rel in CODE_PINS:
+        path = (base / rel).resolve()
+        try:
+            path.relative_to(base)
+        except ValueError:
+            _refuse(f"cam-pin.code_pins.{rel}", f"under {base}", str(path))
+        if not path.is_file():
+            _refuse(f"cam-pin.code_pins.{rel}", "readable regular file", "missing")
+        _buf, digest = sha256_file_bytes(path)
+        pins[rel] = digest
+    return pins
+
+
+def verify_code_pins_match(
+    code_pins: dict[str, str],
+    *,
+    root: Path | None = None,
+) -> dict[str, str]:
+    """Refuse any missing or mismatched CODE_PINS hash against live files."""
+    expected = require_code_pins(code_pins)
+    live = live_code_pins(root=root)
+    for rel in CODE_PINS:
+        if expected[rel] != live[rel]:
+            _refuse(f"cam-pin.code_pins.{rel}", live[rel], expected[rel])
+    return expected
+
+
+def _require_v2_binding(value: object) -> dict[str, str]:
+    if not isinstance(value, dict) or not value:
+        _refuse("cam-pin.binding", "object", type(value).__name__)
+    extra = [key for key in value if key not in BINDING_KEYS_V2]
+    if extra:
+        _refuse("cam-pin.binding", "pack_id,run_id,lease_owner", f"unknown {extra[0]}")
+    binding = {
+        "pack_id": require_pack_id("cam-pin.binding.pack_id", value.get("pack_id")),
+        "run_id": require_run_id("cam-pin.binding.run_id", value.get("run_id")),
+        "lease_owner": require_lease_owner(
+            "cam-pin.binding.lease_owner", value.get("lease_owner")
+        ),
+    }
+    return binding
+
+
+def pin_format_of(record: dict[str, Any]) -> str:
+    fmt = record.get("format")
+    if type(fmt) is str and fmt:
+        return fmt
+    if "binding" in record and "issued_at" in record:
+        return PIN_FORMAT_V2
+    return PIN_FORMAT_V1
+
+
+def verify_v2_lifetime(
+    issued_at: datetime,
+    not_before: datetime,
+    not_after: datetime,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Cap 24 h. 120 s skew on the start side only. No grace past not_after."""
+    if not_after < not_before:
+        _refuse("cam-pin.not_after", ">= not_before", not_after.isoformat())
+    if not_after - not_before > PIN_V2_MAX_LIFETIME:
+        _refuse("cam-pin.lifetime", "<= 24h", str((not_after - not_before).total_seconds()))
+    if issued_at > not_after:
+        _refuse("cam-pin.issued_at", "<= not_after", issued_at.isoformat())
+    if not_after - issued_at > PIN_V2_MAX_LIFETIME:
+        _refuse("cam-pin.lifetime", "<= 24h from issued_at", str((not_after - issued_at).total_seconds()))
+    instant = now if now is not None else datetime.now(timezone.utc)
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    instant = instant.astimezone(timezone.utc)
+    if instant < not_before - PIN_V2_NOT_BEFORE_SKEW:
+        _refuse("cam-pin.not_before", "now within 120s skew", instant.isoformat())
+    if instant > not_after:
+        _refuse("cam-pin.not_after", "not expired", instant.isoformat())
+
+
+def sign_pin_v2(fields: dict[str, Any], raw_private: bytes) -> str:
+    """Cam-side CLI and tests only. Kick and :8765 must not call this.
+
+    The private key is never read here. ``tools/sign_cam_pin.py`` supplies
+    bytes from a path or stdin on Cam's device. Tests generate ephemeral
+    keys at runtime.
+    """
+    message = canonical_pin_bytes_v2(fields)
+    return sign_pin_bytes(message, raw_private)
+
+
+def verify_cam_sig_v1(record: dict[str, Any]) -> None:
+    """History: verify a swarm-hq-pin-v1 signature. Not valid for kicks."""
+    verify_cam_sig(record)
+
+
+def verify_cam_sig_v2(record: dict[str, Any]) -> None:
+    key_id, public = load_cam_public_key()
+    pin_kid = record.get("key_id")
+    if type(pin_kid) is not str or not pin_kid:
+        _refuse("cam-pin.key_id", "present", "missing")
+    if pin_kid != key_id:
+        _refuse("cam-pin.key_id", key_id, pin_kid)
+    alias = record.get("cam_key_id")
+    if alias is not None and alias != pin_kid:
+        _refuse("cam-pin.cam_key_id", pin_kid, alias)
+    signature = require_b64("cam-pin.cam_sig", record.get("cam_sig"), 64)
+    message = canonical_pin_bytes_v2(record)
+    public_raw = public.public_bytes(Encoding.Raw, PublicFormat.Raw)
+    verify_ed25519(message, signature, public_raw)
+
+
+def parse_v2_pin_payload(
+    payload: object,
+    *,
+    now: datetime | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Parse and verify a staged swarm-hq-pin-v2. Refuses v1. Never fetches."""
+    if not isinstance(payload, dict) or not payload:
+        _refuse("cam-pin", "present", "missing")
+    fmt = pin_format_of(payload)
+    if fmt != PIN_FORMAT_V2:
+        _refuse("cam-pin.format", PIN_FORMAT_V2, fmt)
+    unknown = [key for key in payload if key not in V2_PIN_ALLOWED_KEYS]
+    if unknown:
+        _refuse("cam-pin", "v2 pin keys", f"unknown {unknown[0]}")
+    required = V2_PIN_REQUIRED_KEYS
+    if row_fields.mill_fp_pad_ready():
+        required = (*required, *SIGNED_KEYS_V2_FP)
+    if row_fields.mill_fp_file_ready():
+        required = (
+            *required,
+            NEAR_DUP_N_REFS_KEY,
+            NEAR_DUP_N_REFUSED_SHORT_KEY,
+            row_fields.mill_n_candidates_key(),
+        )
+    for key in required:
+        if key not in payload:
+            _refuse(f"cam-pin.{key}", "present", "missing")
+    if payload.get("format") != PIN_FORMAT_V2:
+        _refuse("cam-pin.format", PIN_FORMAT_V2, payload.get("format"))
+    binding = _require_v2_binding(payload.get("binding"))
+    issued_at = require_rfc3339("cam-pin.issued_at", payload.get("issued_at"))
+    not_before = require_rfc3339("cam-pin.not_before", payload.get("not_before"))
+    not_after = require_rfc3339("cam-pin.not_after", payload.get("not_after"))
+    verify_v2_lifetime(issued_at, not_before, not_after, now=now)
+    expires_at = require_rfc3339("cam-pin.expires_at", payload.get("expires_at"))
+    if payload.get("expires_at") != payload.get("not_after"):
+        _refuse("cam-pin.expires_at", payload.get("not_after"), payload.get("expires_at"))
+    if expires_at != not_after:
+        _refuse("cam-pin.expires_at", not_after.isoformat(), expires_at.isoformat())
+    nonce = require_nonce("cam-pin.nonce", payload.get("nonce"))
+    code_pins = require_code_pins(payload.get("code_pins"))
+    git_commit = require_git_commit("cam-pin.git_commit", payload.get("git_commit"))
+    head = require_git_commit("cam-pin.head", payload.get("head"))
+    if head != git_commit:
+        _refuse("cam-pin.head", git_commit, head)
+    record: dict[str, Any] = {
+        "format": PIN_FORMAT_V2,
+        "key_id": payload["key_id"],
+        "binding": binding,
+        "issued_at": payload["issued_at"],
+        "not_before": payload["not_before"],
+        "not_after": payload["not_after"],
+        "expires_at": payload["expires_at"],
+        "nonce": nonce,
+        "code_pins": code_pins,
+        "git_commit": git_commit,
+        "head": head,
+        "sha256_pack": require_sha256_hex("cam-pin.sha256_pack", payload.get("sha256_pack")),
+        "sha256_train": require_sha256_hex("cam-pin.sha256_train", payload.get("sha256_train")),
+        "sha256_holdout": require_sha256_hex(
+            "cam-pin.sha256_holdout", payload.get("sha256_holdout")
+        ),
+        "pack_id": binding["pack_id"],
+        "run_id": binding["run_id"],
+        "lease_owner": binding["lease_owner"],
+        "cam_sig": payload["cam_sig"],
+        "cam_key_id": payload.get("cam_key_id", payload["key_id"]),
+        "kid": payload.get("kid", payload["key_id"]),
+    }
+    if type(record["key_id"]) is not str or not record["key_id"]:
+        _refuse("cam-pin.key_id", "present", "missing")
+    require_b64("cam-pin.cam_sig", record["cam_sig"], 64)
+    if "pack_id" in payload:
+        top_pack = require_pack_id("cam-pin.pack_id", payload.get("pack_id"))
+        if top_pack != binding["pack_id"]:
+            _refuse("cam-pin.pack_id", binding["pack_id"], top_pack)
+    for rows_field in ("rows_total", "rows_train", "rows_holdout"):
+        if rows_field not in payload:
+            _refuse(f"cam-pin.{rows_field}", "present", "missing")
+        record[rows_field] = require_int(f"cam-pin.{rows_field}", payload.get(rows_field))
+    record["reserved_content_uuids_sha256"] = require_sha256_hex(
+        "cam-pin.reserved_content_uuids_sha256",
+        payload.get("reserved_content_uuids_sha256"),
+    )
+    record["reserved_content_uuids_min_rows"] = require_int(
+        "cam-pin.reserved_content_uuids_min_rows",
+        payload.get("reserved_content_uuids_min_rows"),
+    )
+    if record["reserved_content_uuids_min_rows"] < 1:
+        _refuse(
+            "cam-pin.reserved_content_uuids_min_rows",
+            ">= 1",
+            record["reserved_content_uuids_min_rows"],
+        )
+    record["sha256_manifest"] = require_sha256_hex(
+        "cam-pin.sha256_manifest",
+        payload.get("sha256_manifest"),
+    )
+    tok_ver = payload.get("near_dup_tokenizer_version")
+    if type(tok_ver) is not str or not tok_ver:
+        _refuse("cam-pin.near_dup_tokenizer_version", NEAR_DUP_TOKENIZER_VERSION_V1, "missing")
+    if tok_ver == NEAR_DUP_TOKENIZER_VERSION_V2:
+        _refuse(
+            "cam-pin.near_dup_tokenizer_version",
+            NEAR_DUP_TOKENIZER_VERSION_V1,
+            "v2 placeholder",
+        )
+    if tok_ver != NEAR_DUP_TOKENIZER_VERSION_V1:
+        _refuse(
+            "cam-pin.near_dup_tokenizer_version",
+            NEAR_DUP_TOKENIZER_VERSION_V1,
+            tok_ver,
+        )
+    tok_sha = require_sha256_hex(
+        "cam-pin.near_dup_tokenizer_sha256",
+        payload.get("near_dup_tokenizer_sha256"),
+    )
+    pinned_tok = code_pins.get(NEAR_DUP_TOKENIZER_V1_REL)
+    if pinned_tok != tok_sha:
+        _refuse("cam-pin.near_dup_tokenizer_sha256", pinned_tok, tok_sha)
+    record["near_dup_tokenizer_version"] = tok_ver
+    record["near_dup_tokenizer_sha256"] = tok_sha
+    if row_fields.mill_fp_pad_ready():
+        record[NEAR_DUP_FP_BUCKETS_KEY] = _require_fp_buckets(
+            payload.get(NEAR_DUP_FP_BUCKETS_KEY)
+        )
+        record[NEAR_DUP_MIN_REF_KEY] = _require_min_ref(payload.get(NEAR_DUP_MIN_REF_KEY))
+        mill_buckets = list(row_fields.mill_fp_buckets())
+        if record[NEAR_DUP_FP_BUCKETS_KEY] != mill_buckets:
+            _refuse(
+                f"cam-pin.{NEAR_DUP_FP_BUCKETS_KEY}",
+                "pinned mill bucket list",
+                "mismatch",
+            )
+        if record[NEAR_DUP_MIN_REF_KEY] != PINNED_NEAR_DUP_MIN_REF:
+            _refuse(
+                f"cam-pin.{NEAR_DUP_MIN_REF_KEY}",
+                "nchar>=20 OR |B|>=16",
+                "mismatch",
+            )
+        mill_min = row_fields.mill_min_ref()
+        if mill_min != PINNED_NEAR_DUP_MIN_REF:
+            _refuse(
+                f"cam-pin.{NEAR_DUP_MIN_REF_KEY}",
+                "nchar>=20 OR |B|>=16",
+                "mill mismatch",
+            )
+    if row_fields.mill_fp_file_ready():
+        cand_key = row_fields.mill_n_candidates_key()
+        if NEAR_DUP_N_REFS_KEY not in payload:
+            _refuse(f"cam-pin.{NEAR_DUP_N_REFS_KEY}", "present", "missing")
+        if NEAR_DUP_N_REFUSED_SHORT_KEY not in payload:
+            _refuse(f"cam-pin.{NEAR_DUP_N_REFUSED_SHORT_KEY}", "present", "missing")
+        if cand_key not in payload:
+            _refuse(f"cam-pin.{cand_key}", "present", "missing")
+        n_refs = require_int(f"cam-pin.{NEAR_DUP_N_REFS_KEY}", payload.get(NEAR_DUP_N_REFS_KEY))
+        n_refused = require_int(
+            f"cam-pin.{NEAR_DUP_N_REFUSED_SHORT_KEY}",
+            payload.get(NEAR_DUP_N_REFUSED_SHORT_KEY),
+        )
+        n_cand = require_int(f"cam-pin.{cand_key}", payload.get(cand_key))
+        if n_refs + n_refused != n_cand:
+            _refuse(
+                f"cam-pin.{NEAR_DUP_N_REFS_KEY}",
+                f"{cand_key} = n_refs + n_refused_short",
+                "mismatch",
+            )
+        record[NEAR_DUP_N_REFS_KEY] = n_refs
+        record[NEAR_DUP_N_REFUSED_SHORT_KEY] = n_refused
+        record[cand_key] = n_cand
+    if "recordedBy" in payload:
+        record["recordedBy"] = payload["recordedBy"]
+    if "stampVerified" in payload:
+        record["stampVerified"] = payload["stampVerified"]
+    elif "verified" in payload:
+        record["stampVerified"] = payload["verified"]
+    if "pack_matches" in payload:
+        record["pack_matches"] = payload["pack_matches"]
+    if "recordedAt" in payload:
+        record["recordedAt"] = payload["recordedAt"]
+    verify_cam_sig_v2(record)
+    if run_id is not None:
+        if type(run_id) is not str or not run_id:
+            _refuse("run-id", "present", "missing")
+        if binding["run_id"] != run_id:
+            _refuse("cam-pin.binding.run_id", binding["run_id"], run_id)
+    return record
+
+
+def parse_kick_pin_payload(
+    payload: object,
+    *,
+    now: datetime | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Kick path: v2 only. v1 is verify-only history and is refused here."""
+    if not isinstance(payload, dict) or not payload:
+        _refuse("cam-pin", "present", "missing")
+    fmt = pin_format_of(payload)
+    if fmt != PIN_FORMAT_V2:
+        _refuse("cam-pin.format", PIN_FORMAT_V2, fmt)
+    return parse_v2_pin_payload(payload, now=now, run_id=run_id)
 
 
 def _ed25519_decode_point(raw: bytes, *, field: str) -> tuple[int, int]:
@@ -323,13 +943,52 @@ def _parse_pub_file(text: str) -> tuple[str, bytes]:
     return key_id, raw
 
 
+def bind_pinned_copy_trust(copy_root: Path) -> None:
+    """Point Cam trust files at the server layout: <copy-root>/apps/dottie-os/trust/."""
+    global CAM_PIN_PUB_PATH, CAM_PIN_KEY_ID_PATH, PINNED_COPY_ROOT
+    root = Path(copy_root).resolve()
+    trust_dir = root / "apps" / "dottie-os" / "trust"
+    pub = trust_dir / _PUB_NAME
+    kid = trust_dir / _KEY_ID_NAME
+    if pub.name != _PUB_NAME or pub.parent.name != "trust":
+        _refuse("cam_pin.pubkey", str(trust_dir / _PUB_NAME), str(pub))
+    if kid.name != _KEY_ID_NAME or kid.parent.name != "trust":
+        _refuse("cam_pin.key_id", str(trust_dir / _KEY_ID_NAME), str(kid))
+    try:
+        pub.resolve().relative_to(root)
+        kid.resolve().relative_to(root)
+    except ValueError:
+        _refuse("cam_pin.pubkey", f"under {root / TRUST_DIR_REL}", str(pub))
+    PINNED_COPY_ROOT = root
+    CAM_PIN_PUB_PATH = pub
+    CAM_PIN_KEY_ID_PATH = kid
+
+
+def clear_pinned_copy_trust() -> None:
+    """Restore default trust paths. Tests only; production pinned-copy never unbinds."""
+    global CAM_PIN_PUB_PATH, CAM_PIN_KEY_ID_PATH, PINNED_COPY_ROOT
+    PINNED_COPY_ROOT = None
+    CAM_PIN_PUB_PATH = _DEFAULT_CAM_PIN_PUB_PATH
+    CAM_PIN_KEY_ID_PATH = _DEFAULT_CAM_PIN_KEY_ID_PATH
+
+
+def _read_trust_file_nofollow(path: Path, field: str) -> str:
+    """Read a regular trust file with O_NOFOLLOW. Never follows a symlink."""
+    buf, _digest = sha256_file_bytes(path)
+    try:
+        return buf.decode("utf-8")
+    except UnicodeDecodeError:
+        _refuse(field, "utf-8 text", "invalid encoding")
+        raise AssertionError("unreachable")
+
+
 def load_cam_key_id() -> str:
     """Committed cam_key_id. Never env, argv, or another path."""
     path = CAM_PIN_KEY_ID_PATH
     if path.name != _KEY_ID_NAME or path.parent.name != "trust":
         _refuse("cam_pin.key_id", str(CAM_PIN_KEY_ID_PATH), str(path))
     try:
-        text = path.read_text(encoding="utf-8")
+        text = _read_trust_file_nofollow(path, "cam_pin.key_id")
     except FileNotFoundError:
         _refuse("cam_pin.key_id", "present", "missing")
     except OSError as exc:
@@ -348,7 +1007,7 @@ def load_cam_public_key() -> tuple[str, Ed25519PublicKey]:
     if path.name != _PUB_NAME or path.parent.name != "trust":
         _refuse("cam_pin.pubkey", str(CAM_PIN_PUB_PATH), str(path))
     try:
-        text = path.read_text(encoding="utf-8")
+        text = _read_trust_file_nofollow(path, "cam_pin.pubkey")
     except FileNotFoundError:
         _refuse("cam_pin.pubkey", "present", "missing")
     except OSError as exc:
@@ -391,7 +1050,15 @@ def verify_cam_sig(record: dict[str, Any]) -> None:
 
 
 def repo_root() -> Path:
+    if PINNED_COPY_ROOT is not None:
+        _refuse("git", "skipped in pinned-copy", "pinned-copy")
     here = Path(__file__).resolve()
+    try:
+        staged = here.parents[4]
+    except IndexError:
+        staged = None
+    if staged is not None and (staged / "PINS.json").is_file():
+        _refuse("git", "skipped in pinned-copy", "pinned-copy")
     for parent in here.parents:
         if (parent / ".git").exists():
             return parent
@@ -400,6 +1067,8 @@ def repo_root() -> Path:
 
 
 def _git(root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+    if PINNED_COPY_ROOT is not None:
+        _refuse("git", "skipped in pinned-copy", "pinned-copy")
     try:
         return subprocess.run(
             ["git", *args],
@@ -740,75 +1409,40 @@ def parse_hq_pin_payload(payload: object) -> dict[str, Any]:
     return record
 
 
-def fetch_signed_pin(pack_id: str) -> dict[str, Any]:
-    """GET the pin from the pinned origin, verify Cam's Ed25519 signature."""
-    if type(pack_id) is not str or not pack_id:
-        _refuse("pack_id", "present", "missing")
-    require_committed_trust()
-    origin = pinned_origin()
-    token = os.environ.get(SWARM_HQ_AGENT_TOKEN_ENV)
-    if type(token) is not str or not token:
-        _refuse(SWARM_HQ_AGENT_TOKEN_ENV, "present", "missing")
-    url = pin_url(pack_id)
-    if not _url_is_pinned(url, origin):
-        _refuse("cam-pin", f"origin {origin}", url)
-    request = urllib.request.Request(
-        url,
-        method="GET",
-        headers={
-            "Accept": "application/json",
-            "x-agent-token": token,
-        },
-    )
-    deadline = time.monotonic() + HQ_DEADLINE_SECONDS
-    timeout = HQ_DEADLINE_SECONDS
-    try:
-        response = open_hq(request, timeout=timeout)
-        try:
-            status = getattr(response, "status", None) or response.getcode()
-            if status is not None and 300 <= int(status) < 400:
-                _refuse("cam-pin", "no redirect", f"HTTP {status}")
-            if status not in (200, None) and int(status) != 200:
-                if int(status) == 401:
-                    _refuse("cam-pin", "authorized", "HTTP 401")
-                if int(status) == 404:
-                    _refuse("cam-pin", "present", "HTTP 404")
-                _refuse("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {status}")
-            blob = _read_capped(response, deadline)
-        finally:
-            close = getattr(response, "close", None)
-            if callable(close):
-                close()
-    except CamPinError:
-        raise
-    except urllib.error.HTTPError as exc:
-        if 300 <= int(exc.code) < 400:
-            _refuse("cam-pin", "no redirect", f"HTTP {exc.code}")
-        if exc.code == 401:
-            _refuse("cam-pin", "authorized", "HTTP 401")
-        if exc.code == 404:
-            _refuse("cam-pin", "present", "HTTP 404")
-        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"HTTP {exc.code}")
-    except urllib.error.URLError as exc:
-        reason = getattr(exc, "reason", None) or exc
-        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"unreachable:{reason}")
-    except OSError as exc:
-        _refuse("cam-pin", "HTTPS Swarm HQ pin", f"OSError:{getattr(exc, 'errno', None)}")
-    try:
-        raw = blob.decode("utf-8")
-    except UnicodeDecodeError:
-        _refuse("cam-pin", "utf-8 JSON", "invalid encoding")
-    try:
-        payload = json.loads(raw, object_pairs_hook=_no_duplicate_hq_keys) if raw else None
-    except CamPinError:
-        raise
-    except ValueError:
-        _refuse("cam-pin", "JSON object", "invalid JSON")
-    return parse_hq_pin_payload(payload)
-
-
 def pin_identity(pin: dict[str, Any]) -> dict[str, Any]:
-    """Fields :8765 must match against the CLI's fetched pin."""
+    """Fields :8765 must match against the staged (or historically fetched) pin."""
+    if pin_format_of(pin) == PIN_FORMAT_V2:
+        binding = pin.get("binding") if isinstance(pin.get("binding"), dict) else {}
+        ident: dict[str, Any] = {
+            "format": PIN_FORMAT_V2,
+            "key_id": pin.get("key_id"),
+            "binding": {
+                "pack_id": binding.get("pack_id", pin.get("pack_id")),
+                "run_id": binding.get("run_id", pin.get("run_id")),
+                "lease_owner": binding.get("lease_owner", pin.get("lease_owner")),
+            },
+            "issued_at": pin.get("issued_at"),
+            "not_before": pin.get("not_before"),
+            "not_after": pin.get("not_after"),
+            "nonce": pin.get("nonce"),
+            "sha256_pack": pin.get("sha256_pack"),
+            "sha256_train": pin.get("sha256_train"),
+            "sha256_holdout": pin.get("sha256_holdout"),
+            "code_pins": pin.get("code_pins"),
+            "git_commit": pin.get("git_commit"),
+            "head": pin.get("head"),
+            "expires_at": pin.get("expires_at"),
+            "reserved_content_uuids_sha256": pin.get("reserved_content_uuids_sha256"),
+            "reserved_content_uuids_min_rows": pin.get("reserved_content_uuids_min_rows"),
+            "sha256_manifest": pin.get("sha256_manifest"),
+            "near_dup_tokenizer_version": pin.get("near_dup_tokenizer_version"),
+            "near_dup_tokenizer_sha256": pin.get("near_dup_tokenizer_sha256"),
+            "cam_sig": pin.get("cam_sig"),
+        }
+        for rows_field in ("rows_total", "rows_train", "rows_holdout"):
+            if rows_field in pin:
+                ident[rows_field] = pin.get(rows_field)
+        return ident
     return {
         "pack_id": pin.get("pack_id"),
         "sha256_pack": pin.get("sha256_pack"),
