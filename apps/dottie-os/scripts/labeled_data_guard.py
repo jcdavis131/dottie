@@ -20,10 +20,10 @@ CHUNK = 1 << 20
 
 ALLOWED_LABELED_DATA: dict[str, str] = {
     "apps/dottie-os/tests/fixtures/leakgate_eval/source.json": (
-        "665eb240279da789534f0de0aab2c7ed086dbe024e37679431e4d15dda33d11a"
+        "8cd184c53874dea20b858dc11fdb30f0193fa8c72744901b4215e8c23718cfe3"
     ),
     "apps/dottie-os/tests/fixtures/leakgate_eval/MANIFEST.json": (
-        "888645987a1d7e605a1d11046aa08a9e79b997ec602cf929c8333b9d18e068ec"
+        "81209b912e35e7c9850e09a155d25595e76cd3b67051a464a4f92a7f4b9adb56"
     ),
 }
 
