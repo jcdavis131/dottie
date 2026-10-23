@@ -481,8 +481,14 @@ def _handle_train_kickoff(
             return _bad(sha_field, hq_sha, actual)
         if actual != req:
             return _bad(sha_field, req, actual)
+    source_pack = body.get("source_pack_dir") or evidence.get("source_pack_dir")
     try:
-        kick_helper_ft.enforce_pack_gates(manifest, recorded_paths, smoke=smoke)
+        kick_helper_ft.enforce_pack_gates(
+            manifest,
+            recorded_paths,
+            smoke=smoke,
+            pack_dir=source_pack if isinstance(source_pack, str) else None,
+        )
     except kick_helper_ft.KickRefused as exc:
         return _bad(exc.field, exc.expected, exc.actual)
     host = socket.gethostname()
@@ -572,18 +578,6 @@ def _handle_train_kickoff(
     evidence["trust_blobs"] = blobs
     evidence["head_sha"] = blobs.get("HEAD")
     if record["status"] != kick_helper_ft.CHECKPOINT_MATCH:
-        if session is not None:
-            session.log_integrity(
-                {
-                    "sha256_evidence": evidence.get("sha256_evidence"),
-                    "sha256_pack": record["computed_shas"].get("sha256_pack") or hq_pin["sha256_pack"],
-                    "sha256_train": record["computed_shas"].get("sha256_train") or hq_pin["sha256_train"],
-                    "sha256_holdout": record["computed_shas"].get("sha256_holdout") or hq_pin["sha256_holdout"],
-                    "result": kick_helper_ft.CHECKPOINT_REFUSED,
-                    "status": kick_helper_ft.CHECKPOINT_REFUSED,
-                    "host": host,
-                }
-            )
         return _bad(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
     result = {
         "ok": True,

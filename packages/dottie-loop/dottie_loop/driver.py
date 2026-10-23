@@ -236,7 +236,7 @@ def run_goal_routed(
     The routing decision is recorded in the result for auditability.
     Steps are still caller-supplied (the router selects tiers, not plans).
     """
-    from dottie_loop.router import RoutingFeatures, TIER_BUDGETS, route
+    from dottie_loop.router import TIER_BUDGETS, RoutingFeatures, route
 
     rf = routing_features or {}
     features = RoutingFeatures(

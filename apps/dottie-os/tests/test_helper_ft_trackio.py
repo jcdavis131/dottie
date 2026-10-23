@@ -518,11 +518,18 @@ class HelperFtTrackioTests(unittest.TestCase):
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
             _write_helper_pack(dest)
-            rows = [_row(rid="leak1", action="execute"), _row(rid="leak2", action="halt")]
-            rows[0]["state"] = {"message": "ok", "risk_hint": "leaked"}
+            actions = ["execute", "execute", "halt", "halt", "escalate", "escalate"]
+            rows = []
+            for idx, action in enumerate(actions):
+                row = _row(rid=f"leak{idx}", action=action)
+                row["state"] = {
+                    "message": row["state"]["message"],
+                    "meta": {"risk_hint": action},
+                }
+                rows.append(row)
             write_jsonl(dest / "curated_pack_v2.jsonl", rows)
-            write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[:1])
-            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[1:])
+            write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[:4])
+            write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[4:])
             manifest = _refresh_hashes(dest)
             self._pin(manifest)
             with self.assertRaises(kick_helper_ft.KickRefused) as leak_ctx:

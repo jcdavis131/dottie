@@ -12,6 +12,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -33,6 +34,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+try:
+    import yaml
+except ImportError:
+    yaml = None  # dottie-os-smoke does not install PyYAML; use the stdlib extractor.
 
 APP = Path(__file__).resolve().parents[1]
 SCRIPTS = APP / "scripts"
@@ -552,7 +558,35 @@ def _cli_args(dest: Path, log_path: Path | None = None) -> list[str]:
     return argv
 
 
+FORGE_PINS_SOURCE_COMMIT_FIXTURE = "c" * 40
+
+
+def _live_entrypoint_pins() -> dict[str, str]:
+    return {
+        "apps/dottie-os/scripts/lab/kick_helper_ft.py": kick_helper_ft.sha256_file(
+            Path(kick_helper_ft.__file__).resolve()
+        ),
+        "apps/dottie-os/scripts/lab/cam_pin_spec.py": kick_helper_ft.sha256_file(
+            Path(cam_pin_spec.__file__).resolve()
+        ),
+    }
+
+
+def _install_forge_entrypoint_pins(owner: unittest.TestCase) -> None:
+    pins = _live_entrypoint_pins()
+    os.environ[kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV] = json.dumps(pins)
+    os.environ[kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV] = FORGE_PINS_SOURCE_COMMIT_FIXTURE
+    owner.forge_entrypoint_pins = pins
+    owner.forge_pins_source_commit = FORGE_PINS_SOURCE_COMMIT_FIXTURE
+
+
+def _clear_forge_entrypoint_pins() -> None:
+    os.environ.pop(kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV, None)
+    os.environ.pop(kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV, None)
+
+
 def _start_hq_http_mock(owner: unittest.TestCase) -> None:
+    _install_forge_entrypoint_pins(owner)
     owner.hq_pins = {}
     owner.hq_error = None
     owner.hq_http_status = None
@@ -646,6 +680,7 @@ def _stop_hq_http_mock(owner: unittest.TestCase) -> None:
     cam_pin_spec.SWARM_HQ_ORIGIN = owner._origin_saved
     os.environ.pop("SWARM_HQ_URL", None)
     os.environ.pop("SWARM_HQ_AGENT_TOKEN", None)
+    _clear_forge_entrypoint_pins()
 
 
 def _stage_run_private(dest: Path) -> Path:
@@ -2625,12 +2660,118 @@ class HelperFtCritic3dacTests(unittest.TestCase):
                 manifest = _write_helper_pack(dest)
                 self._pin(manifest)
                 evidence = kick_helper_ft.kick(dest)
+                rec = json.loads(
+                    Path(evidence["checkpoint_integrity_evidence_path"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
         self.assertIsNone(evidence["script_git_sha"])
+        self.assertIsNone(rec["script_git_sha"])
         self.assertEqual(len(evidence["script_sha256"]), 64)
         self.assertEqual(evidence["script_sha256"], kick_helper_ft._script_sha256())
+        self.assertEqual(evidence["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(evidence["pins_source_commit"], self.forge_pins_source_commit)
+        self.assertEqual(rec["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(rec["pins_source_commit"], self.forge_pins_source_commit)
         self.assertEqual(evidence["kickoff_url"], kick_helper_ft.DEFAULT_KICKOFF_URL)
         self.assertEqual(evidence["trust_blobs"], _TEST_TRUST_BLOBS)
         self.assertTrue(evidence["post_train_shas"])
+        kick_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/kick")]
+        done_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/completion")]
+        self.assertEqual(kick_posts[0]["body"]["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(kick_posts[0]["body"]["pins_source_commit"], self.forge_pins_source_commit)
+        self.assertEqual(done_posts[0]["body"]["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(done_posts[0]["body"]["pins_source_commit"], self.forge_pins_source_commit)
+
+    def test_entrypoint_pins_both_present_recorded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+            on_disk = json.loads(Path(evidence["evidence_path"]).read_text(encoding="utf-8"))
+            rec = json.loads(
+                Path(evidence["checkpoint_integrity_evidence_path"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+        self.assertTrue(evidence["script_git_sha"])
+        self.assertEqual(evidence["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(evidence["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(on_disk["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(on_disk["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(rec["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(rec["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        kick_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/kick")]
+        done_posts = [p for p in self.hq_posts if str(p["url"]).endswith("/completion")]
+        self.assertEqual(len(kick_posts), 1)
+        self.assertEqual(len(done_posts), 1)
+        self.assertEqual(kick_posts[0]["body"]["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(kick_posts[0]["body"]["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        self.assertEqual(done_posts[0]["body"]["entrypoint_pins"], self.forge_entrypoint_pins)
+        self.assertEqual(done_posts[0]["body"]["pins_source_commit"], FORGE_PINS_SOURCE_COMMIT_FIXTURE)
+        dumped = json.dumps(on_disk) + json.dumps(rec) + json.dumps(kick_posts[0]["body"])
+        self.assertNotIn(SWARM_HQ_AGENT_TOKEN_FIXTURE, dumped)
+
+    def test_entrypoint_pins_missing_refuses(self) -> None:
+        os.environ.pop(kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV, None)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "entrypoint_pins")
+        self.assertEqual(ctx.exception.actual, "missing")
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_posts, [])
+
+    def test_pins_source_commit_missing_refuses(self) -> None:
+        os.environ.pop(kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV, None)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "pins_source_commit")
+        self.assertEqual(ctx.exception.actual, "missing")
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_posts, [])
+
+    def test_pins_source_commit_malformed_refuses(self) -> None:
+        os.environ[kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV] = "NotAGitSha"
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_helper_pack(dest)
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "pins_source_commit")
+        self.assertEqual(ctx.exception.expected, "40-char lowercase hex")
+        self.assertEqual(ctx.exception.actual, "NotAGitSha")
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_posts, [])
+
+    def test_null_git_sha_refuses_without_entrypoint_pins(self) -> None:
+        os.environ.pop(kick_helper_ft.FORGE_ENTRYPOINT_PINS_ENV, None)
+        os.environ.pop(kick_helper_ft.FORGE_PINS_SOURCE_COMMIT_ENV, None)
+        with patch.object(kick_helper_ft, "_script_git_sha", return_value=None):
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "inbox-pack"
+                dest.mkdir()
+                manifest = _write_helper_pack(dest)
+                self._pin(manifest)
+                with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                    kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "entrypoint_pins")
+        self.assertEqual(ctx.exception.actual, "missing")
+        self.assertEqual(self.kickoff_calls, [])
+        self.assertEqual(self.hq_posts, [])
 
     def test_integrity_evidence_line_parses_and_matches_file_sha(self) -> None:
         buf = StringIO()
@@ -3024,63 +3165,116 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertEqual(lines[0], evidence["integrity_evidence_line"])
         self.assertEqual(evidence["result"], "MATCH")
 
-    def _write_state_pack(self, dest: Path, state: dict) -> dict:
-        _write_helper_pack(dest)
-        rows = [_row(rid="leak1", action="execute"), _row(rid="leak2", action="halt")]
-        rows[0]["state"] = state
+    def _write_action_rows_pack(
+        self, dest: Path, rows: list[dict], *, pack_id: str
+    ) -> dict:
+        train, hold = rows[:-1], rows[-1:]
         write_jsonl(dest / "curated_pack_v2.jsonl", rows)
-        write_jsonl(dest / "curated_pack_v2_train.jsonl", rows[:1])
-        write_jsonl(dest / "curated_pack_v2_holdout.jsonl", rows[1:])
+        write_jsonl(dest / "curated_pack_v2_train.jsonl", train)
+        write_jsonl(dest / "curated_pack_v2_holdout.jsonl", hold)
+        (dest / "MANIFEST.json").write_text(
+            json.dumps(
+                {
+                    "pack_id": pack_id,
+                    "rows": len(rows),
+                    "train_rows": len(train),
+                    "holdout_rows": len(hold),
+                    "champion_touched": False,
+                    "live_gate_touched": False,
+                    "ft_kicked": False,
+                    "consent_champion_false": True,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         return _refresh_hashes(dest)
 
-    def test_nested_state_meta_leaks_refused(self) -> None:
+    def test_constant_suspicious_key_is_not_a_leak(self) -> None:
+        """Names alone do not refuse: same key, constant non-predictive value."""
         self.assertEqual(
             kick_helper_ft.STATE_LEAK_KEYS,
             frozenset({"risk_hint", "halt_class", "provenance", "agent_config", "category"}),
         )
+        actions = ["execute", "execute", "halt", "halt"]
         for key in ("risk_hint", "halt_class", "provenance", "agent_config", "category"):
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "inbox-pack"
                 dest.mkdir()
-                manifest = self._write_state_pack(
-                    dest, {"message": "ok", "meta": {key: "leaked"}}
+                rows = [_row(rid=f"c-{key}-{idx}", action=action) for idx, action in enumerate(actions)]
+                for row in rows:
+                    row["state"] = {
+                        "message": row["state"]["message"],
+                        "meta": {key: "review"},
+                    }
+                manifest = self._write_action_rows_pack(
+                    dest, rows, pack_id=f"const-{key}"
+                )
+                self._pin(manifest)
+                evidence = kick_helper_ft.kick(dest)
+            self.assertEqual(evidence["result"], "MATCH", msg=key)
+
+    def test_gold_aligned_nested_field_is_a_pack_level_leak(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
+        for key in ("risk_hint", "halt_class", "provenance", "agent_config", "category"):
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "inbox-pack"
+                dest.mkdir()
+                rows = [_row(rid=f"g-{key}-{idx}", action=action) for idx, action in enumerate(actions)]
+                for row, action in zip(rows, actions, strict=True):
+                    row["state"] = {
+                        "message": row["state"]["message"],
+                        "meta": {key: action},
+                    }
+                manifest = self._write_action_rows_pack(
+                    dest, rows, pack_id=f"gold-{key}"
                 )
                 self._pin(manifest)
                 with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                     kick_helper_ft.kick(dest)
-            needle = f"state.meta.{key}"
             self.assertEqual(ctx.exception.field, "state.leak")
             self.assertTrue(
-                any(needle in str(item) for item in ctx.exception.actual),
-                msg=needle,
+                any(key in str(item) for item in ctx.exception.actual),
+                msg=key,
             )
 
-    def test_top_level_state_leaks_refused(self) -> None:
+    def test_top_level_gold_aligned_field_refused(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
         for key in ("risk_hint", "halt_class", "provenance", "agent_config", "category"):
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "inbox-pack"
                 dest.mkdir()
-                manifest = self._write_state_pack(dest, {"message": "ok", key: "leaked"})
+                rows = [_row(rid=f"t-{key}-{idx}", action=action) for idx, action in enumerate(actions)]
+                for row, action in zip(rows, actions, strict=True):
+                    row[key] = action
+                manifest = self._write_action_rows_pack(
+                    dest, rows, pack_id=f"top-{key}"
+                )
                 self._pin(manifest)
                 with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
                     kick_helper_ft.kick(dest)
-            needle = f"state.{key}"
             self.assertEqual(ctx.exception.field, "state.leak")
             self.assertTrue(
-                any(needle in str(item) for item in ctx.exception.actual),
-                msg=needle,
+                any(key in str(item) for item in ctx.exception.actual),
+                msg=key,
             )
 
     def test_formatting_leaks_are_not_state_leak_gate(self) -> None:
         """Tool names, key shapes, and truncation markers are Mill's pack-time job."""
-        state = {
-            "message": "tool=read_file; detail=src/app.py…",
-            "meta": {"tool": "read_file", "keys": ["cmd", "path"]},
-        }
+        actions = ["execute", "execute", "halt", "halt"]
+        rows = [_row(rid=f"fmt-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row in rows:
+            row["state"] = {
+                "message": "tool=read_file; detail=src/app.py…",
+                "meta": {"tool": "read_file", "keys": ["cmd", "path"]},
+            }
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "inbox-pack"
             dest.mkdir()
-            manifest = self._write_state_pack(dest, state)
+            manifest = self._write_action_rows_pack(
+                dest, rows, pack_id="formatting-not-leak"
+            )
             self._pin(manifest)
             evidence = kick_helper_ft.kick(dest)
         self.assertEqual(evidence["result"], "MATCH")
@@ -3158,12 +3352,12 @@ class HelperFtCritic3dacTests(unittest.TestCase):
         self.assertIsInstance(listed, list)
         self.assertLessEqual(len(listed), 10)
         self.assertGreaterEqual(len(listed), 1)
-        for item in listed:
-            self.assertRegex(str(item), r"^l3-\d{3}:state\.meta\.risk_hint$")
+        self.assertTrue(any("risk_hint" in str(item) for item in listed))
         self.assertEqual(len(listed), len(set(listed)))
         self.assertFalse(handler.get("ok"))
         self.assertEqual(handler["field"], "state.leak")
         self.assertLessEqual(len(handler["actual"]), 10)
+        self.assertTrue(any("risk_hint" in str(item) for item in handler["actual"]))
         self.assertFalse(runner_out.get("ok"))
         self.assertEqual(runner_out["field"], "state.leak")
 
@@ -3882,6 +4076,703 @@ class SwarmHqPinContractTests(unittest.TestCase):
                 result = self._result(name, fetch, fixture["pack_id"])
                 self.assertTrue(result.get("ok"))
                 self.assertIs(result["pin"]["stampVerified"], True)
+
+
+LEAKGATE_EVAL_DIR = TESTS / "fixtures" / "leakgate_eval"
+LEAKGATE_MANIFEST_SHA256 = "81209b912e35e7c9850e09a155d25595e76cd3b67051a464a4f92a7f4b9adb56"
+LEAKGATE_FIXTURES_JSONL_SHA256 = "3562f36139c6c70a270d9689ad5ec0071e480ea82cc0b26daed997d8663307dc"
+LEAKGATE_GEN_PY_SHA256 = "d2df1fbfd45081aebf01261517c59eaccb9e4b93a11e372ed12f88a39207eb74"
+LEAKGATE_SOURCE_JSON_SHA256 = "8cd184c53874dea20b858dc11fdb30f0193fa8c72744901b4215e8c23718cfe3"
+LEAKGATE_VALIDATE_PY_SHA256 = "f7fb4e2101040923fd7e08e318d1294c2f9a4204c745700ffdb0eb3e5a90c425"
+LEAKGATE_GEN_TS = "20261018-230457"
+LEAKGATE_GEN_PRODUCED_AT = "2026-10-18T23:04:57-05:00"
+REPO_ROOT = APP.parents[1]
+CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+PACK_GUARD_JOB = "dottie-os-smoke"
+PACK_GUARD_STEP_NAME = "Refuse tracked pack artifacts"
+PACK_GUARD_ROOT_PACK = "curated_pack_x.jsonl"
+PACK_GUARD_FIXTURES_PACK = (
+    "apps/dottie-os/tests/fixtures/leakgate_eval/packs/a/curated_pack_v2.jsonl"
+)
+LEAKGATE_TRACKED_NAMES = frozenset(
+    {
+        "EVAL_ONLY",
+        "MANIFEST.json",
+        "README.md",
+        "gen.py",
+        "source.json",
+        "validate.py",
+    }
+)
+SYNTHETIC_UUID_RE = re.compile(r"^synthetic-\d{3}$")
+RFC4122_UUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+# Hex ids, not JSON decimal literals: ≥10 hex chars with at least one a-f.
+HEX_ID_10_RE = re.compile(
+    r"(?i)(?<![0-9a-f])(?=[0-9a-f]{10,})[0-9a-f]*[a-f][0-9a-f]*(?![0-9a-f])"
+)
+
+
+def _source_uuid_values(obj: object) -> list[str]:
+    found: list[str] = []
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == "uuid":
+                found.append(value if isinstance(value, str) else str(value))
+            found.extend(_source_uuid_values(value))
+    elif isinstance(obj, list):
+        for item in obj:
+            found.extend(_source_uuid_values(item))
+    return found
+
+
+def _generate_leakgate_fixtures(
+    dest: Path, *, env: dict[str, str] | None = None
+) -> Path:
+    """Run Mill's vendored gen.py into dest. Fail loudly on hash mismatch."""
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(LEAKGATE_EVAL_DIR / "gen.py"),
+            "--src",
+            str(LEAKGATE_EVAL_DIR / "source.json"),
+            "--out",
+            str(dest),
+            "--ts",
+            LEAKGATE_GEN_TS,
+            "--produced-at",
+            LEAKGATE_GEN_PRODUCED_AT,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            f"leakgate gen.py failed rc={proc.returncode}\n"
+            f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        )
+    fx = dest / "fixtures.jsonl"
+    man = dest / "MANIFEST.json"
+    fx_sha = hashlib.sha256(fx.read_bytes()).hexdigest()
+    man_sha = hashlib.sha256(man.read_bytes()).hexdigest()
+    if fx_sha != LEAKGATE_FIXTURES_JSONL_SHA256:
+        raise AssertionError(
+            f"generated fixtures.jsonl sha256 {fx_sha} != {LEAKGATE_FIXTURES_JSONL_SHA256}"
+        )
+    if man_sha != LEAKGATE_MANIFEST_SHA256:
+        raise AssertionError(
+            f"generated MANIFEST.json sha256 {man_sha} != {LEAKGATE_MANIFEST_SHA256}"
+        )
+    return dest
+
+
+def _write_action_pack(dest: Path, rows: list[dict], *, pack_id: str) -> dict:
+    train, hold = rows[:-1], rows[-1:]
+    write_jsonl(dest / "curated_pack_v2.jsonl", rows)
+    write_jsonl(dest / "curated_pack_v2_train.jsonl", train)
+    write_jsonl(dest / "curated_pack_v2_holdout.jsonl", hold)
+    (dest / "MANIFEST.json").write_text(
+        json.dumps(
+            {
+                "pack_id": pack_id,
+                "rows": len(rows),
+                "train_rows": len(train),
+                "holdout_rows": len(hold),
+                "champion_touched": False,
+                "live_gate_touched": False,
+                "ft_kicked": False,
+                "consent_champion_false": True,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return _refresh_hashes(dest)
+
+
+class HelperFtLeakGateEvalTests(unittest.TestCase):
+    """Mill leak-gate fixtures: 25 refuse + 25 twins + 6 clean, eval-only."""
+
+    fixture_root: Path
+    _fixture_tmp: tempfile.TemporaryDirectory[str]
+    index: dict
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._fixture_tmp = tempfile.TemporaryDirectory()
+        cls.fixture_root = _generate_leakgate_fixtures(Path(cls._fixture_tmp.name))
+        cls.index = json.loads(
+            (cls.fixture_root / "MANIFEST.json").read_text(encoding="utf-8")
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._fixture_tmp.cleanup()
+
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+        _start_hq_http_mock(self)
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            self.assertNotEqual(body.get("inbox"), "latest")
+            self.assertIn(body.get("mode"), ("helper-ft", "helper-ft-smoke"))
+            return {"ok": True, "checkpoint_id": "ckpt-eval", "exit_code": 0}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+
+    def tearDown(self) -> None:
+        kick_helper_ft.post_kickoff = self._orig_post
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
+
+    def test_fixture_manifest_sha256(self) -> None:
+        generated = self.fixture_root / "MANIFEST.json"
+        fixtures = self.fixture_root / "fixtures.jsonl"
+        self.assertEqual(
+            hashlib.sha256(generated.read_bytes()).hexdigest(),
+            LEAKGATE_MANIFEST_SHA256,
+        )
+        self.assertEqual(
+            hashlib.sha256(fixtures.read_bytes()).hexdigest(),
+            LEAKGATE_FIXTURES_JSONL_SHA256,
+        )
+        committed = LEAKGATE_EVAL_DIR / "MANIFEST.json"
+        self.assertEqual(
+            hashlib.sha256(committed.read_bytes()).hexdigest(),
+            LEAKGATE_MANIFEST_SHA256,
+        )
+        self.assertEqual(
+            hashlib.sha256((LEAKGATE_EVAL_DIR / "gen.py").read_bytes()).hexdigest(),
+            LEAKGATE_GEN_PY_SHA256,
+        )
+        self.assertEqual(
+            hashlib.sha256((LEAKGATE_EVAL_DIR / "source.json").read_bytes()).hexdigest(),
+            LEAKGATE_SOURCE_JSON_SHA256,
+        )
+        self.assertEqual(
+            hashlib.sha256(
+                (LEAKGATE_EVAL_DIR / "validate.py").read_bytes()
+            ).hexdigest(),
+            LEAKGATE_VALIDATE_PY_SHA256,
+        )
+        self.assertTrue((LEAKGATE_EVAL_DIR / "EVAL_ONLY").is_file())
+        rel = "apps/dottie-os/tests/fixtures/leakgate_eval/"
+        listed = subprocess.check_output(
+            ["git", "ls-files", rel],
+            cwd=REPO_ROOT,
+            text=True,
+        )
+        tracked = {line for line in listed.splitlines() if line}
+        expected = {f"{rel}{name}" for name in LEAKGATE_TRACKED_NAMES}
+        self.assertEqual(tracked, expected)
+
+    def test_source_json_is_synthetic(self) -> None:
+        """Mill source.json is synthetic; do not grep a bare ``uuid`` key.
+
+        The wrapper is ``{"synthetic": true, "rows": [...]}`` with 16
+        ``"uuid"`` values matching ``synthetic-NNN``. Forbid UltraData
+        text and uuid-like (RFC4122 / 10+ hex) ids.
+        """
+        raw = (LEAKGATE_EVAL_DIR / "source.json").read_text(encoding="utf-8")
+        self.assertFalse(
+            "ultradata" in raw.lower(),
+            "source.json must not contain an ultradata substring",
+        )
+        payload = json.loads(raw)
+        self.assertIsInstance(payload, dict)
+        self.assertIs(payload.get("synthetic"), True)
+        rows = payload.get("rows")
+        self.assertIsInstance(rows, list)
+        self.assertEqual(len(rows), 16)
+        uuids = _source_uuid_values(payload)
+        self.assertEqual(len(uuids), 16)
+        self.assertEqual(len(set(uuids)), 16)
+        for value in uuids:
+            self.assertRegex(value, SYNTHETIC_UUID_RE)
+        rfc = RFC4122_UUID_RE.findall(raw)
+        self.assertEqual(rfc, [], msg=f"rfc4122 uuids: {rfc[:5]}")
+        hex_ids = HEX_ID_10_RE.findall(raw)
+        self.assertEqual(hex_ids, [], msg=f"10+ hex-char ids: {hex_ids[:5]}")
+
+    def test_mill_leakgate_fixtures_end_to_end(self) -> None:
+        cases = self.index["case_list"]
+        self.assertEqual(len(cases), 56)
+        refuse_n = sum(1 for spec in cases if spec["expect"] == "refuse")
+        twin_n = sum(1 for spec in cases if str(spec.get("case") or "").startswith("twin_"))
+        clean_n = sum(
+            1
+            for spec in cases
+            if spec["expect"] == "accept" and not spec.get("twin_of")
+        )
+        self.assertEqual(refuse_n, 25)
+        self.assertEqual(twin_n, 25)
+        self.assertEqual(clean_n, 6)
+        results: list[dict[str, object]] = []
+        for spec in cases:
+            case_id = spec["case"]
+            expect = spec["expect"]
+            src = self.fixture_root / "packs" / case_id
+            with self.subTest(case=case_id):
+                with tempfile.TemporaryDirectory() as tmp:
+                    dest = Path(tmp) / case_id
+                    shutil.copytree(src, dest)
+                    manifest = json.loads((dest / "MANIFEST.json").read_text(encoding="utf-8"))
+                    self.assertTrue(manifest.get("not_for_train"))
+                    self.assertTrue(manifest.get("eval_only"))
+                    self._pin(manifest)
+                    got = "accept"
+                    field = ""
+                    try:
+                        evidence = kick_helper_ft.kick(dest, smoke=True)
+                        field = str(evidence.get("field") or "")
+                    except kick_helper_ft.KickRefused as exc:
+                        got = "refuse" if exc.field == "state.leak" else f"refuse:{exc.field}"
+                        field = exc.field
+                    self.assertEqual(got, expect, msg=f"{case_id} field={field}")
+            results.append(
+                {
+                    "case": case_id,
+                    "expect": expect,
+                    "got": got,
+                    "ok": got == expect,
+                }
+            )
+        ok_n = sum(1 for row in results if row["ok"])
+        artifact = Path("/opt/cursor/artifacts/leakgate_56_results.md")
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            "# Leak-gate mill fixtures (56/56)",
+            "",
+            f"MANIFEST.json sha256 `{LEAKGATE_MANIFEST_SHA256}`",
+            "",
+            "| case | expect | got | ok |",
+            "|---|---|---|---|",
+        ]
+        for row in results:
+            mark = "PASS" if row["ok"] else "FAIL"
+            lines.append(f"| `{row['case']}` | {row['expect']} | {row['got']} | {mark} |")
+        lines.append("")
+        lines.append(f"Total {ok_n}/56")
+        artifact.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.assertEqual(ok_n, 56)
+
+    def test_readme_validate_py_runs_green(self) -> None:
+        """README regen: python3 validate.py <out-dir> reports OK 56/56."""
+        proc = subprocess.run(
+            [sys.executable, "validate.py", str(self.fixture_root)],
+            cwd=LEAKGATE_EVAL_DIR,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"stdout={proc.stdout!r} stderr={proc.stderr!r}",
+        )
+        self.assertIn("OK 56/56", proc.stdout)
+        self.assertNotIn("MISMATCH", proc.stdout)
+
+    def test_gen_sha_stable_under_c_locale(self) -> None:
+        """S1: gen.py utf-8 opens keep the pinned shas when LC_ALL=C."""
+        env = os.environ.copy()
+        env["LC_ALL"] = "C"
+        env["LANG"] = "C"
+        env.pop("PYTHONIOENCODING", None)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = _generate_leakgate_fixtures(Path(tmp), env=env)
+            self.assertEqual(
+                hashlib.sha256((dest / "fixtures.jsonl").read_bytes()).hexdigest(),
+                LEAKGATE_FIXTURES_JSONL_SHA256,
+            )
+            self.assertEqual(
+                hashlib.sha256((dest / "MANIFEST.json").read_bytes()).hexdigest(),
+                LEAKGATE_MANIFEST_SHA256,
+            )
+
+
+def _parse_yaml_scalar(raw: str) -> object:
+    value = raw.strip()
+    if value in ("true", "True", "yes", "Yes", "on"):
+        return True
+    if value in ("false", "False", "no", "No", "off"):
+        return False
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value
+
+
+def _parse_gha_step_lines(step_lines: list[str]) -> dict[str, object]:
+    """Parse one GitHub Actions `- name:` / `- uses:` step from raw lines."""
+    step: dict[str, object] = {}
+    first = step_lines[0].lstrip()
+    if first.startswith("- "):
+        first = first[2:]
+    if ":" in first:
+        key, raw = first.split(":", 1)
+        step[key.strip()] = _parse_yaml_scalar(raw)
+    key_indent = 8
+    idx = 1
+    while idx < len(step_lines):
+        line = step_lines[idx]
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            idx += 1
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if indent != key_indent or ":" not in stripped:
+            idx += 1
+            continue
+        key, raw = stripped.split(":", 1)
+        raw = raw.strip()
+        if raw in ("|", "|-", "|+", ">", ">-", ">+"):
+            idx += 1
+            block: list[str] = []
+            content_indent: int | None = None
+            while idx < len(step_lines):
+                block_line = step_lines[idx]
+                if not block_line.strip():
+                    block.append("")
+                    idx += 1
+                    continue
+                block_indent = len(block_line) - len(block_line.lstrip(" "))
+                if block_indent <= key_indent:
+                    break
+                if content_indent is None:
+                    content_indent = block_indent
+                block.append(block_line[content_indent:])
+                idx += 1
+            text = "\n".join(block).rstrip("\n") + "\n"
+            step[key] = text
+            continue
+        step[key] = _parse_yaml_scalar(raw)
+        idx += 1
+    return step
+
+
+def _job_line_index(lines: list[str], job: str) -> int:
+    header = f"  {job}:"
+    for idx, line in enumerate(lines):
+        if line.rstrip() == header:
+            return idx
+    raise AssertionError(f"missing job {job!r} in ci.yml")
+
+
+def _job_end_index(lines: list[str], start: int) -> int:
+    job_header = re.compile(r"^  [A-Za-z0-9_-]+:\s*$")
+    for idx in range(start + 1, len(lines)):
+        if job_header.match(lines[idx]):
+            return idx
+    return len(lines)
+
+
+def _pack_guard_step_from_text(text: str) -> dict[str, object]:
+    """Stdlib extractor for the dottie-os-smoke pack-guard step."""
+    lines = text.splitlines()
+    job_start = _job_line_index(lines, PACK_GUARD_JOB)
+    job_lines = lines[job_start : _job_end_index(lines, job_start)]
+    step_at: int | None = None
+    for idx, line in enumerate(job_lines):
+        if line.lstrip().startswith("#"):
+            continue
+        if line.startswith("      - name:"):
+            name = line.split(":", 1)[1].strip().strip("\"'")
+            if name == PACK_GUARD_STEP_NAME:
+                step_at = idx
+                break
+    if step_at is None:
+        raise AssertionError(
+            f"missing step {PACK_GUARD_STEP_NAME!r} in job {PACK_GUARD_JOB!r}"
+        )
+    step_lines = [job_lines[step_at]]
+    for line in job_lines[step_at + 1 :]:
+        if line.startswith("      - "):
+            break
+        if re.match(r"^  [A-Za-z0-9_-]+:\s*$", line):
+            break
+        step_lines.append(line)
+    return _parse_gha_step_lines(step_lines)
+
+
+def _pack_guard_step_from_yaml(text: str) -> dict[str, object]:
+    if yaml is None:
+        raise RuntimeError("PyYAML is not available")
+    doc = yaml.safe_load(text)
+    if not isinstance(doc, dict):
+        raise AssertionError("ci.yml is not a YAML mapping")
+    jobs = doc.get("jobs")
+    if not isinstance(jobs, dict):
+        raise AssertionError("ci.yml has no jobs mapping")
+    job = jobs.get(PACK_GUARD_JOB)
+    if not isinstance(job, dict):
+        raise AssertionError(f"missing job {PACK_GUARD_JOB!r}")
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        raise AssertionError(f"job {PACK_GUARD_JOB!r} has no steps")
+    for step in steps:
+        if isinstance(step, dict) and step.get("name") == PACK_GUARD_STEP_NAME:
+            return step
+    raise AssertionError(
+        f"missing step {PACK_GUARD_STEP_NAME!r} in job {PACK_GUARD_JOB!r}"
+    )
+
+
+def _load_pack_guard_step(text: str | None = None) -> dict[str, object]:
+    raw = CI_WORKFLOW.read_text(encoding="utf-8") if text is None else text
+    if yaml is not None:
+        return _pack_guard_step_from_yaml(raw)
+    return _pack_guard_step_from_text(raw)
+
+
+def _pack_guard_git_env() -> dict[str, str]:
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("GIT_")
+    }
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "pack-guard-test",
+            "GIT_AUTHOR_EMAIL": "pack-guard-test@example.com",
+            "GIT_COMMITTER_NAME": "pack-guard-test",
+            "GIT_COMMITTER_EMAIL": "pack-guard-test@example.com",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+        }
+    )
+    return env
+
+
+def _init_pack_guard_repo(repo: Path) -> dict[str, str]:
+    repo.mkdir(parents=True, exist_ok=True)
+    env = _pack_guard_git_env()
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "pack-guard-test"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "pack-guard-test@example.com"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    return env
+
+
+def _commit_pack_guard_paths(
+    repo: Path, env: dict[str, str], rel_paths: list[str], message: str
+) -> None:
+    subprocess.run(
+        ["git", "add", "-f", "--", *rel_paths],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+
+
+def _run_pack_guard_script(
+    repo: Path, run_script: str, env: dict[str, str]
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", "-c", run_script],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
+class TrackedPackArtifactGuardTests(unittest.TestCase):
+    """CI pack guard is the real dottie-os-smoke step, executed with bash."""
+
+    def _run_block(self, text: str | None = None) -> str:
+        step = _load_pack_guard_step(text)
+        self.assertNotIn("if", step, "pack-guard step must not have if:")
+        self.assertNotIn(
+            "continue-on-error",
+            step,
+            "pack-guard step must not set continue-on-error",
+        )
+        run = step.get("run")
+        self.assertIsInstance(run, str)
+        self.assertTrue(str(run).strip(), "pack-guard step has an empty run: block")
+        return str(run)
+
+    def test_ci_pack_guard_step_is_unconditional(self) -> None:
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+        step = _load_pack_guard_step(text)
+        self.assertEqual(step.get("name"), PACK_GUARD_STEP_NAME)
+        self.assertNotIn("if", step)
+        self.assertNotIn("continue-on-error", step)
+        self.assertIsInstance(step.get("run"), str)
+        stdlib_step = _pack_guard_step_from_text(text)
+        self.assertEqual(stdlib_step.get("name"), step.get("name"))
+        self.assertEqual(stdlib_step.get("run"), step.get("run"))
+        self.assertEqual("if" in stdlib_step, "if" in step)
+        self.assertEqual(
+            "continue-on-error" in stdlib_step, "continue-on-error" in step
+        )
+
+    def test_ci_pack_guard_run_block_trips_on_tracked_packs(self) -> None:
+        run = self._run_block()
+        with tempfile.TemporaryDirectory() as tmp:
+            clean = Path(tmp) / "clean"
+            env = _init_pack_guard_repo(clean)
+            (clean / "README").write_text("ok\n", encoding="utf-8")
+            _commit_pack_guard_paths(clean, env, ["README"], "clean")
+            clean_proc = _run_pack_guard_script(clean, run, env)
+            self.assertEqual(
+                clean_proc.returncode,
+                0,
+                msg=f"stdout={clean_proc.stdout!r} stderr={clean_proc.stderr!r}",
+            )
+
+            root = Path(tmp) / "root"
+            env = _init_pack_guard_repo(root)
+            (root / PACK_GUARD_ROOT_PACK).write_text(
+                '{"eval_only": true}\n', encoding="utf-8"
+            )
+            _commit_pack_guard_paths(
+                root, env, [PACK_GUARD_ROOT_PACK], "root pack jsonl"
+            )
+            root_proc = _run_pack_guard_script(root, run, env)
+            self.assertNotEqual(
+                root_proc.returncode,
+                0,
+                msg=f"root pack must trip the guard; stdout={root_proc.stdout!r}",
+            )
+
+            nested = Path(tmp) / "fixtures"
+            env = _init_pack_guard_repo(nested)
+            pack = nested / PACK_GUARD_FIXTURES_PACK
+            pack.parent.mkdir(parents=True, exist_ok=True)
+            pack.write_text('{"eval_only": true}\n', encoding="utf-8")
+            _commit_pack_guard_paths(
+                nested, env, [PACK_GUARD_FIXTURES_PACK], "fixtures pack jsonl"
+            )
+            nested_proc = _run_pack_guard_script(nested, run, env)
+            self.assertNotEqual(
+                nested_proc.returncode,
+                0,
+                msg=(
+                    "fixtures pack must trip the guard; "
+                    f"stdout={nested_proc.stdout!r}"
+                ),
+            )
+
+    def test_this_tree_has_no_tracked_pack_artifacts(self) -> None:
+        run = self._run_block()
+        env = _pack_guard_git_env()
+        proc = _run_pack_guard_script(REPO_ROOT, run, env)
+        self.assertEqual(
+            proc.returncode,
+            0,
+            msg=f"stdout={proc.stdout!r} stderr={proc.stderr!r}",
+        )
+
+
+class HelperFtLeakGateSyntheticTests(unittest.TestCase):
+    """Partial-leak and small-n cases, kept separate from Mill's 56 fixtures."""
+
+    def setUp(self) -> None:
+        self.kickoff_calls: list[dict] = []
+        _start_hq_http_mock(self)
+
+        def fake_post(body: dict, url: str | None = None) -> dict:
+            self.kickoff_calls.append(body)
+            return {"ok": True, "checkpoint_id": "ckpt-syn", "exit_code": 0}
+
+        self._orig_post = kick_helper_ft.post_kickoff
+        kick_helper_ft.post_kickoff = fake_post
+
+    def tearDown(self) -> None:
+        kick_helper_ft.post_kickoff = self._orig_post
+        _stop_hq_http_mock(self)
+
+    def _pin(self, manifest: dict, **overrides: object) -> dict:
+        pin = _cam_pin(manifest, **overrides)
+        self.hq_pins[manifest["pack_id"]] = pin
+        return pin
+
+    def test_partial_leak_most_rows_refused(self) -> None:
+        actions = ["execute"] * 8 + ["halt"] * 6 + ["escalate"] * 2
+        rows = [_row(rid=f"part-{idx}", action=action) for idx, action in enumerate(actions)]
+        for idx, row in enumerate(rows):
+            gold = row["labels"]["action"]["choice"]
+            hint = gold if idx >= 4 else f"noise-{idx}"
+            row["state"] = {"message": row["state"]["message"], "meta": {"hint": hint}}
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="synthetic-partial-leak")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+        self.assertTrue(any("hint" in str(item) for item in ctx.exception.actual))
+
+    def test_small_n_perfect_repeated_values_refused(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
+        rows = [_row(rid=f"sm-{idx}", action=action) for idx, action in enumerate(actions)]
+        for row, action in zip(rows, actions, strict=True):
+            row["state"] = {"message": row["state"]["message"], "meta": {"tag": action}}
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="synthetic-small-n-perfect")
+            self._pin(manifest)
+            with self.assertRaises(kick_helper_ft.KickRefused) as ctx:
+                kick_helper_ft.kick(dest)
+        self.assertEqual(ctx.exception.field, "state.leak")
+
+    def test_small_n_constant_and_unique_fields_pass(self) -> None:
+        actions = ["execute", "execute", "halt", "halt"]
+        rows = [_row(rid=f"ok-{idx}", action=action) for idx, action in enumerate(actions)]
+        for idx, row in enumerate(rows):
+            row["state"] = {
+                "message": row["state"]["message"],
+                "meta": {"flag": "review", "uid": f"row-{idx}"},
+            }
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "inbox-pack"
+            dest.mkdir()
+            manifest = _write_action_pack(dest, rows, pack_id="synthetic-small-n-clean")
+            self._pin(manifest)
+            evidence = kick_helper_ft.kick(dest)
+        self.assertEqual(evidence["result"], "MATCH")
 
 
 if __name__ == "__main__":

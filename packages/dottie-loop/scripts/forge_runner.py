@@ -197,10 +197,20 @@ _STATE_LEAK_KEYS = frozenset(
 
 
 def _fallback_state_leaks(body: dict[str, Any]) -> list[str]:
-    """Off-tree runner still refuses leaked state keys when jsonl paths exist."""
+    """Off-tree runner still refuses leaked gold values when jsonl paths exist."""
     paths = body.get("paths")
     if not isinstance(paths, dict):
         return []
+    pack_dir = body.get("source_pack_dir")
+    evidence = body.get("evidence")
+    if pack_dir is None and isinstance(evidence, dict):
+        pack_dir = evidence.get("source_pack_dir")
+    helper = _load_helper_ft_kickoff()
+    if helper is not None:
+        try:
+            return helper.kick_helper_ft.collect_state_leaks(paths, pack_dir=pack_dir)
+        except Exception:
+            pass
     found: list[str] = []
     seen: set[str] = set()
 
@@ -267,9 +277,7 @@ def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     if mod is not None:
         return mod.handle_train_kickoff(body)
     if not isinstance(body, dict):
-        payload = {"ok": False, "field": "body", "expected": "object", "actual": type(body).__name__}
-        _track_helper_ft_refuse(body, payload)
-        return payload
+        return _fallback_refuse(body, "body", "object", type(body).__name__)
     inbox = body.get("inbox")
     if "inbox_latest" in body:
         return _fallback_refuse(body, "inbox_latest", "absent", "present")
@@ -286,12 +294,8 @@ def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     if leaks:
         return _fallback_refuse(body, "state.leak", "absent", leaks[:10])
     if not body.get("evidence"):
-        payload = {"ok": False, "field": "evidence", "expected": "present", "actual": "missing"}
-        _track_helper_ft_refuse(body, payload)
-        return payload
-    payload = {"ok": False, "field": "handler", "expected": "helper_ft_kickoff.py", "actual": "missing"}
-    _track_helper_ft_refuse(body, payload)
-    return payload
+        return _fallback_refuse(body, "evidence", "present", "missing")
+    return _fallback_refuse(body, "handler", "helper_ft_kickoff.py", "missing")
 
 
 def helper_ft_wsgi_app(*, launch_trainer=None):
