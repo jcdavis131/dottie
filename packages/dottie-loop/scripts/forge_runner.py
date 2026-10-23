@@ -237,8 +237,8 @@ def _inbox_is_latest(value: str) -> bool:
     for part in text.split("/"):
         if part in aliases or part == "latest":
             return True
-        for token in part.replace("-", "_").split("_"):
-            if token == "latest":
+        for piece in part.replace("-", "_").split("_"):
+            if piece == "latest":
                 return True
     return False
 
