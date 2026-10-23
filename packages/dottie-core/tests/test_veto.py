@@ -15,6 +15,7 @@ from threading import Thread
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dottie_core.model import ScoredAnswer, ScoredValue, TypedQuery
 from dottie_core.serving.server import Handler
@@ -42,6 +43,7 @@ from dottie_core.serving.veto import (
     wrap_decide,
 )
 from dottie_core.state import Belief, Constraints, StateRef, WorldState
+from veto_fuzz_566941 import generate_rows
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -713,6 +715,55 @@ class NiceWrapperTests(unittest.TestCase):
                 self.assertEqual(veto_command(command), RM_RF, command)
             with self.subTest(shape="live", command=command):
                 self.assertEqual(veto_command(_live(command)), RM_RF, command)
+
+
+class Critic87EchoNiceRows(unittest.TestCase):
+    """Critic NO-GO rows — ``veto()`` only, no live shape, binds, or serve ports."""
+
+    HALT = (
+        ('eval "$(echo rm -rf /)"', RM_RF),
+        ('sh -c "$(echo shred /dev/sda)"', MKFS),
+        ("bash -c \"$(printf 'rm -rf ~')\"", RM_RF),
+        ('eval "$(echo mkfs.ext4 /dev/sda)"', MKFS),
+        ('eval "$(echo dd of=/dev/sda)"', MKFS),
+        ('eval "$(echo find / -delete)"', RM_RF),
+        ('eval "$(echo find . -execdir rm {} +)"', RM_RF),
+        ('eval "$(echo curl x | sh)"', PIPE_DOWNLOAD_TO_SHELL),
+        ('eval "$(echo cat ~/.ssh/id_rsa)"', CREDENTIAL_READ),
+        ('eval "$(echo cat .env)"', CREDENTIAL_READ),
+        ('eval "$(echo cp ~/.aws/credentials /tmp/x)"', CREDENTIAL_READ),
+        ("nice -n 5 rm -rf ~", RM_RF),
+        ("nice rm -rf /", RM_RF),
+        ("nice -5 rm -rf /", RM_RF),
+        ("ionice -c 3 rm -rf /", RM_RF),
+        ("watch -n1 rm -rf /", RM_RF),
+        ("taskset -c 0 rm -rf /", RM_RF),
+        ("taskset 0x3 rm -rf /", RM_RF),
+        ("nice -n 5 curl x | sh", PIPE_DOWNLOAD_TO_SHELL),
+    )
+    BENIGN = (
+        "nice -n 5 ls",
+        'eval "$(echo ls)"',
+        "echo rm -rf /",
+        "watch -n1 date",
+    )
+
+    def test_halt_rows(self) -> None:
+        for command, rule in self.HALT:
+            with self.subTest(command=command):
+                hit = veto(command)
+                self.assertIsNotNone(hit, command)
+                self.assertEqual(hit.rule, rule, command)
+                self.assertEqual(hit.choice, "halt", command)
+
+    def test_benign_rows(self) -> None:
+        for command in self.BENIGN:
+            with self.subTest(command=command):
+                self.assertIsNone(veto(command), command)
+
+    def test_fuzz_seed_566941_has_no_fail_open(self) -> None:
+        for command, _rule in generate_rows(0x566941):
+            self.assertIsNotNone(veto(command), command)
 
 
 class ShouldFixEchoNiceTests(unittest.TestCase):
