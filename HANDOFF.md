@@ -16,6 +16,37 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-10-23 (supersedes every block below)
+
+**Stamped 2026-10-23 at HEAD `09b0765`** (`main`, the merge of PR #89;
+`git rev-parse --short=7 origin/main` → `09b0765`). Measured with
+`git log 43f4189..origin/main` + `scripts/check_handoff_fresh.py --check`.
+The recorded sha is the live `main` tip, not this restamp commit, so it
+stays an ancestor after squash-merge (the failure mode of naming a
+branch-local sha; see #88 / the 2026-09-18 correction).
+
+**What landed on `main` since `43f4189` (9 commits):**
+
+- `a475f117` HANDOFF: restamp at main's squash commit of #83 (#88)
+- `a3872eab` feat(dottie-os): HELPER FT point-of-use pack integrity gate (#85)
+- `58864c45` fix(dottie-os): generate leak-gate packs at test time
+- `92524d6b` fix(dottie-os): utf-8 and LF on leakgate gen.py opens
+- `384072cf` docs(dottie-os): name Mill gen.py sha and 24-line patch
+- `c599f971` test(dottie-os): run the real CI pack-guard and Radar uuid contract
+- `c5e6f310` fix(dottie-os): vendor Mill's synthetic leak-gate source and gen.py
+- `8762693b` fix(dottie-os): vendor Mill's leak-gate validate.py
+- `09b07651` Merge pull request #89 from `cursor/leakgate-fixtures-generated`
+
+**Open drafts, pending review — no merge claims:** #86 (Trackio for
+HELPER FT), #87 (deterministic veto pre-filter for `/decide`), #90
+(Helper FT integrity r2), #91 (dedicated pack-guard job).
+
+**Verified at this stamp:** `scripts/check_handoff_fresh.py --check` only.
+Suite counts in the 2026-10-13 block below were measured at `43f4189`
+and were not re-run here.
+
+---
+
 ## 📌 Session continuation — 2026-10-13 (supersedes every block below)
 
 **Stamped 2026-10-13 at HEAD `43f4189`** (`main`, the squash merge of PR #83;
