@@ -138,25 +138,57 @@ def tick(args: argparse.Namespace) -> dict[str, Any]:
     return {"claimed": spec.job_id, "result": res}
 
 
-def _helper_ft_kickoff_path() -> Path | None:
+def _helper_ft_lab_path(name: str) -> Path | None:
     here = Path(__file__).resolve()
     if len(here.parents) >= 4:
-        candidate = here.parents[3] / "apps" / "dottie-os" / "scripts" / "lab" / "helper_ft_kickoff.py"
+        candidate = here.parents[3] / "apps" / "dottie-os" / "scripts" / "lab" / name
         if candidate.is_file():
             return candidate
     return None
 
 
-def _load_helper_ft_kickoff():
-    path = _helper_ft_kickoff_path()
+def _helper_ft_kickoff_path() -> Path | None:
+    return _helper_ft_lab_path("helper_ft_kickoff.py")
+
+
+def _load_helper_ft_module(name: str):
+    existing = sys.modules.get(name)
+    if existing is not None:
+        return existing
+    path = _helper_ft_lab_path(f"{name}.py")
     if path is None:
         return None
-    spec = importlib.util.spec_from_file_location("helper_ft_kickoff", path)
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         return None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def _load_helper_ft_kickoff():
+    return _load_helper_ft_module("helper_ft_kickoff")
+
+
+def _track_helper_ft_refuse(body: dict[str, Any] | None, payload: dict[str, Any]) -> None:
+    """Fail-open refused-run log when the in-tree kickoff module is absent."""
+    try:
+        tracker = _load_helper_ft_module("helper_ft_trackio")
+        if tracker is None:
+            return
+        run_id = "helper-ft-unknown"
+        run_dir = None
+        if isinstance(body, dict):
+            raw = body.get("run_id")
+            if type(raw) is str and raw:
+                run_id = raw
+            ev = body.get("evidence") if isinstance(body.get("evidence"), dict) else {}
+            ev_path = body.get("evidence_path") or ev.get("evidence_path")
+            if isinstance(ev_path, str) and ev_path:
+                run_dir = Path(ev_path).parent
+        tracker.log_refused(run_id, payload, run_dir=run_dir)
+    except Exception:
+        return
 
 
 _STATE_LEAK_KEYS = frozenset(
@@ -228,36 +260,42 @@ def _fallback_state_leaks(body: dict[str, Any]) -> list[str]:
     return found
 
 
+def _fallback_refuse(body: dict[str, Any] | None, field: str, expected: object, actual: object) -> dict[str, Any]:
+    payload = {"ok": False, "field": field, "expected": expected, "actual": actual}
+    _track_helper_ft_refuse(body, payload)
+    return payload
+
+
 def handle_train_kickoff(body: dict[str, Any] | None) -> dict[str, Any]:
     """HELPER FT ``POST /train/kickoff``. Never accepts ``inbox: latest``.
 
     Canonical implementation: ``apps/dottie-os/scripts/lab/helper_ft_kickoff.py``.
     Checks run before any GPU launch. When this runner is copied off-tree,
-    still refuse latest/missing evidence.
+    still refuse latest/missing evidence. Tracking is optional and fail-open.
     """
     mod = _load_helper_ft_kickoff()
     if mod is not None:
         return mod.handle_train_kickoff(body)
     if not isinstance(body, dict):
-        return {"ok": False, "field": "body", "expected": "object", "actual": type(body).__name__}
+        return _fallback_refuse(body, "body", "object", type(body).__name__)
     inbox = body.get("inbox")
     if "inbox_latest" in body:
-        return {"ok": False, "field": "inbox_latest", "expected": "absent", "actual": "present"}
+        return _fallback_refuse(body, "inbox_latest", "absent", "present")
     if isinstance(inbox, str) and inbox.strip().lower() in {"latest", "inbox_latest", "inbox-latest"}:
-        return {"ok": False, "field": "inbox", "expected": "named pack_id", "actual": inbox}
+        return _fallback_refuse(body, "inbox", "named pack_id", inbox)
     if body.get("mode") == "inbox-validate":
-        return {"ok": False, "field": "mode", "expected": "helper-ft", "actual": "inbox-validate"}
+        return _fallback_refuse(body, "mode", "helper-ft", "inbox-validate")
     if body.get("not_for_train") is True or (
         isinstance(body.get("evidence"), dict) and body["evidence"].get("not_for_train") is True
     ):
         if body.get("smoke") is not True and body.get("mode") != "helper-ft-smoke":
-            return {"ok": False, "field": "not_for_train", "expected": False, "actual": True}
+            return _fallback_refuse(body, "not_for_train", False, True)
     leaks = _fallback_state_leaks(body)
     if leaks:
-        return {"ok": False, "field": "state.leak", "expected": "absent", "actual": leaks[:10]}
+        return _fallback_refuse(body, "state.leak", "absent", leaks[:10])
     if not body.get("evidence"):
-        return {"ok": False, "field": "evidence", "expected": "present", "actual": "missing"}
-    return {"ok": False, "field": "handler", "expected": "helper_ft_kickoff.py", "actual": "missing"}
+        return _fallback_refuse(body, "evidence", "present", "missing")
+    return _fallback_refuse(body, "handler", "helper_ft_kickoff.py", "missing")
 
 
 def helper_ft_wsgi_app(*, launch_trainer=None):

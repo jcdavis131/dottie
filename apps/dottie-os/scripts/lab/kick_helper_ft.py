@@ -54,6 +54,7 @@ if _LAB not in sys.path:
     sys.path.insert(0, _LAB)
 
 import cam_pin_spec
+import helper_ft_trackio
 
 PACK_FILE = "curated_pack_v2.jsonl"
 TRAIN_FILE = "curated_pack_v2_train.jsonl"
@@ -1841,6 +1842,31 @@ def _recheck_copies(
         _refuse(record.get("field", "post_train"), record.get("expected"), record.get("actual"))
 
 
+def log_eval_scores(run_id: str, scores: dict, results_sha256: object = None) -> bool:
+    """Attach Critic eval scores to the HELPER FT Trackio run. Fail-open.
+
+    ``results_sha256`` is required (64-char lowercase hex) and is logged with
+    every score. Trackio is a dashboard, never stamp-gate evidence. Verdicts
+    come only from the sha-pinned results files and the HQ events.
+    """
+    return helper_ft_trackio.log_eval_scores(run_id, scores, results_sha256)
+
+
+def _track_completion(session: helper_ft_trackio.RunSession, evidence: Mapping[str, Any]) -> None:
+    """Log completion from ``kick()``'s returned mapping only. Never stdout."""
+    smoke = evidence.get("smoke") is True
+    payload: dict[str, Any] = {
+        "sha256_evidence": evidence.get("sha256_evidence"),
+        "result": evidence.get("result"),
+        "exit_code": evidence.get("exit_code"),
+        "smoke": smoke,
+        "scorable": False if smoke else True,
+    }
+    if smoke:
+        payload["scorable"] = False
+    session.log_integrity(payload)
+
+
 def kick(
     pack_dir: Path,
     *,
@@ -1856,13 +1882,22 @@ def kick(
     after the gate. CLI and env cannot supply them. There is no skip/override.
     ``smoke=True`` never posts HQ events, marks evidence unscorable, and
     deletes checkpoint/run-dir copies/inbox before returning.
+
+    Trackio completion logs ``sha256_evidence``, ``result``, and ``exit_code``
+    from this returned mapping only, never from stdout. Smoke runs log
+    ``smoke=true`` and are never scorable. Trackio is a dashboard, never
+    stamp-gate evidence.
     """
-    _refuse_skip_env()
-    _refuse_pin_env()
-    refuse_implicit_inbox_pack(pack_dir)
-    pack_dir = Path(pack_dir)
     smoke = bool(smoke)
-    _refuse_local_pin_files(_resolve_pack_dir(pack_dir))
+    try:
+        _refuse_skip_env()
+        _refuse_pin_env()
+        refuse_implicit_inbox_pack(pack_dir)
+        pack_dir = Path(pack_dir)
+        _refuse_local_pin_files(_resolve_pack_dir(pack_dir))
+    except KickRefused as exc:
+        helper_ft_trackio.log_refused(_new_run_id(), exc)
+        raise
     run_id = _new_run_id()
     if log_path is not None:
         log_path = Path(log_path)
@@ -1879,10 +1914,12 @@ def kick(
         if os.name != "nt":
             raise
     git_sha = _script_git_sha()
+    session = helper_ft_trackio.RunSession(run_id=run_id, run_dir=run_dir)
     entrypoint_pins, pins_source_commit = load_entrypoint_pins(git_sha=git_sha)
     try:
         trust_blobs = cam_pin_spec.require_committed_trust()
     except cam_pin_spec.CamPinError as exc:
+        helper_ft_trackio.log_refused(run_id, KickRefused(exc.field, exc.expected, exc.actual), run_dir=run_dir)
         _refuse(exc.field, exc.expected, exc.actual)
     evidence: dict[str, Any] = {
         "ok": False,
@@ -1927,6 +1964,7 @@ def kick(
         evidence["trainer_config"] = trainer_config
         evidence["trainer_argv"] = trainer_argv
         persist()
+        session.start(helper_ft_trackio.config_from_evidence(evidence))
         if not smoke:
             kick_event = {
                 "run_id": run_id,
@@ -1979,6 +2017,7 @@ def kick(
         else:
             started = start_training(run_private, evidence, log_path)
             exits.append(wait_for_training_exit(started if isinstance(started, dict) else None))
+        session.log_losses_from_launch(started if isinstance(started, dict) else None, log_path=log_path)
         exit_info = combine_trainer_exits(exits)
         _recheck_copies(
             run_private,
@@ -2006,6 +2045,8 @@ def kick(
                 persist()
                 _refuse("smoke.cleanup", "nothing survives", survivors)
         persist()
+        _track_completion(session, evidence)
+        session.finish()
         return evidence
     except KickRefused as exc:
         evidence["ok"] = False
@@ -2033,6 +2074,9 @@ def kick(
             persist()
         except OSError:
             pass
+        if evidence.get("sha256_evidence") or evidence.get("result") or evidence.get("exit_code") is not None:
+            _track_completion(session, evidence)
+        session.refuse(exc, config=helper_ft_trackio.config_from_evidence(evidence))
         raise
     except Exception as exc:
         evidence["ok"] = False
@@ -2043,6 +2087,10 @@ def kick(
             persist()
         except OSError:
             pass
+        session.refuse(
+            KickRefused("kickoff", "success", f"{type(exc).__name__}: {exc}"),
+            config=helper_ft_trackio.config_from_evidence(evidence),
+        )
         _refuse("kickoff", "success", f"{type(exc).__name__}: {exc}")
 
 
